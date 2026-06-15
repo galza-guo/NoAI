@@ -1,0 +1,20 @@
+{
+  "name": "ai-preflight-redactor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "mammoth": "^1.11.0",
+    "pdfjs-dist": "^5.4.394",
+    "vite": "^8.0.16"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}
