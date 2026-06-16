@@ -1,4 +1,4 @@
-# AI Preflight Redactor
+# NoAI
 
 Browser-only deterministic redaction for preparing documents before they are sent to AI tools.
 

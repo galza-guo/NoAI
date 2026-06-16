@@ -14,7 +14,7 @@ app.innerHTML = `
     <section class="workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">AI Preflight Redactor</p>
+          <p class="eyebrow">NoAI</p>
           <h1>Prepare documents before using AI tools</h1>
         </div>
         <p class="trust-note">Runs in this browser. No AI call. No upload.</p>
