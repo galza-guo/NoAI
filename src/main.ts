@@ -21,25 +21,27 @@ app.innerHTML = `
       </header>
 
       <section class="panel controls">
-        <label class="dropzone" id="dropzone">
-          <input id="file-input" type="file" multiple accept=".md,.markdown,.txt,.docx,.pdf" />
-          <span class="drop-title">Drop files or choose documents</span>
-          <span class="drop-meta">Markdown, text, Word, and text-based PDF</span>
-        </label>
+        <div class="controls-layout">
+          <label class="dropzone" id="dropzone">
+            <input id="file-input" type="file" multiple accept=".md,.markdown,.txt,.docx,.pdf" />
+            <span class="drop-title">Drop files or choose documents</span>
+            <span class="drop-meta">Markdown, text, Word, and text-based PDF</span>
+          </label>
 
-        <div class="control-grid">
-          <label>
-            <span>Redaction level</span>
-            <select id="level-select">
-              <option value="balanced" selected>Balanced</option>
-              <option value="light">Light</option>
-              <option value="strict">Strict</option>
-            </select>
-          </label>
-          <label>
-            <span>Custom terms</span>
-            <textarea id="custom-terms" rows="4" placeholder="One private term per line"></textarea>
-          </label>
+          <div class="control-options">
+            <label>
+              <span>Redaction level</span>
+              <select id="level-select">
+                <option value="balanced" selected>Balanced</option>
+                <option value="light">Light</option>
+                <option value="strict">Strict</option>
+              </select>
+            </label>
+            <label>
+              <span>Custom terms</span>
+              <textarea id="custom-terms" rows="4" placeholder="One private term per line"></textarea>
+            </label>
+          </div>
         </div>
 
         <div class="action-row">
