@@ -84,4 +84,6 @@ This is deterministic software, not AI. It can miss unusual names and can over-r
 
 ## License
 
-MIT.
+GNU Affero General Public License v3.0 only (`AGPL-3.0-only`). See [LICENSE](./LICENSE).
+
+In plain terms: you can use, study, modify, and share NoAI, but if you modify it and offer it to users over a network, you must make your modified source code available under the same license.
