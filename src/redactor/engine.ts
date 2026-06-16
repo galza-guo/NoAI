@@ -52,7 +52,7 @@ function escapeRegExp(value: string): string {
 function patternForValue(value: string): RegExp {
   const escaped = escapeRegExp(value).replace(/\\\s+/g, "\\s+");
   if (/^[A-Za-z0-9_ .,'’&$:/()%-]+$/.test(value)) {
-    return new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`, "g");
+    return new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, "g");
   }
   return new RegExp(escaped, "g");
 }
@@ -80,6 +80,7 @@ export class Detector {
       this.detectDirectPatterns(doc);
       this.detectLabelValues(doc);
       this.detectAddressContinuations(doc);
+      this.detectStandaloneAddressLines(doc);
       this.detectPeople(doc);
       this.detectOrganizations(doc);
       this.detectMatterTerms(doc);
@@ -137,21 +138,30 @@ export class Detector {
       ["PHONE", /(?<![\w/])(?:\+?\d[\d ()-]{6,}\d)(?![\w/])/g, 1, "phone-like digit sequence"],
       ["URL", /https?:\/\/[^\s)>\]]+/g, 1, "URL"],
       ["INTERNAL_LINK", /\]\(([^)]+\.pdf)\)/g, 2, "markdown link to source file"],
+      ["ADDRESS", /\b(?:Unit|Room|Rm|Suite|Flat)\s+[A-Z0-9-]+,?\s+\d+\/F,?\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,5}\s+(?:Building|Tower|Centre|Center|House|Plaza),?\s+\d+\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}\s+(?:Road|Street|Avenue|Rd|St)(?:,?\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})*/g, 1, "inline address phrase"],
       ["CASE_REF", /\bHKIAC Arbitration No\.\s*[A-Z]?\d+\b/g, 1, "arbitration number"],
       ["CASE_REF", /\bHKIAC\/[A-Z]?\d+\b/g, 1, "case shorthand"],
+      ["BUSINESS_ID", /\b(?:CR|BR|Company|Registered|Registration|Business Registration)\s+No\.?\s*[:#]?\s*[A-Z0-9-]{5,}\b/gi, 1, "business registration number"],
+      ["BUSINESS_ID", /\b(?:company number|registered no\.?|registration no\.?)\s*[:：]?\s*[A-Z0-9-]{5,}\b/gi, 1, "business registration label"],
       ["BUNDLE_REF", /\b[A-Z]\/\d{2,5}\/\d{2,6}\b/g, 2, "bundle reference"],
       ["EXHIBIT_REF", /\b[RCDEF]-\d{1,4}\b/g, 2, "exhibit reference"],
       ["EXHIBIT_REF", /\b[CR]L-\d{1,4}\b/g, 2, "legal authority reference"],
       ["PROCEDURAL_REF", /(?<![A-Za-z0-9])PO\s+No(?:\\\.|\.)?\s*\d+(?!\d)/gi, 2, "procedural reference"],
       ["PROCEDURAL_REF", /(?<![A-Za-z0-9])Procedural\s+Order\s+No(?:\\\.|\.)?\s*\d+(?!\d)/gi, 2, "procedural order reference"],
       ["TRANSCRIPT_REF", /\bDay\s+\d+\s*,?\s*pp\.?\s*\d+(?:\s*-\s*\d+)?\b/g, 2, "transcript reference"],
-      ["DATE", /\b\d{4}\.\d{2}\.\d{2}\b/g, 3, "numeric date"],
-      ["DATE", /\b\d{1,2}\s*-\s*\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/g, 3, "date range"],
-      ["DATE", /\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/g, 3, "written date"],
-      ["DATE", /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/g, 3, "month-year date"],
-      ["AMOUNT", /\b(?:US\\?\$|HK\\?\$|USD|HKD|RMB)\s?\d[\d,.]*(?:\s*(?:million|billion|m|bn|mm))?\b/g, 2, "currency amount"],
+      ["DATE", /\b\d{4}\.\d{2}\.\d{2}\b/g, 2, "numeric date"],
+      ["DATE", /\b\d{1,2}\s*-\s*\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/g, 2, "date range"],
+      ["DATE", /\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/g, 2, "written date"],
+      ["DATE", /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/g, 2, "month-year date"],
+      ["AMOUNT", /\b(?:US\\?\$|HK\\?\$|USD|HKD|RMB|EUR|Euro|Euros)\s?\d[\d,.]*(?:\s*(?:million|billion|m|bn|mm))?(?:\/[A-Za-z]+)?\b/gi, 2, "currency amount"],
+      ["AMOUNT", /\b\d[\d,.]*\s?(?:US\\?\$|HK\\?\$|USD|HKD|RMB|EUR|Euro|Euros)(?:\/[A-Za-z]+)?\b/gi, 2, "suffix currency amount"],
+      ["AMOUNT", /\b\d[\d,]*(?:\s+ordinary)?\s+shares\b/gi, 2, "share count"],
+      ["AMOUNT", /^\s*\d{4,}\s*$/gm, 2, "standalone large number"],
       ["AMOUNT", /\b\d[\d,.]*\s?(?:million|billion)\b/g, 2, "large amount"],
       ["AMOUNT", /(?<![\w.])\d{1,3}(?:\.\d+)?%(?!\w)/g, 2, "percentage"],
+      ["BRAND", /(?<![A-Za-z0-9])[A-Z][A-Z0-9-]{2,}(?=(?:-|\s+)(?:brand|branded|related|trademarks?|products?|INTERNATIONAL|International|GLOBAL|Global))/g, 2, "brand/product mark context"],
+      ["CHANNEL", /\b(?:Current|Sales)\s+channel\s*[:=]\s*([A-Z][A-Za-z0-9._&' -]{2,60})/g, 2, "sales channel label"],
+      ["NON_LATIN_TEXT", /[\u3400-\u9fff][\u3400-\u9fff·]{1,}/g, 2, "non-Latin duplicate text"],
     ];
 
     for (const [kind, regex, level, reason] of patterns) {
@@ -221,6 +231,20 @@ export class Detector {
     }
   }
 
+  private detectStandaloneAddressLines(doc: RedactionInput): void {
+    const lines = doc.text.split(/\r?\n/);
+    let searchPos = 0;
+    for (const line of lines) {
+      const pos = doc.text.indexOf(line, searchPos);
+      searchPos = pos + line.length + 1;
+      const visible = visibleLineText(line);
+      if (!visible) continue;
+      if (this.looksLikeStandaloneAddressLine(visible)) {
+        this.add(visible, "ADDRESS", 1, "standalone address-looking line", doc.name, pos);
+      }
+    }
+  }
+
   private addressContinuationStop(line: string): boolean {
     if (/^\s*(?:Email|E-mail|Phone|Telephone|Tel\.?|Attention|Ref\.?|Client|Prepared for)\s*[:：]/i.test(line)) return true;
     if (/^\s*\d+\.\s+/.test(line)) return true;
@@ -231,6 +255,14 @@ export class Detector {
   private looksLikeAddressContinuation(line: string): boolean {
     const plain = visibleLineText(line);
     return /\b(?:Floor|Tower|Road|Street|Avenue|Central|Queensway|House|Centre|Center|Place|Chambers)\b/i.test(plain) || (/\d/.test(plain) && plain.includes(","));
+  }
+
+  private looksLikeStandaloneAddressLine(line: string): boolean {
+    if (line.length > 100) return false;
+    if (/^\d+\.\s+/.test(line)) return false;
+    const hasAddressUnit = /\b(?:UNIT|ROOM|RM|SUITE|FLAT|FLOOR|BLDG|BUILDING|TOWER|BLOCK)\b|(?:\d+\/F|\/F\b)/i.test(line);
+    const hasStreetTerm = /\b(?:ROAD|RD|STREET|ST|AVENUE|AVE|LANE|LN|DRIVE|DR|COMM|COMMERCIAL|CENTRAL|WAN CHAI|QUEENSWAY|KOWLOON)\b/i.test(line);
+    return (hasAddressUnit && /[A-Z]/.test(line)) || (hasStreetTerm && /\d/.test(line));
   }
 
   private detectPeople(doc: RedactionInput): void {
@@ -255,6 +287,18 @@ export class Detector {
       for (const match of doc.text.matchAll(regex)) {
         const name = cleanValue(match[1]);
         if (this.looksLikePersonName(name)) this.add(name, "PERSON", 2, reason, doc.name, (match.index ?? 0) + match[0].indexOf(match[1]));
+      }
+    }
+
+    for (const match of doc.text.matchAll(/\bBetween\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})\s+and\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})/g)) {
+      for (const name of [match[1], match[2]]) {
+        if (this.looksLikePersonName(name)) this.add(name, "PERSON", 2, "agreement party heading", doc.name, (match.index ?? 0) + match[0].indexOf(name));
+      }
+    }
+
+    for (const match of doc.text.matchAll(/^[^\S\r\n]*([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})\s+and\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})[^\S\r\n]*$/gm)) {
+      for (const name of [match[1], match[2]]) {
+        if (this.looksLikePersonName(name)) this.add(name, "PERSON", 2, "standalone agreement party line", doc.name, (match.index ?? 0) + match[0].indexOf(name));
       }
     }
 
@@ -316,13 +360,13 @@ export class Detector {
       "Savills",
       "Ogier",
     ].join("|");
-    const orgPattern = new RegExp(`\\b[A-Z][A-Za-z'&.(),-]+(?:\\s+[A-Z][A-Za-z'&.(),-]+){0,6}\\s+(?:${suffixes})\\b`, "g");
+    const orgPattern = new RegExp(`(?<![A-Za-z0-9])[A-Z][A-Za-z'&.(),-]+(?:\\s+[A-Z][A-Za-z'&.(),-]+){0,6}\\s+(?:${suffixes})(?![A-Za-z0-9])`, "g");
     for (const match of doc.text.matchAll(orgPattern)) {
       if (match[0].toLocaleLowerCase() !== "working group") this.add(match[0], "ORG", 2, "organization suffix", doc.name, match.index ?? 0);
     }
 
     const orgWithParentheticalPattern = new RegExp(
-      `\\b[A-Z][A-Z0-9'&.,-]+(?:\\s+[A-Z][A-Z0-9'&.,-]+){0,6}(?:\\s+\\\\?\\([A-Z][A-Z\\s&.,-]+\\\\?\\))\\s+(?:${suffixes})\\b`,
+      `(?<![A-Za-z0-9])[A-Z][A-Z0-9'&.,-]+(?:\\s+[A-Z][A-Z0-9'&.,-]+){0,6}(?:\\s+\\\\?\\([A-Z][A-Z\\s&.,-]+\\\\?\\))\\s+(?:${suffixes})(?![A-Za-z0-9])`,
       "g",
     );
     for (const match of doc.text.matchAll(orgWithParentheticalPattern)) {
@@ -415,12 +459,15 @@ export class Detector {
       }
 
       for (const [given, names] of givenNames) {
-        if (names.length !== 1 || !this.looksLikeSinglePersonToken(given)) continue;
+        const allowedShortGiven = ["Li", "Xu", "Mu"].includes(given);
+        if (names.length !== 1 || (!this.looksLikeSinglePersonToken(given) && !allowedShortGiven)) continue;
         const source = sourcesByName.get(names[0]);
         if (!source) continue;
-        const commRe = new RegExp(`\\b(?:to|from|with|by|copying|copied to|sent to|emailed to|not copied to)\\s+${escapeRegExp(given)}\\b`, "g");
+        const commRe = new RegExp(`\\b(?:to|from|with|by|copying|copied to|sent to|emailed to|not copied to)\\s+${escapeRegExp(given)}(?![A-Za-z0-9])`, "g");
         for (const match of doc.text.matchAll(commRe)) this.add(given, "PERSON", source.minLevel, "given alias in communication context", doc.name, match.index ?? 0);
-        const verbRe = new RegExp(`\\b${escapeRegExp(given)}(?:'s|’s)?\\s+(?:says|said|states|stated|denies|accepts|accepted|explains|explained|adds|maintained|described|disputes|testified|gave|rejects|responds|recalls|argues|contends)\\b`, "g");
+        const responseRe = new RegExp(`\\b${escapeRegExp(given)}(?:'s|’s)\\s+Response(?![A-Za-z0-9])`, "g");
+        for (const match of doc.text.matchAll(responseRe)) this.add(match[0].split(/['’]/)[0], "PERSON", source.minLevel, "given alias in response heading", doc.name, match.index ?? 0);
+        const verbRe = new RegExp(`\\b${escapeRegExp(given)}(?:'s|’s)?\\s+(?:says|said|states|stated|denies|accepts|accepted|explains|explained|adds|maintained|described|disputes|testified|gave|rejects|responds|recalls|argues|contends)(?![A-Za-z0-9])`, "g");
         for (const match of doc.text.matchAll(verbRe)) this.add(match[0].split(/\s+/)[0], "PERSON", source.minLevel, "given alias before witness verb", doc.name, match.index ?? 0);
       }
     }
@@ -599,7 +646,11 @@ function startsLegalContactSection(line: string): boolean {
 }
 
 function sanitizeText(text: string, candidates: Candidate[], mapping: Map<string, string>, level: number): string {
-  const applicable = candidates.filter((candidate) => candidate.minLevel <= level).sort((a, b) => b.value.length - a.value.length);
+  const applicable = candidates.filter((candidate) => candidate.minLevel <= level).sort((a, b) => {
+    const aIsNonLatin = a.kind === "NON_LATIN_TEXT" ? 1 : 0;
+    const bIsNonLatin = b.kind === "NON_LATIN_TEXT" ? 1 : 0;
+    return aIsNonLatin - bIsNonLatin || b.value.length - a.value.length;
+  });
   let result = quarantineLegalContactSections(applyChronologyPolicy(stripWordAnchors(text), level), level);
   for (const candidate of applicable) {
     const key = `${candidate.kind}\u0000${candidate.value}`;
@@ -616,8 +667,8 @@ export function redactDocuments(inputs: RedactionInput[], options: RedactionOpti
   const mapping = tokenMap(candidates);
   const level = LEVELS[options.level];
 
-  const documents = inputs.map((doc) => ({
-    name: doc.name,
+  const documents = inputs.map((doc, index) => ({
+    name: `Document ${String(index + 1).padStart(3, "0")}`,
     originalLength: doc.text.length,
     sanitized: sanitizeText(doc.text, candidates, mapping, level),
   }));
