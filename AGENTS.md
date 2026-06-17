@@ -63,4 +63,5 @@ The strongest next work is to improve the detector systematically: add failing s
 
 ## Frontend Development Guidelines
 
+- **Typography**: Never allow elements to fall back to browser default fonts. All typography must be strictly defined by the design system variables (`--font-sans`, `--font-display`, `--font-mono`). Ensure form controls (`button`, `input`, `select`, `textarea`) and preformatted text (`code`, `pre`, `kbd`, `samp`) explicitly inherit or declare these variables, as they do not inherit from `body` by default.
 - **Icons**: Always use Phosphor Icons as the default icon library. Only use alternative icons if subject to an explicit override. The `@phosphor-icons/web` package is installed and `regular` font weight is available. Use `<i class="ph ph-[icon-name]"></i>`.
