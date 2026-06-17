@@ -1514,7 +1514,8 @@ function setupScrollSpy(): void {
 
   const updateHighlight = () => {
     let highlightedId: string | null = null;
-    const isAtBottom = Math.ceil(window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 10;
+    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    const isAtBottom = maxScroll > 100 && Math.ceil(window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 10;
     
     if (isAtBottom && sections.length > 0) {
       highlightedId = sections[sections.length - 1].id;
