@@ -2303,4 +2303,86 @@ forum non conveniens does not apply to this dispute.
     expect(output).toContain("The Bank");
     expect(output).toContain("forum non conveniens");
   });
+
+  it("redacts legal-engagement contacts and UK professional identifiers", () => {
+    // Engagement letters often put matter IDs and regulated-profession
+    // identifiers in bullet labels, and contact names may only be obvious from
+    // business-contact prose or a contact list before an email address.
+    const output = redact(
+      `
+# Engagement Letter - Project Falcon
+
+Matter: FAL/2026/014
+Our lead partner on this matter is Priya Malhotra, and day-to-day conduct will be handled by Owen Carver.
+Please route formal notices via Rowan Hale, Esq.
+
+- Priya Malhotra - priya.malhotra@maplestone.example - +44 (0)20 7555 0182
+- Owen Carver - owen.carver@maplestone.example - +44 7700 900184
+- Client CRN (Companies House): SC 700248
+- Firm SRA ID: 481927
+- HMRC reference: 164/G/73011
+- VAT registration: GB 948 2710 63
+- Internal matter reference: FAL/2026/014
+
+VAT: 20%
+Matter: to be confirmed
+`,
+      "balanced",
+    );
+
+    for (const leaked of [
+      "FAL/2026/014",
+      "Priya Malhotra",
+      "Owen Carver",
+      "Rowan Hale",
+      "SC 700248",
+      "481927",
+      "164/G/73011",
+      "G/73011",
+      "GB 948 2710 63",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PROJECT_");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("BUSINESS_ID_");
+    expect(output).toContain("Matter: to be confirmed");
+    expect(output).not.toMatch(/VAT registration:\s+GB\s+PHONE_/);
+  });
+
+  it("redacts ampersand organization names and full UK address lines", () => {
+    // "&" is common in law-firm and bank names. The org tail is required so
+    // ordinary headings like "Terms & Conditions" stay readable. UK full
+    // address lines are postcode-anchored to avoid broad address swallowing.
+    const output = redact(
+      `
+This letter is sent by Maple & Stone LLP to Northwind Logistics PLC.
+The client account is held at Mercantile & Cross Bank.
+The registered office is at 18 Harbourgate Quay, Belfast BT1 3XD, United Kingdom.
+The firm's address for service is Suite 400, 77 King William Street, London EC4N 7BL.
+
+Terms & Conditions
+Research & Development
+VAT: 20%
+`,
+      "heavy",
+    );
+
+    for (const leaked of [
+      "Maple & Stone LLP",
+      "Mercantile & Cross Bank",
+      "18 Harbourgate Quay",
+      "Belfast BT1 3XD",
+      "United Kingdom",
+      "Suite 400",
+      "77 King William Street",
+      "London EC4N 7BL",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("ORG_");
+    expect(output).toContain("ADDRESS_");
+    expect(output).toContain("Terms & Conditions");
+    expect(output).toContain("Research & Development");
+  });
 });

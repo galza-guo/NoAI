@@ -63,6 +63,7 @@
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --app-min-width: 1100px;
 
   color-scheme: light;
 }
@@ -73,9 +74,9 @@
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: var(--app-min-width);
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: auto;
   background: var(--color-bg-body);
   color: var(--color-text-main);
   font-family: var(--font-sans);
@@ -86,11 +87,20 @@ body {
 }
 
 html {
+  min-width: var(--app-min-width);
   font-family: var(--font-sans);
+}
+
+#app {
+  min-width: var(--app-min-width);
 }
 
 body.busy {
   cursor: progress;
+}
+
+body.site-menu-open {
+  overflow: hidden;
 }
 
 [hidden] {
@@ -321,7 +331,7 @@ h2 {
 
 /* Layout */
 .app-shell {
-  --topbar-height: 57px;
+  --topbar-height: 71px;
   --topbar-gutter: 24px;
   --info-page-gutter: 24px;
   display: flex;
@@ -527,6 +537,10 @@ h2 {
   padding-top: 18px;
 }
 
+.info-page--plain .info-section:last-child {
+  border-bottom: 0;
+}
+
 .info-page--plain .info-link-list a {
   min-height: 0;
   padding: 0;
@@ -544,6 +558,74 @@ h2 {
 .info-page--plain .info-link-list a:focus-visible {
   background: transparent;
   text-decoration: underline;
+}
+
+.more-projects-list {
+  display: grid;
+  gap: 0;
+}
+
+.more-project-link {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-soft);
+  text-decoration: none;
+}
+
+.more-project-link:first-child {
+  padding-top: 0;
+}
+
+.more-project-link:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.more-project-link:hover,
+.more-project-link:focus-visible {
+  text-decoration: none;
+}
+
+.more-project-link:hover .more-project-name,
+.more-project-link:focus-visible .more-project-name {
+  text-decoration: underline;
+}
+
+.more-project-link img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+.more-project-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.more-project-name {
+  color: var(--color-text-main);
+  font-size: 0.94rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.more-project-tagline,
+.more-project-platforms {
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.more-project-platforms {
+  justify-self: end;
+  white-space: nowrap;
 }
 
 .info-section h2 {
@@ -857,9 +939,13 @@ button.info-toggle:focus-visible {
   box-shadow: none;
 }
 
+.site-menu-toggle[aria-expanded="true"] {
+  color: var(--color-text-main);
+}
+
 .site-menu-toggle:hover:not(:disabled),
 .site-menu-toggle[aria-expanded="true"] {
-  color: var(--color-accent);
+  color: var(--color-text-main);
   background: transparent;
   border-color: transparent;
   box-shadow: none;
@@ -873,54 +959,95 @@ button.info-toggle:focus-visible {
 }
 
 .site-menu-toggle[aria-expanded="true"] i {
-  transform: rotate(90deg);
+  transform: none;
 }
 
 .site-menu {
-  position: absolute;
-  z-index: 100;
-  top: calc(100% + 8px);
+  position: fixed;
+  z-index: 19;
+  top: 0;
+  left: 0;
   right: 0;
-  display: grid;
-  min-width: 230px;
-  padding: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--topbar-height) var(--topbar-gutter) 32px;
+  border: 0;
+  border-radius: 0;
   background: var(--color-bg-panel);
-  box-shadow: var(--shadow-popover);
+  box-shadow: none;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-100%);
+  transition:
+    opacity var(--duration-base) var(--ease-standard),
+    transform var(--duration-base) var(--ease-standard),
+    visibility 0s linear var(--duration-base);
+  visibility: hidden;
+}
+
+.site-menu.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition:
+    opacity var(--duration-base) var(--ease-standard),
+    transform var(--duration-base) var(--ease-standard),
+    visibility 0s;
+  visibility: visible;
+}
+
+.site-menu-list {
+  display: grid;
+  padding-top: 8px;
+  border-bottom: 1px solid var(--color-border-soft);
 }
 
 .site-menu a {
-  display: flex;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 28px;
   align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 0 10px;
-  border-radius: var(--radius-sm);
+  gap: 12px;
+  min-height: 79px;
+  padding: 0;
+  border-bottom: 1px solid var(--color-border-soft);
+  border-radius: 0;
   color: var(--color-text-main);
   font-family: var(--font-sans);
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 1.45rem;
+  font-weight: 700;
   text-decoration: none;
+}
+
+.site-menu a:last-child {
+  border-bottom: 0;
 }
 
 .site-menu a:hover,
 .site-menu a:focus-visible,
 .site-menu a.active {
-  color: var(--color-accent);
+  color: var(--color-text-main);
   background: var(--color-accent-tint);
   outline: none;
 }
 
 .site-menu a i {
-  color: var(--color-text-soft);
-  font-size: 18px;
+  color: var(--color-text-main);
+  font-size: 21px;
+}
+
+.site-menu a .site-menu-caret {
+  font-size: 16px;
+  justify-self: end;
 }
 
 .site-menu a.active i,
 .site-menu a:hover i,
 .site-menu a:focus-visible i {
-  color: var(--color-accent);
+  color: var(--color-text-main);
 }
 
 .panel {
@@ -1893,8 +2020,27 @@ button.file-remove:hover:not(:disabled) {
   margin-top: 6px;
 }
 
-.cat-head {
+.cat-head-row {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.cat-head-row:hover,
+.cat-head-row:focus-within {
+  background: var(--color-accent-tint);
+}
+
+.cat-head {
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1907,19 +2053,61 @@ button.file-remove:hover:not(:disabled) {
   box-shadow: none;
   font-weight: 600;
   border-radius: var(--radius-sm);
-  transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard);
+  transition: color var(--duration-fast) var(--ease-standard);
 }
 button.cat-head:hover:not(:disabled) {
   color: var(--color-text-main);
-  background: var(--color-accent-tint);
+  background: transparent;
   border-color: transparent;
   box-shadow: none;
 }
 
-button.cat-head:hover:not(:disabled) .cat-chevron {
+.cat-head-row:hover .cat-chevron,
+.cat-head-row:focus-within .cat-chevron {
   color: var(--color-accent-hover);
+}
+
+.cat-head-name {
+  padding-right: 0;
+}
+
+.cat-head-meta {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.cat-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  min-width: 30px;
+  min-height: 44px;
+  padding: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--color-border-hover);
+  opacity: 0;
+  pointer-events: none;
+  cursor: default;
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.cat-head-row:hover .cat-delete,
+.cat-head-row:focus-within .cat-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+button.cat-delete:hover:not(:disabled) {
+  color: var(--color-danger);
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .cat-name {
@@ -1934,7 +2122,6 @@ button.cat-head:hover:not(:disabled) .cat-chevron {
   color: var(--color-text-muted);
   font-size: 0.82rem;
   font-weight: 700;
-  margin-left: auto;
   background: transparent;
   border: 0;
   padding: 0;
@@ -2424,8 +2611,10 @@ button.text-button:hover:not(:disabled) {
   }
 }
 
-/* Responsive */
-@media (max-width: 1100px) {
+/* Responsive
+   Temporarily disabled while the workspace only supports the desktop layout.
+   Keep the rules nearby so the alternate layouts can be restored deliberately. */
+@media (max-width: 1100px) and (min-width: 1101px) {
   .workspace-grid {
     height: auto;
     min-height: 0;
@@ -2455,7 +2644,7 @@ button.text-button:hover:not(:disabled) {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px) and (min-width: 1101px) {
   .app-shell {
     --topbar-height: 51px;
     --topbar-gutter: 16px;
@@ -2489,6 +2678,16 @@ button.text-button:hover:not(:disabled) {
   .info-section h2 {
     position: static;
     font-size: 1.2rem;
+  }
+
+  .more-project-link {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .more-project-platforms {
+    grid-column: 2;
+    justify-self: start;
+    white-space: normal;
   }
 
   .version-grid {
@@ -2614,14 +2813,14 @@ button.text-button:hover:not(:disabled) {
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 820px) and (min-width: 1101px) {
   .privacy-flow-comparison {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 640px) and (min-width: 1101px) {
   .privacy-tier {
     padding: 10px;
   }

@@ -19,4 +19,17 @@ describe("replacement row markup", () => {
       /\.entry-row:hover\s+\.entry-hit-count,[\s\S]*\.entry-row:focus-within\s+\.entry-hit-count\s*{[^}]*opacity:\s*1;/,
     );
   });
+
+  it("adds a category-level unredact button beside the category toggle", () => {
+    expect(mainSource).toMatch(
+      /<div class="cat-head-row">[\s\S]*<button[^>]*class="cat-head[\s\S]*data-toggle-kind=/,
+    );
+    expect(mainSource).toMatch(
+      /<button[\s\S]*class="cat-delete"[\s\S]*data-delete-kind=/,
+    );
+    expect(mainSource).toContain("function deleteEntries(");
+    expect(cssSource).toMatch(
+      /\.cat-head-row:hover\s+\.cat-delete,[\s\S]*\.cat-head-row:focus-within\s+\.cat-delete\s*{[^}]*opacity:\s*1;/,
+    );
+  });
 });

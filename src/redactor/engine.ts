@@ -605,6 +605,18 @@ export class Detector {
         1,
         "numbered street address",
       ],
+      [
+        "ADDRESS",
+        // UK business correspondence often writes the whole address on one
+        // line: "Suite 400, 77 King William Street, London EC4N 7BL". The
+        // postcode anchor keeps this from swallowing ordinary numbered prose.
+        new RegExp(
+          String.raw`(?<![A-Za-z0-9])(?:(?:Suite|Unit|Room|Floor|Level)\s+[A-Z0-9-]+,?\s+)?\d{1,6}[A-Za-z]?\s+[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,4}\s+(?:${STREET_SUFFIX_ALT}),?\s+[A-Z][A-Za-z'’ -]{2,40}\s+[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}(?:,?\s+(?:United Kingdom|UK|England|Scotland|Wales|Northern Ireland))?`,
+          "g",
+        ),
+        1,
+        "UK full address line",
+      ],
       ["ADDRESS", /\bP\.?\s*O\.?\s+Box\s+\d{1,10}\b/gi, 1, "post office box"],
       [
         "CASE_REF",
@@ -738,6 +750,30 @@ export class Detector {
         /\b(?:company number|registered no\.?|registration no\.?)\s*[:：]?\s*(?=[A-Za-z0-9-]*\d)[A-Z0-9-]{5,}\b/gi,
         1,
         "business registration label",
+      ],
+      [
+        "BUSINESS_ID",
+        /\b(?:CRN|Company\s+Registration\s+Number|Companies\s+House\s+(?:No\.?|Number))\s*(?:\([^)]*\))?\s*[:#]?\s*([A-Z]{0,2}\s?\d{5,8})\b/gi,
+        1,
+        "company registration number label",
+      ],
+      [
+        "BUSINESS_ID",
+        /\bSRA\s+ID\s*[:#]?\s*(\d{4,8})\b/gi,
+        1,
+        "professional regulator identifier",
+      ],
+      [
+        "BUSINESS_ID",
+        /\bHMRC\s+reference\s*[:#]?\s*[A-Z0-9]{2,4}\/[A-Z0-9]\/[A-Z0-9]{3,10}\b/gi,
+        1,
+        "HMRC reference",
+      ],
+      [
+        "CASE_REF",
+        /\b(?:Matter|Matter\s+Reference|Internal\s+Matter\s+Reference)\s*[:#]\s*([A-Z]{2,10}\/\d{2,4}\/\d{2,6})\b/gi,
+        1,
+        "matter reference label",
       ],
       [
         "BUSINESS_ID",
@@ -932,6 +968,15 @@ export class Detector {
         /\b(?:VAT\s+(?:Registration\s+)?(?:Nos?|Numbers?|IDs?)|Tax(?:payer)?\s+(?:Identification\s+)?(?:IDs?|Nos?|Numbers?))\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "tax identifier label",
+      ],
+      [
+        "BUSINESS_ID",
+        // UK/EU VAT references are often written as "VAT registration: GB 123
+        // 4567 89" without "No." or "ID". Keep it label-bound and require the
+        // country/digit grouping so rates like "VAT: 20%" stay readable.
+        /\bVAT\s+(?:registration|reg\.?|number|no\.?|id)\b\.?\s*[:#]?\s*([A-Z]{2}\s?\d{3}\s?\d{4}\s?\d{2}|\d{9,12})\b/gi,
+        1,
+        "VAT registration label",
       ],
       [
         "BANK_ACCOUNT",
@@ -1226,7 +1271,7 @@ export class Detector {
     for (const line of lines) {
       const pos = doc.text.indexOf(line, searchPos);
       searchPos = pos + line.length + 1;
-      const stripped = line.trim();
+      const stripped = line.trim().replace(/^[-*]\s+/, "");
       if (!stripped) continue;
       for (const [regex, kind, level, reason] of labelPatterns) {
         const match = stripped.match(regex);
@@ -1555,18 +1600,58 @@ export class Detector {
     // given name in the document, so alias generation cannot derive it; capture
     // it directly. The Esq. suffix is an unambiguous person (lawyer) signal.
     for (const match of doc.text.matchAll(
-      /\b([A-Z][A-Za-z'’-]+),?[\s\u00A0]+Esq\.?\b/g,
+      /\b([A-Z][A-Za-z'’-]+(?:[\s\u00A0]+[A-Z][A-Za-z'’-]+){0,3}),?[\s\u00A0]+Esq\.?\b/g,
     )) {
-      const surname = cleanValue(match[1]);
-      if (this.looksLikeSinglePersonToken(surname))
+      const name = cleanValue(match[1]);
+      if (this.looksLikePersonName(name) || this.looksLikeSinglePersonToken(name))
         this.add(
-          surname,
+          name,
           "PERSON",
           1,
-          "surname with esq suffix",
+          "name with esq suffix",
           doc.name,
           (match.index ?? 0) + match[0].indexOf(match[1]),
         );
+    }
+
+    for (const match of doc.text.matchAll(
+      /^[^\S\r\n]*(?:[-*]\s*)?([A-Z][A-Za-z'’-]+(?:[^\S\r\n]+[A-Z][A-Za-z'’-]+){1,3})[^\S\r\n]+[—-][^\r\n]*\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gm,
+    )) {
+      const name = cleanValue(match[1]);
+      if (this.looksLikePersonName(name))
+        this.add(
+          name,
+          "PERSON",
+          1,
+          "contact line before email",
+          doc.name,
+          (match.index ?? 0) + match[0].indexOf(match[1]),
+        );
+    }
+
+    const businessContactPatterns: Array<[RegExp, string]> = [
+      [
+        /\b(?:lead\s+(?:partner|counsel|adviser|advisor)|matter\s+partner|relationship\s+manager|account\s+manager|case\s+handler)(?:\s+on\s+this\s+matter)?\s+is\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})\b/g,
+        "named business contact",
+      ],
+      [
+        /\b(?:conduct|work|file|matter)\s+will\s+be\s+handled\s+by\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})\b/g,
+        "handled-by business contact",
+      ],
+    ];
+    for (const [regex, reason] of businessContactPatterns) {
+      for (const match of doc.text.matchAll(regex)) {
+        const name = cleanValue(match[1]);
+        if (this.looksLikePersonName(name))
+          this.add(
+            name,
+            "PERSON",
+            1,
+            reason,
+            doc.name,
+            (match.index ?? 0) + match[0].indexOf(match[1]),
+          );
+      }
     }
 
     this.detectPersonLists(doc);
@@ -2064,6 +2149,24 @@ export class Detector {
     // Capital, ...) may only follow a plain space; legal-form suffixes (Inc,
     // LLC, ...) may also follow ", " so "Name, Inc" survives.
     const orgToken = String.raw`[A-Z][A-Za-z'&()-]*`;
+    const ampersandOrgCore = String.raw`[A-Z][A-Za-z'()-]*(?:[^\S\r\n]+[A-Z][A-Za-z'()-]*){0,3}`;
+    const ampersandOrgPattern = new RegExp(
+      String.raw`(?<![A-Za-z0-9])${ampersandOrgCore}(?:[^\S\r\n]*&[^\S\r\n]*${ampersandOrgCore})+(?:[^\S\r\n]+(?:${GENERIC_TAIL_ORG_SUFFIX_ALT})|(?:[^\S\r\n]+|,\s+)(?:${LEGAL_FORM_ORG_SUFFIX_ALT}))(?![A-Za-z0-9])`,
+      "g",
+    );
+    for (const match of doc.text.matchAll(ampersandOrgPattern)) {
+      const surface = this.normalizeOrgSurface(match[0]);
+      if (!surface || this.isGenericOrgBoilerplate(surface)) continue;
+      this.add(
+        surface,
+        "ORG",
+        2,
+        "ampersand organization suffix",
+        doc.name,
+        (match.index ?? 0) + match[0].indexOf(surface),
+      );
+    }
+
     const orgPattern = new RegExp(
       String.raw`(?<![A-Za-z0-9])${orgToken}(?:[^\S\r\n]+${orgToken}){0,6}(?:[^\S\r\n]+(?:${GENERIC_TAIL_ORG_SUFFIX_ALT})|(?:[^\S\r\n]+|,\s+)(?:${LEGAL_FORM_ORG_SUFFIX_ALT}))(?![A-Za-z0-9])`,
       "g",
@@ -2281,6 +2384,7 @@ export class Detector {
     for (const match of doc.text.matchAll(
       /\bProject\s+[A-Z][A-Za-z0-9_-]+\b/g,
     )) {
+      const codename = match[0].replace(/^Project\s+/, "");
       this.add(
         match[0],
         "PROJECT",
@@ -2289,6 +2393,20 @@ export class Detector {
         doc.name,
         match.index ?? 0,
       );
+      if (
+        codename.length > 3 &&
+        !PROPER_NOUN_STOP_TERMS.has(codename) &&
+        !SINGLE_PERSON_STOPWORDS.has(codename) &&
+        !COMMON_TITLE_WORDS.has(codename)
+      )
+        this.add(
+          codename,
+          "PROJECT",
+          2,
+          "project codename alias",
+          doc.name,
+          (match.index ?? 0) + match[0].indexOf(codename),
+        );
     }
     for (const value of MATTER_TERMS) {
       for (const match of doc.text.matchAll(

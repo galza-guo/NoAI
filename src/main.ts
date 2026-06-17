@@ -12,6 +12,7 @@ import {
   ReviewModel,
 } from "./redactor/types";
 import { ENGINE_VERSION, ENGINE_VERSION_DATE } from "./redactor/version";
+import projectCatalog from "./data/public-project-catalog.json";
 import packageMeta from "../package.json";
 
 /* ------------------------------------------------------------------ *
@@ -109,6 +110,26 @@ interface InfoPageScaffold {
   summary: string;
   sections: InfoSection[];
 }
+
+type CatalogLocale = "zh-Hans" | "zh-Hant" | "en" | "ko" | "ja";
+
+interface PublicProject {
+  id: string;
+  name: Record<CatalogLocale, string>;
+  tagline: Record<CatalogLocale, string>;
+  platforms: string[];
+  links: Partial<Record<"website" | "appStore" | "download" | "github", string>>;
+  icon: {
+    light: string;
+    dark?: string;
+    alt: Record<CatalogLocale, string>;
+  };
+  showInApps: boolean;
+  order: number;
+}
+
+const CURRENT_PROJECT_ID = "noai";
+const PUBLIC_PROJECTS = projectCatalog as PublicProject[];
 
 const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
   faq: {
@@ -382,6 +403,15 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
           {
             type: "html",
             html: '<p>Gallant GUO<br><a href="mailto:glt@gallantguo.com">glt@gallantguo.com</a></p>',
+          },
+        ],
+      },
+      {
+        heading: "More by Me",
+        blocks: [
+          {
+            type: "html",
+            html: renderMoreByMeProjects(),
           },
         ],
       },
@@ -840,12 +870,14 @@ app.innerHTML = `
         <button id="site-menu-toggle" type="button" class="icon-button site-menu-toggle" aria-expanded="false" aria-controls="site-menu" aria-label="Open site menu">
           <i class="ph ph-list" aria-hidden="true"></i>
         </button>
-        <nav class="site-menu" id="site-menu" aria-label="NoAI pages" hidden>
-          ${renderSiteMenuLinks()}
-        </nav>
       </div>
       <div class="reading-progress" id="reading-progress" aria-hidden="true" hidden></div>
     </header>
+    <nav class="site-menu" id="site-menu" aria-label="NoAI pages" aria-hidden="true" inert>
+      <div class="site-menu-list">
+        ${renderSiteMenuLinks()}
+      </div>
+    </nav>
 
     <section class="workspace" id="workspace-view">
 
@@ -1184,6 +1216,82 @@ function renderInfoBlocks(blocks: InfoBlock[]): string {
     .join("");
 }
 
+function renderMoreByMeProjects(): string {
+  const locale = preferredCatalogLocale();
+  const projects = PUBLIC_PROJECTS
+    .filter((project) => project.showInApps && project.id !== CURRENT_PROJECT_ID)
+    .sort((a, b) => a.order - b.order);
+
+  if (projects.length === 0) return "<p>No other public projects are listed yet.</p>";
+
+  return `
+    <div class="more-projects-list">
+      ${projects.map((project) => renderProjectLink(project, locale)).join("")}
+    </div>
+  `;
+}
+
+function renderProjectLink(project: PublicProject, locale: CatalogLocale): string {
+  const href = primaryProjectLink(project);
+  const name = localizedValue(project.name, locale);
+  const tagline = localizedValue(project.tagline, locale);
+  const alt = localizedValue(project.icon.alt, locale);
+  const platforms = project.platforms.map(formatPlatform).join(", ");
+  return `
+    <a class="more-project-link" href="${escapeHtml(href)}" target="_blank" rel="noopener" aria-label="${escapeHtml(`${name}: ${tagline}`)}">
+      <img src="${escapeHtml(project.icon.light)}" alt="${escapeHtml(alt)}" loading="lazy" />
+      <span class="more-project-copy">
+        <span class="more-project-name">${escapeHtml(name)}</span>
+        <span class="more-project-tagline">${escapeHtml(tagline)}</span>
+      </span>
+      <span class="more-project-platforms">${escapeHtml(platforms)}</span>
+    </a>
+  `;
+}
+
+function preferredCatalogLocale(): CatalogLocale {
+  const languages = navigator.languages.length > 0
+    ? navigator.languages
+    : [navigator.language];
+  for (const language of languages) {
+    if (language.startsWith("zh-Hans") || language === "zh-CN" || language === "zh-SG") {
+      return "zh-Hans";
+    }
+    if (language.startsWith("zh-Hant") || language === "zh-TW" || language === "zh-HK" || language === "zh-MO") {
+      return "zh-Hant";
+    }
+    if (language.startsWith("ko")) return "ko";
+    if (language.startsWith("ja")) return "ja";
+    if (language.startsWith("en")) return "en";
+  }
+  return "en";
+}
+
+function localizedValue(values: Record<CatalogLocale, string>, locale: CatalogLocale): string {
+  return values[locale] || values.en;
+}
+
+function primaryProjectLink(project: PublicProject): string {
+  return (
+    project.links.website ||
+    project.links.appStore ||
+    project.links.download ||
+    project.links.github ||
+    "#"
+  );
+}
+
+function formatPlatform(platform: string): string {
+  const labels: Record<string, string> = {
+    ios: "iOS",
+    macos: "macOS",
+    windows: "Windows",
+    linux: "Linux",
+    web: "Web",
+  };
+  return labels[platform] ?? platform;
+}
+
 const COLLAPSED_CHANGELOG_ITEM_COUNT = 4;
 
 function renderInfoSection(route: InfoRoute, section: InfoSection): string {
@@ -1338,7 +1446,10 @@ function setInfoMenuOpen(open: boolean): void {
 }
 
 function renderSiteMenuState(): void {
-  siteMenu.hidden = !state.infoMenuOpen;
+  document.body.classList.toggle("site-menu-open", state.infoMenuOpen);
+  siteMenu.classList.toggle("open", state.infoMenuOpen);
+  siteMenu.setAttribute("aria-hidden", String(!state.infoMenuOpen));
+  siteMenu.toggleAttribute("inert", !state.infoMenuOpen);
   siteMenuToggle.setAttribute("aria-expanded", String(state.infoMenuOpen));
   siteMenuToggle.setAttribute(
     "aria-label",
@@ -1364,6 +1475,7 @@ function renderSiteMenuLinks(): string {
       <a href="${routeHref(link.route)}" data-route-link="${link.route}">
         <i class="ph ${link.icon}" aria-hidden="true"></i>
         <span>${escapeHtml(link.label)}</span>
+        <i class="ph ph-caret-right site-menu-caret" aria-hidden="true"></i>
       </a>
     `,
   ).join("");
@@ -1653,6 +1765,22 @@ function deleteEntry(id: string): void {
   setStatus(`Deleted replacement for "${entry.value}".`);
 }
 
+function deleteEntries(ids: string[], label: string): void {
+  const idSet = new Set(ids);
+  const entries = state.entries.filter((item) => idSet.has(item.id));
+  if (entries.length === 0) return;
+  entries.forEach((entry) => state.removedEntryIds.add(entry.id));
+  state.entries = state.entries.filter((item) => !idSet.has(item.id));
+  if (state.selectedEntryId && idSet.has(state.selectedEntryId)) hidePopover();
+  recompute();
+  renderAll();
+  setStatus(
+    `Deleted ${entries.length} ${
+      entries.length === 1 ? "replacement" : "replacements"
+    } in ${label}.`,
+  );
+}
+
 /* --------------------------- Manual entries ------------------------ */
 
 function addManualEntry(
@@ -1899,11 +2027,21 @@ function renderReplacements(): void {
         const style = kindStyle(kind);
         return `
           <section class="cat-group" data-kind="${escapeHtml(kind)}">
-            <button type="button" class="cat-head${collapsed ? " collapsed" : ""}" data-toggle-kind="${escapeHtml(kind)}">
-              <span class="cat-name" style="${style.labelCss}">${escapeHtml(kindLabel(kind))}</span>
-              <span class="cat-count">${items.length}</span>
-              <span class="cat-chevron">${icon.chevronDown}</span>
-            </button>
+            <div class="cat-head-row">
+              <button type="button" class="cat-head cat-head-name${collapsed ? " collapsed" : ""}" data-toggle-kind="${escapeHtml(kind)}">
+                <span class="cat-name" style="${style.labelCss}">${escapeHtml(kindLabel(kind))}</span>
+              </button>
+              <button
+                type="button"
+                class="cat-delete"
+                data-delete-kind="${escapeHtml(kind)}"
+                aria-label="Un-redact all listed ${escapeHtml(kindLabel(kind))} replacements"
+              >${icon.x}</button>
+              <button type="button" class="cat-head cat-head-meta${collapsed ? " collapsed" : ""}" data-toggle-kind="${escapeHtml(kind)}" aria-label="Toggle ${escapeHtml(kindLabel(kind))} replacements">
+                <span class="cat-count">${items.length}</span>
+                <span class="cat-chevron">${icon.chevronDown}</span>
+              </button>
+            </div>
             <div class="cat-items-grid${collapsed ? " collapsed" : ""}">
               <div class="cat-items">${items.map((entry, i) => renderEntryRow(entry, i)).join("")}</div>
             </div>
@@ -1919,19 +2057,34 @@ function renderReplacements(): void {
   replacementsBody
     .querySelectorAll<HTMLButtonElement>("[data-toggle-kind]")
     .forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
         const kind = button.dataset.toggleKind!;
         const section = button.closest(".cat-group")!;
-        const grid = section.querySelector(".cat-items-grid")!;
-        if (state.expandedKinds.has(kind)) {
-          state.expandedKinds.delete(kind);
-          button.classList.add("collapsed");
-          grid.classList.add("collapsed");
-        } else {
-          state.expandedKinds.add(kind);
-          button.classList.remove("collapsed");
-          grid.classList.remove("collapsed");
-        }
+        toggleCategory(section, kind);
+      });
+    });
+
+  replacementsBody
+    .querySelectorAll<HTMLElement>(".cat-head-row")
+    .forEach((row) => {
+      row.addEventListener("click", (event) => {
+        if ((event.target as HTMLElement).closest(".cat-delete")) return;
+        const section = row.closest(".cat-group")!;
+        toggleCategory(section, section.getAttribute("data-kind")!);
+      });
+    });
+
+  replacementsBody
+    .querySelectorAll<HTMLButtonElement>("[data-delete-kind]")
+    .forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const section = button.closest(".cat-group")!;
+        const ids = [...section.querySelectorAll<HTMLElement>("[data-delete-entry]")].map(
+          (entryButton) => entryButton.dataset.deleteEntry!,
+        );
+        deleteEntries(ids, kindLabel(button.dataset.deleteKind!));
       });
     });
 
@@ -1959,6 +2112,20 @@ function renderReplacements(): void {
       });
     });
   updateOmniboxAddAction();
+}
+
+function toggleCategory(section: Element, kind: string): void {
+  const grid = section.querySelector(".cat-items-grid")!;
+  const toggles = section.querySelectorAll<HTMLButtonElement>("[data-toggle-kind]");
+  if (state.expandedKinds.has(kind)) {
+    state.expandedKinds.delete(kind);
+    toggles.forEach((toggle) => toggle.classList.add("collapsed"));
+    grid.classList.add("collapsed");
+  } else {
+    state.expandedKinds.add(kind);
+    toggles.forEach((toggle) => toggle.classList.remove("collapsed"));
+    grid.classList.remove("collapsed");
+  }
 }
 
 function updateOmniboxAddAction(): void {

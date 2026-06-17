@@ -2,6 +2,21 @@
 
 The redaction engine uses semantic versioning independently from the app package.
 
+## 1.0.14 - 2026-06-17
+
+Release-candidate repair after auditing the synthetic `public/dev-sample.md` engagement letter.
+
+- Added label-bound coverage for legal-engagement matter references (`Matter: ABC/2026/001`, `Internal matter reference: ...`), UK company registration numbers/CRNs with Companies House context, SRA IDs, HMRC references, and spaced UK/EU VAT registration numbers such as `GB 123 4567 89`.
+- Added postcode-anchored full UK address-line detection so addresses like `18 Example Quay, Belfast BT1 3XD, United Kingdom` and `Suite 400, 77 Example Street, London EC4N 7BL` redact as full address units instead of leaking city/country tails.
+- Added narrow ampersand organization detection for names with a real organization suffix or tail (`Maple & Stone LLP`, `Mercantile & Cross Bank`) while keeping boilerplate headings such as `Terms & Conditions` readable.
+- Improved legal-contact name detection for contact-list rows before email addresses, business-contact prose (`lead partner is ...`, `conduct will be handled by ...`), and full names before `Esq.`.
+- Project codenames introduced as `Project X` now also redact the codename token when it appears elsewhere in the same document, reducing leaks such as `X distribution network`.
+
+False-positive guardrails:
+
+- The new identifier rules remain label-bound and digit-bearing; placeholder prose such as `Matter: to be confirmed` stays readable.
+- The UK full-address rule requires a UK postcode, and the ampersand organization rule requires an organization suffix/tail, to avoid turning ordinary prose into addresses or organizations.
+
 ## 1.0.13 - 2026-06-17
 
 Pre-release level-name cleanup.

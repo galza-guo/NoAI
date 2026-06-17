@@ -8,3 +8,17 @@ coverage/
 .env
 .env.local
 .env.*.local
+
+# NoAI sealed benchmark private materials.
+# Commit the process, schemas, prompts, and harness; keep exam documents and
+# gold annotations local so benchmark materials do not leak into the repo.
+benchmarking/private/*
+!benchmarking/private/.gitignore
+benchmarking/suites/*/documents/
+benchmarking/suites/*/extracted/
+benchmarking/suites/*/pdf/
+benchmarking/suites/*/manifest.json
+benchmarking/suites/*/annotation-packets/
+benchmarking/suites/*/model-proposals/
+benchmarking/suites/*/gold/
+benchmarking/suites/*/reports/
