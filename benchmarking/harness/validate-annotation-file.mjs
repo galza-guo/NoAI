@@ -47,7 +47,7 @@ const [annotationPath, sourceTextPath] = process.argv.slice(2);
 
 if (!annotationPath) {
   console.log(
-    "Usage: node benchmarking/harness/validate-annotation-file.mjs <annotation.json> [source.txt]",
+    "Usage: node benchmarking/harness/validate-annotation-file.mjs <annotation.json> [source.md]",
   );
   process.exit(0);
 }

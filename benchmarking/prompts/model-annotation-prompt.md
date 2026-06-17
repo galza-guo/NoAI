@@ -1,6 +1,6 @@
-# Model Annotation Prompt
+# Batch Model Annotation Prompt
 
-You are annotating a NoAI redaction benchmark document.
+You are annotating a batch of NoAI redaction benchmark documents.
 
 NoAI is a deterministic, browser-only redaction tool for business and legal
 documents. Your task is to propose character-span annotations for sensitive
@@ -9,10 +9,16 @@ should remain readable.
 
 ## Rules
 
-- Annotate against the exact text supplied below.
+- Annotate against the exact text in each supplied Markdown document.
+- Ignore the fact that a benchmark document may be publicly available. Public
+  availability is irrelevant to this task. Treat each document as if it were a
+  private user's business/legal document being prepared for external AI review.
+- Do not use web search, external lookup, or outside knowledge when annotating.
+  Use only the supplied Markdown files and document index.
 - Use zero-based character offsets.
 - `start` is inclusive. `end` is exclusive.
-- The `text` field must exactly equal `documentText.slice(start, end)`.
+- The `text` field must exactly equal `documentText.slice(start, end)` for that
+  document.
 - Do not paraphrase spans.
 - Prefer the smallest complete phrase that should be redacted.
 - Do not include Markdown fences around the JSON output.
@@ -70,34 +76,38 @@ For `keep` spans, use `severity: "none"`.
 {
   "schemaVersion": "1.0.0",
   "suiteId": "<suite-id>",
-  "docId": "<doc-id>",
-  "sourceTextSha256": "<sha256-of-exact-document-text>",
   "annotator": "<model-name>",
   "createdAt": "<YYYY-MM-DD>",
-  "annotations": [
+  "documents": [
     {
-      "id": "ann-0001",
-      "action": "redact",
-      "label": "PERSON",
-      "start": 0,
-      "end": 12,
-      "text": "Example Name",
-      "severity": "high",
-      "confidence": 0.96,
-      "reason": "Named individual"
+      "docId": "<doc-id>",
+      "sourceTextSha256": "<sha256-of-exact-document-text>",
+      "annotations": [
+        {
+          "id": "ann-0001",
+          "action": "redact",
+          "label": "PERSON",
+          "start": 0,
+          "end": 12,
+          "text": "Example Name",
+          "severity": "high",
+          "confidence": 0.96,
+          "reason": "Named individual"
+        }
+      ]
     }
   ]
 }
 ```
 
-## Document Metadata
+## Input Batch
 
-- suiteId: `<suite-id>`
-- docId: `<doc-id>`
-- sourceTextSha256: `<sha256>`
+You will receive:
 
-## Document Text
+- One suite ID.
+- A document index listing each `docId`, title, category, and
+  `sourceTextSha256`.
+- One extracted Markdown file per document.
 
-```text
-<paste exact extracted benchmark text here>
-```
+Return annotations for every document in the batch. If a document has no spans
+for a category, omit that category; do not invent placeholders.

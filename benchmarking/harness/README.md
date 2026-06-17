@@ -2,8 +2,12 @@
 
 This folder holds local benchmark utilities.
 
-The first utility, `validate-annotation-file.mjs`, checks that an annotation
-file is structurally sane and that character spans match the source text.
+`validate-annotation-file.mjs` checks that a single-document annotation file is
+structurally sane and that character spans match the source text.
+
+`validate-batch-annotation-file.mjs` checks the batch JSON returned from
+`prompts/model-annotation-prompt.md` against a private suite
+`model-input/document-index.json` file and the pure extracted Markdown files.
 
 Future harness pieces should:
 

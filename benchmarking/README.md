@@ -1,10 +1,13 @@
-# NoAI Benchmarking
+# NAIR Benchmarking
 
-This folder standardizes NoAI's sealed benchmark process.
+This folder standardizes NAIR: the Non-AI Redaction benchmark process for
+NoAI's deterministic redaction engine.
 
-The benchmark is an exam, not a training set. Use it to decide whether an
-engine version is better or worse. Do not use benchmark documents or
-benchmark-specific misses to write redaction rules.
+NAIR is an exam, not a training set. Use it to decide whether an engine version
+is better or worse. Do not use benchmark documents or benchmark-specific misses
+to write redaction rules.
+
+The authoritative process design is `process.md`.
 
 ## What Is Committed
 
@@ -16,13 +19,17 @@ benchmark-specific misses to write redaction rules.
 
 ## What Is Private
 
-The actual benchmark documents, extracted text, model proposals, gold
+The actual benchmark documents, extracted Markdown, model proposals, gold
 annotations, and score reports are ignored by git. Keep them under:
 
 ```text
 benchmarking/private/
 benchmarking/suites/<suite-id>/
 ```
+
+Extracted Markdown files in a suite must contain only document text. Do not
+embed the model prompt inside each document. Use one prompt from `prompts/` and
+send the suite's extracted `.md` files as separate batch inputs.
 
 Do not commit raw benchmark documents unless they are intentionally public
 fixtures and the project owner explicitly approves committing them.
@@ -40,3 +47,11 @@ fixtures and the project owner explicitly approves committing them.
 
 If a benchmark document is inspected in detail to fix an engine rule, mark it
 contaminated and replace it in the next benchmark-suite version.
+
+## Repeatable Improvement Loop
+
+Once a NAIR suite is frozen, most engine-improvement rounds do not update the
+benchmark. Run improvement rounds in a separate working thread using fresh
+development-corpus documents. After the worker finishes, audit the engine
+changes, run the normal test/build/version checks, run NAIR scoring, and decide
+whether to adopt, partially keep, or discard the round.

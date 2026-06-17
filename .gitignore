@@ -15,10 +15,10 @@ coverage/
 benchmarking/private/*
 !benchmarking/private/.gitignore
 benchmarking/suites/*/documents/
-benchmarking/suites/*/extracted/
+benchmarking/suites/*/markdown/
 benchmarking/suites/*/pdf/
 benchmarking/suites/*/manifest.json
-benchmarking/suites/*/annotation-packets/
+benchmarking/suites/*/model-input/
 benchmarking/suites/*/model-proposals/
 benchmarking/suites/*/gold/
 benchmarking/suites/*/reports/

@@ -95,7 +95,7 @@
           "properties": {
             "original": { "type": "string" },
             "pdf": { "type": "string" },
-            "extractedText": { "type": "string" },
+            "markdown": { "type": "string" },
             "gold": { "type": "string" },
             "modelProposals": {
               "type": "array",

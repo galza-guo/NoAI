@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://noai.local/schemas/batch-annotation.schema.json",
+  "title": "NoAI benchmark batch annotation file",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "suiteId", "annotator", "documents"],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "suiteId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "annotator": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "documents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["docId", "sourceTextSha256", "annotations"],
+        "properties": {
+          "docId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceTextSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "annotations": {
+            "type": "array",
+            "items": {
+              "$ref": "annotation.schema.json#/$defs/annotation"
+            }
+          }
+        }
+      }
+    }
+  }
+}
