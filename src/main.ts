@@ -1494,10 +1494,15 @@ function renderInfoPage(route: InfoRoute): void {
   }
 }
 
+let scrollSpyAbortController: AbortController | null = null;
+
 function setupScrollSpy(): void {
   const sections = infoView.querySelectorAll<HTMLElement>(".info-section");
   const tocLinks = infoView.querySelectorAll<HTMLAnchorElement>(".toc-link");
   if (sections.length === 0 || tocLinks.length === 0) return;
+
+  if (scrollSpyAbortController) scrollSpyAbortController.abort();
+  scrollSpyAbortController = new AbortController();
 
   const observerOptions = {
     root: null,
@@ -1507,6 +1512,37 @@ function setupScrollSpy(): void {
 
   const activeSections = new Set<string>();
 
+  const updateHighlight = () => {
+    let highlightedId: string | null = null;
+    const isAtBottom = Math.ceil(window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 10;
+    
+    if (isAtBottom && sections.length > 0) {
+      highlightedId = sections[sections.length - 1].id;
+    } else {
+      for (const section of Array.from(sections)) {
+        if (activeSections.has(section.id)) {
+          highlightedId = section.id;
+          break;
+        }
+      }
+    }
+
+    if (!highlightedId && activeSections.size === 0 && !isAtBottom) {
+      return;
+    }
+
+    tocLinks.forEach(link => {
+      if (link.dataset.target === highlightedId) {
+        if (!link.classList.contains("active")) {
+          link.classList.add("active");
+          link.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        }
+      } else {
+        link.classList.remove("active");
+      }
+    });
+  };
+
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -1515,29 +1551,10 @@ function setupScrollSpy(): void {
         activeSections.delete(entry.target.id);
       }
     });
-
-    let highlightedId: string | null = null;
-    for (const section of Array.from(sections)) {
-      if (activeSections.has(section.id)) {
-        highlightedId = section.id;
-        break;
-      }
-    }
-
-    if (!highlightedId && activeSections.size === 0) {
-      return;
-    }
-
-    tocLinks.forEach(link => {
-      if (link.dataset.target === highlightedId) {
-        link.classList.add("active");
-        link.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-      } else {
-        link.classList.remove("active");
-      }
-    });
+    updateHighlight();
   }, observerOptions);
 
+  window.addEventListener("scroll", updateHighlight, { signal: scrollSpyAbortController.signal, passive: true });
   sections.forEach(sec => observer.observe(sec));
 
   tocLinks.forEach(link => {
