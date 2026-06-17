@@ -1,5 +1,9 @@
 import "./styles.css";
 import { readFiles } from "./fileReaders";
+import {
+  formatHitMultiplier,
+  formatReplacementTotals,
+} from "./replacementStats";
 import { redactDocuments } from "./redactor/engine";
 import {
   CandidateKind,
@@ -7,6 +11,7 @@ import {
   ReplacementEntry,
   ReviewModel,
 } from "./redactor/types";
+import { ENGINE_VERSION, ENGINE_VERSION_DATE } from "./redactor/version";
 
 /* ------------------------------------------------------------------ *
  * NoAI review workspace (frontend track)
@@ -28,7 +33,12 @@ interface LoadedDocument {
   warnings: string[];
 }
 
+type AppRoute = "workspace" | "faq" | "about" | "privacy" | "terms" | "changelog";
+type InfoRoute = Exclude<AppRoute, "workspace">;
+
 interface AppState {
+  route: AppRoute;
+  infoMenuOpen: boolean;
   documents: LoadedDocument[];
   selectedDocumentId: string | null;
   /** User-controlled entries. Re-passed to the engine on every rebuild so
@@ -39,14 +49,21 @@ interface AppState {
   level: RedactionLevel;
   review: ReviewModel | null;
   query: string;
-  collapsedKinds: Set<string>;
+  previewQuery: string;
+  expandedKinds: Set<string>;
   documentsCollapsed: boolean;
   busy: boolean;
   /** Entry id currently shown in the preview popover. */
   selectedEntryId: string | null;
+  showOriginalPreview: boolean;
+  showPreviewSearch: boolean;
 }
 
+const APP_VERSION = "0.1.0";
+
 const state: AppState = {
+  route: routeFromHash(),
+  infoMenuOpen: false,
   documents: [],
   selectedDocumentId: null,
   entries: [],
@@ -54,11 +71,97 @@ const state: AppState = {
   level: "balanced",
   review: null,
   query: "",
-  collapsedKinds: new Set(),
+  previewQuery: "",
+  expandedKinds: new Set(),
   documentsCollapsed: false,
   busy: false,
   selectedEntryId: null,
+  showOriginalPreview: false,
+  showPreviewSearch: false,
 };
+
+interface InfoPageScaffold {
+  route: InfoRoute;
+  title: string;
+  summary: string;
+  sections: string[];
+}
+
+const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
+  faq: {
+    route: "faq",
+    title: "FAQ",
+    summary:
+      "Scaffold for plain-language answers about how NoAI works, what it can and cannot do, and how users should review output.",
+    sections: [
+      "How NoAI works",
+      "Files and exports",
+      "Redaction levels",
+      "Accuracy and review limits",
+      "Using the output with external AI tools",
+    ],
+  },
+  about: {
+    route: "about",
+    title: "About",
+    summary:
+      "Scaffold for project purpose, maintainer details, support/contact information, version metadata, source, and license.",
+    sections: [
+      "What NoAI is",
+      "Maintainer and contact",
+      "Version information",
+      "License and source",
+    ],
+  },
+  privacy: {
+    route: "privacy",
+    title: "Privacy Policy",
+    summary:
+      "Scaffold for concrete privacy disclosures: local processing, no document upload path, no AI calls, storage, third parties, and contact.",
+    sections: [
+      "Information NoAI processes",
+      "Local browser processing",
+      "Network requests and third parties",
+      "Storage and retention",
+      "User choices and contact",
+    ],
+  },
+  terms: {
+    route: "terms",
+    title: "User Agreement",
+    summary:
+      "Scaffold for user responsibilities, no legal advice, redaction limitations, acceptable use, warranty limits, and governing details.",
+    sections: [
+      "Using NoAI",
+      "User responsibility",
+      "No legal or professional advice",
+      "No perfect-redaction guarantee",
+      "License, warranty, and liability",
+    ],
+  },
+  changelog: {
+    route: "changelog",
+    title: "Version History",
+    summary:
+      "Scaffold for release notes. The redaction engine history can be populated from docs/engine-changelog.md.",
+    sections: [
+      "Current versions",
+      "Engine changelog",
+      "App release notes",
+    ],
+  },
+};
+
+const SITE_LINKS: Array<{ route: AppRoute; label: string; icon: string }> = [
+  { route: "workspace", label: "NoAI", icon: "ph-file-lock" },
+  { route: "faq", label: "FAQ", icon: "ph-question" },
+  { route: "about", label: "About", icon: "ph-info" },
+  { route: "privacy", label: "Privacy", icon: "ph-shield-check" },
+  { route: "terms", label: "Terms", icon: "ph-scroll" },
+  { route: "changelog", label: "Version History", icon: "ph-clock-counter-clockwise" },
+];
+
+const SITE_MENU_LINKS = SITE_LINKS.filter((link) => link.route !== "workspace");
 
 let docCounter = 0;
 function nextDocId(): string {
@@ -73,6 +176,7 @@ const LEVEL_DESCRIPTIONS: Record<RedactionLevel, string> = {
 };
 
 import "@phosphor-icons/web/regular";
+import "@phosphor-icons/web/fill";
 
 const icon = {
   alert: '<i class="ph ph-warning" aria-hidden="true"></i>',
@@ -133,12 +237,20 @@ if (!app) throw new Error("App root was not found.");
 app.innerHTML = `
   <main class="app-shell">
     <header class="topbar">
-      <div>
-        <img src="/logo.png" alt="NoAI Logo" style="display: block; height: 26px; margin-bottom: 4px;" />
+      <a class="brand-link" href="#/" aria-label="NoAI workspace">
+        <img src="/logo.png" alt="NoAI Logo" class="brand-logo" />
+      </a>
+      <div class="site-menu-wrap">
+        <button id="site-menu-toggle" type="button" class="icon-button site-menu-toggle" aria-expanded="false" aria-controls="site-menu" aria-label="Open site menu">
+          <i class="ph ph-list" aria-hidden="true"></i>
+        </button>
+        <nav class="site-menu" id="site-menu" aria-label="NoAI pages" hidden>
+          ${renderSiteMenuLinks()}
+        </nav>
       </div>
     </header>
 
-    <section class="workspace">
+    <section class="workspace" id="workspace-view">
 
       <!-- Empty state: large dropzone shown before any document is loaded -->
       <section class="panel empty-state" id="empty-state">
@@ -155,9 +267,7 @@ app.innerHTML = `
         <section class="panel files-panel">
           <div class="panel-head">
             <h2>Documents</h2>
-            <div class="panel-actions">
-              <button id="documents-toggle" type="button" class="icon-button" aria-expanded="true" aria-label="Collapse documents sidebar">${icon.sidebar}</button>
-            </div>
+            <button id="documents-toggle" type="button" class="icon-button" aria-expanded="true" aria-label="Collapse documents sidebar">${icon.sidebar}</button>
           </div>
           <div class="files-content" id="files-content">
             <div class="files-scroll-area">
@@ -173,10 +283,11 @@ app.innerHTML = `
                 <legend>Redaction level</legend>
                 <div class="level-options">
                   <button type="button" class="level-option" data-level="light" aria-pressed="false">
-                    <span class="level-icon level-icon-light" aria-hidden="true">
-                      <span><b>Q</b><b>Z</b><b>V</b><b>X</b><b>R</b></span>
-                      <span><b>M</b><b>T</b><b>A</b><b>K</b><b>P</b></span>
-                      <span><b>L</b><b>Y</b><b>S</b><b>N</b><b>D</b></span>
+                    <span class="level-icon" aria-hidden="true">
+                      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <text x="20" y="34" class="redaction-a-base" text-anchor="middle">A</text>
+                        <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+                      </svg>
                     </span>
                     <span class="level-copy">
                       <span class="level-title">Light</span>
@@ -184,10 +295,12 @@ app.innerHTML = `
                     </span>
                   </button>
                   <button type="button" class="level-option" data-level="balanced" aria-pressed="true">
-                    <span class="level-icon level-icon-balanced" aria-hidden="true">
-                      <span><b>Q</b><b>Z</b><b>V</b><b>X</b><b>R</b></span>
-                      <span><b>M</b><b>T</b><b>A</b><b>K</b><b>P</b></span>
-                      <span><b>L</b><b>Y</b><b>S</b><b>N</b><b>D</b></span>
+                    <span class="level-icon" aria-hidden="true">
+                      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <text x="20" y="34" class="redaction-a-base" text-anchor="middle">A</text>
+                        <polygon class="redaction-strike" points="5,10 38,10 35,15 2,15" />
+                        <polygon class="redaction-strike" points="5,26 38,26 35,31 2,31" />
+                      </svg>
                     </span>
                     <span class="level-copy">
                       <span class="level-title">Balanced</span>
@@ -195,10 +308,13 @@ app.innerHTML = `
                     </span>
                   </button>
                   <button type="button" class="level-option" data-level="strict" aria-pressed="false">
-                    <span class="level-icon level-icon-strict" aria-hidden="true">
-                      <span><b>Q</b><b>Z</b><b>V</b><b>X</b><b>R</b></span>
-                      <span><b>M</b><b>T</b><b>A</b><b>K</b><b>P</b></span>
-                      <span><b>L</b><b>Y</b><b>S</b><b>N</b><b>D</b></span>
+                    <span class="level-icon" aria-hidden="true">
+                      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <text x="20" y="34" class="redaction-a-base" text-anchor="middle">A</text>
+                        <polygon class="redaction-strike" points="5,10 38,10 35,15 2,15" />
+                        <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+                        <polygon class="redaction-strike" points="5,26 38,26 35,31 2,31" />
+                      </svg>
                     </span>
                     <span class="level-copy">
                       <span class="level-title">Strict</span>
@@ -220,8 +336,16 @@ app.innerHTML = `
           <div class="resizer resizer-left" id="resizer-left" aria-hidden="true"></div>
           <div class="resizer resizer-right" id="resizer-right" aria-hidden="true"></div>
           <div class="panel-head">
-            <h2 id="preview-title">Preview</h2>
+            <div class="panel-title-actions">
+              <h2 id="preview-title">Preview</h2>
+              <button id="preview-visibility-toggle" type="button" class="icon-button preview-visibility-toggle" disabled aria-pressed="false" aria-label="Show original text" title="Show original text">
+                <i class="ph ph-eye" aria-hidden="true"></i>
+              </button>
+            </div>
             <div class="panel-actions">
+              <button id="preview-search-toggle" type="button" class="icon-button preview-search-toggle" disabled aria-pressed="false" aria-label="Show preview search" title="Show preview search">
+                <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+              </button>
               <button id="copy-doc-button" type="button" class="icon-button" disabled title="Copy redacted text">
                 <i class="ph ph-copy" aria-hidden="true"></i>
               </button>
@@ -230,21 +354,29 @@ app.innerHTML = `
               </button>
             </div>
           </div>
+          <div class="preview-search" id="preview-search" hidden>
+            <label class="sr-only" for="preview-search-input">Search preview text</label>
+            <div class="preview-search-box">
+              <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+              <input id="preview-search-input" type="search" placeholder="Search redacted and original text" autocomplete="off" />
+              <button id="preview-search-clear" type="button" class="icon-button preview-search-clear" aria-label="Clear preview search" hidden>${icon.x}</button>
+            </div>
+            <div class="preview-search-summary" id="preview-search-summary"></div>
+            <div class="preview-search-results" id="preview-search-results" hidden></div>
+          </div>
           <div class="preview-body" id="preview-body"></div>
         </section>
 
         <section class="panel replacements-panel">
           <div class="panel-head">
-            <h2>Replacements</h2>
+            <h2>Redactions</h2>
             <span class="panel-count" id="replacements-count"></span>
           </div>
           <div class="replacements-controls">
-            <label class="sr-only" for="search-input">Search replacements</label>
-            <input id="search-input" type="search" name="replacement-search" placeholder="Search terms, replacements, sources…" autocomplete="off" />
-            <div class="add-term">
-              <label class="sr-only" for="add-term-input">Add manual redaction term</label>
-              <input id="add-term-input" type="text" name="manual-redaction-term" placeholder="Add term…" autocomplete="off" />
-              <button id="add-term-button" type="button" class="ghost-button">Add</button>
+            <label class="sr-only" for="search-input">Search or add term</label>
+            <div class="omnibox-container">
+              <input id="search-input" type="text" name="replacement-search" placeholder="Search or Add term ..." autocomplete="off" />
+              <span id="omnibox-add-action" class="omnibox-add-action" hidden>Add</span>
             </div>
           </div>
           <div class="replacements-body" id="replacements-body"></div>
@@ -252,28 +384,30 @@ app.innerHTML = `
 
       </section>
     </section>
+
+    <section class="info-view" id="info-view" hidden></section>
   </main>
 
   <!-- Floating popover for redacted span actions -->
   <div class="popover" id="entry-popover" hidden role="dialog" aria-label="Redaction actions">
     <div class="popover-arrow"></div>
-    <button type="button" class="popover-close" id="popover-close" aria-label="Close">${icon.x}</button>
     <div class="popover-field">
-      <span class="popover-label">Original</span>
       <code class="popover-original" id="popover-original"></code>
     </div>
     <div class="popover-field">
-      <label class="popover-label" for="popover-replacement">Replacement</label>
-      <input id="popover-replacement" type="text" autocomplete="off" />
+      <input id="popover-replacement" type="text" autocomplete="off" aria-label="Replacement" />
     </div>
     <div class="popover-actions">
-      <button type="button" class="ghost-button" id="popover-delete">Delete</button>
-      <button type="button" class="ghost-button" id="popover-find">Find in list</button>
+      <button type="button" class="text-button" id="popover-find">Find in list</button>
+      <button type="button" class="ghost-button" id="popover-delete">Un-Redact</button>
     </div>
   </div>
 
   <!-- Floating Redact button for text selection -->
-  <button type="button" class="redact-selection" id="redact-selection" hidden>Redact Selection</button>
+  <button type="button" class="redact-selection" id="redact-selection" hidden>
+    <i class="ph-fill ph-highlighter" aria-hidden="true"></i>
+    <span>Redact</span>
+  </button>
 
   <!-- Overlay notifications. Never render status inside the Documents panel. -->
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="false"></div>
@@ -281,6 +415,12 @@ app.innerHTML = `
 
 /* --------------------------- Element refs -------------------------- */
 
+const appShell = document.querySelector<HTMLElement>(".app-shell")!;
+const workspaceView = document.querySelector<HTMLElement>("#workspace-view")!;
+const infoView = document.querySelector<HTMLElement>("#info-view")!;
+const siteMenuToggle =
+  document.querySelector<HTMLButtonElement>("#site-menu-toggle")!;
+const siteMenu = document.querySelector<HTMLElement>("#site-menu")!;
 const emptyState = document.querySelector<HTMLElement>("#empty-state")!;
 const workspaceGrid = document.querySelector<HTMLElement>("#workspace-grid")!;
 const documentsToggle =
@@ -293,16 +433,34 @@ const replacementsCount = document.querySelector<HTMLElement>(
   "#replacements-count",
 )!;
 const searchInput = document.querySelector<HTMLInputElement>("#search-input")!;
-const addTermInput =
-  document.querySelector<HTMLInputElement>("#add-term-input")!;
-const addTermButton =
-  document.querySelector<HTMLButtonElement>("#add-term-button")!;
+const omniboxAddAction =
+  document.querySelector<HTMLElement>("#omnibox-add-action")!;
+
 const levelButtons =
   document.querySelectorAll<HTMLButtonElement>("[data-level]");
 const levelActiveDesc =
   document.querySelector<HTMLElement>("#level-active-desc")!;
 const previewTitle = document.querySelector<HTMLElement>("#preview-title")!;
 const previewBody = document.querySelector<HTMLElement>("#preview-body")!;
+const previewSearch = document.querySelector<HTMLElement>("#preview-search")!;
+const previewSearchToggle = document.querySelector<HTMLButtonElement>(
+  "#preview-search-toggle",
+)!;
+const previewSearchInput = document.querySelector<HTMLInputElement>(
+  "#preview-search-input",
+)!;
+const previewSearchClear = document.querySelector<HTMLButtonElement>(
+  "#preview-search-clear",
+)!;
+const previewSearchSummary = document.querySelector<HTMLElement>(
+  "#preview-search-summary",
+)!;
+const previewSearchResults = document.querySelector<HTMLElement>(
+  "#preview-search-results",
+)!;
+const previewVisibilityToggle = document.querySelector<HTMLButtonElement>(
+  "#preview-visibility-toggle",
+)!;
 const copyDocButton = document.querySelector<HTMLButtonElement>(
   "#copy-doc-button",
 )!;
@@ -319,8 +477,6 @@ const resizerLeft = document.querySelector<HTMLElement>("#resizer-left")!;
 const resizerRight = document.querySelector<HTMLElement>("#resizer-right")!;
 
 const popover = document.querySelector<HTMLElement>("#entry-popover")!;
-const popoverClose =
-  document.querySelector<HTMLButtonElement>("#popover-close")!;
 const popoverOriginal =
   document.querySelector<HTMLElement>("#popover-original")!;
 const popoverReplacement = document.querySelector<HTMLInputElement>(
@@ -332,6 +488,155 @@ const popoverFind = document.querySelector<HTMLButtonElement>("#popover-find")!;
 
 const redactSelectionBtn =
   document.querySelector<HTMLButtonElement>("#redact-selection")!;
+
+let pendingRedactionText = "";
+let originalPreviewTimer: number | undefined;
+
+/* ----------------------------- Routing ----------------------------- */
+
+siteMenuToggle.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setInfoMenuOpen(!state.infoMenuOpen);
+});
+
+siteMenu.addEventListener("click", () => setInfoMenuOpen(false));
+
+document.addEventListener("click", (event) => {
+  const target = event.target as HTMLElement;
+  if (target.closest(".site-menu-wrap")) return;
+  setInfoMenuOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setInfoMenuOpen(false);
+});
+
+window.addEventListener("hashchange", () => {
+  state.route = routeFromHash();
+  setInfoMenuOpen(false);
+  hidePopover();
+  renderRoute();
+});
+
+function renderRoute(): void {
+  const showingWorkspace = state.route === "workspace";
+  workspaceView.hidden = !showingWorkspace;
+  infoView.hidden = showingWorkspace;
+  appShell.classList.toggle("info-page-active", !showingWorkspace);
+  document.title =
+    state.route === "workspace"
+      ? "NoAI"
+      : `${INFO_PAGE_SCAFFOLDS[state.route].title} - NoAI`;
+
+  renderSiteMenuState();
+  if (state.route !== "workspace") renderInfoPage(state.route);
+}
+
+function renderInfoPage(route: InfoRoute): void {
+  const page = INFO_PAGE_SCAFFOLDS[route];
+  const versionMeta =
+    route === "about" || route === "changelog"
+      ? `
+        <dl class="version-grid">
+          <div>
+            <dt>App version</dt>
+            <dd>${escapeHtml(APP_VERSION)}</dd>
+          </div>
+          <div>
+            <dt>Engine version</dt>
+            <dd>${escapeHtml(ENGINE_VERSION)}</dd>
+          </div>
+          <div>
+            <dt>Engine date</dt>
+            <dd>${escapeHtml(ENGINE_VERSION_DATE)}</dd>
+          </div>
+        </dl>
+      `
+      : "";
+
+  infoView.innerHTML = `
+    <article class="info-page" aria-labelledby="info-title">
+      <header class="info-hero">
+        <a class="info-back-link" href="#/">
+          <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          <span>Back to workspace</span>
+        </a>
+        <h1 id="info-title">${escapeHtml(page.title)}</h1>
+        <p>${escapeHtml(page.summary)}</p>
+        ${versionMeta}
+      </header>
+      <div class="info-section-list">
+        ${page.sections
+          .map(
+            (section) => `
+              <section class="info-section">
+                <h2>${escapeHtml(section)}</h2>
+                <p>TODO: Draft this section.</p>
+              </section>
+            `,
+          )
+          .join("")}
+      </div>
+      <footer class="info-footer">
+        ${SITE_LINKS.map(
+          (link) =>
+            `<a href="${routeHref(link.route)}">${escapeHtml(link.label)}</a>`,
+        ).join("")}
+      </footer>
+    </article>
+  `;
+}
+
+function setInfoMenuOpen(open: boolean): void {
+  state.infoMenuOpen = open;
+  renderSiteMenuState();
+}
+
+function renderSiteMenuState(): void {
+  siteMenu.hidden = !state.infoMenuOpen;
+  siteMenuToggle.setAttribute("aria-expanded", String(state.infoMenuOpen));
+  siteMenuToggle.setAttribute(
+    "aria-label",
+    state.infoMenuOpen ? "Close site menu" : "Open site menu",
+  );
+  const menuIcon = siteMenuToggle.querySelector("i");
+  if (menuIcon) {
+    menuIcon.className = state.infoMenuOpen ? "ph ph-x" : "ph ph-list";
+  }
+  siteMenu
+    .querySelectorAll<HTMLAnchorElement>("[data-route-link]")
+    .forEach((link) => {
+      const active = link.dataset.routeLink === state.route;
+      link.classList.toggle("active", active);
+      if (active) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    });
+}
+
+function renderSiteMenuLinks(): string {
+  return SITE_MENU_LINKS.map(
+    (link) => `
+      <a href="${routeHref(link.route)}" data-route-link="${link.route}">
+        <i class="ph ${link.icon}" aria-hidden="true"></i>
+        <span>${escapeHtml(link.label)}</span>
+      </a>
+    `,
+  ).join("");
+}
+
+function routeFromHash(): AppRoute {
+  const route = window.location.hash.replace(/^#\/?/, "");
+  if (route === "faq") return "faq";
+  if (route === "about") return "about";
+  if (route === "privacy") return "privacy";
+  if (route === "terms") return "terms";
+  if (route === "changelog") return "changelog";
+  return "workspace";
+}
+
+function routeHref(route: AppRoute): string {
+  return route === "workspace" ? "#/" : `#/${route}`;
+}
 
 /* ----------------------- Dropzone / file input --------------------- */
 
@@ -430,17 +735,56 @@ searchInput.addEventListener("input", () => {
   renderReplacements();
 });
 
-addTermButton.addEventListener("click", () => {
-  const value = addTermInput.value.trim();
-  if (!value) return;
-  addManualEntry(value);
-  addTermInput.value = "";
-  addTermInput.focus();
+previewSearchInput.addEventListener("input", () => {
+  state.previewQuery = previewSearchInput.value.trim();
+  renderPreview();
 });
-addTermInput.addEventListener("keydown", (event) => {
+
+previewSearchToggle.addEventListener("click", () => {
+  state.showPreviewSearch = !state.showPreviewSearch;
+  renderPreview();
+  if (state.showPreviewSearch) {
+    window.requestAnimationFrame(() => previewSearchInput.focus());
+  }
+});
+
+previewSearchClear.addEventListener("click", () => {
+  state.previewQuery = "";
+  previewSearchInput.value = "";
+  renderPreview();
+  previewSearchInput.focus();
+});
+
+searchInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
-    event.preventDefault();
-    addTermButton.click();
+    const trimmed = searchInput.value.trim();
+    if (!trimmed) return;
+    const showAdd = !state.entries.some(
+      (entry) => entry.value.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (showAdd) {
+      event.preventDefault();
+      addManualEntry(trimmed);
+      searchInput.value = "";
+      state.query = "";
+      renderReplacements();
+      searchInput.focus();
+    }
+  }
+});
+
+omniboxAddAction.addEventListener("click", () => {
+  const trimmed = searchInput.value.trim();
+  if (!trimmed) return;
+  const showAdd = !state.entries.some(
+    (entry) => entry.value.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (showAdd) {
+    addManualEntry(trimmed);
+    searchInput.value = "";
+    state.query = "";
+    renderReplacements();
+    searchInput.focus();
   }
 });
 
@@ -457,6 +801,15 @@ copyDocButton.addEventListener("click", () => {
   }).catch(() => {
     showToast("Failed to copy text.");
   });
+});
+
+previewVisibilityToggle.addEventListener("click", () => {
+  if (!selectedReviewDoc()) return;
+  if (state.showOriginalPreview) {
+    hideOriginalPreview();
+  } else {
+    showOriginalPreview();
+  }
 });
 
 downloadDocButton.addEventListener("click", () => {
@@ -552,15 +905,19 @@ function deleteEntry(id: string): void {
 
 /* --------------------------- Manual entries ------------------------ */
 
-function addManualEntry(value: string): void {
+function addManualEntry(
+  value: string,
+  renderMode: "all" | "preview" = "all",
+): { id: string; added: boolean } | null {
   const trimmed = value.trim();
-  if (!trimmed) return;
+  if (!trimmed) return null;
   const id = manualEntryId(trimmed);
   const existing = state.entries.find((entry) => entry.id === id);
   if (existing) {
     recompute();
-    renderAll();
-    return;
+    if (renderMode === "preview") renderPreview();
+    else renderAll();
+    return { id, added: false };
   }
   state.removedEntryIds.delete(id);
   const entry: ReplacementEntry = {
@@ -577,8 +934,10 @@ function addManualEntry(value: string): void {
   };
   state.entries.push(entry);
   recompute();
-  renderAll();
+  if (renderMode === "preview") renderPreview();
+  else renderAll();
   setStatus(`Added manual redaction for "${trimmed}".`);
+  return { id, added: true };
 }
 
 function manualEntryId(value: string): string {
@@ -599,6 +958,7 @@ function nextCustomReplacement(): string {
 function selectDocument(id: string): void {
   if (!state.documents.some((doc) => doc.id === id)) return;
   state.selectedDocumentId = id;
+  hideOriginalPreview({ silent: true });
   hidePopover();
   renderFiles();
   renderPreview();
@@ -612,6 +972,7 @@ function removeDocument(id: string): void {
     const next = state.documents[index] ?? state.documents[index - 1] ?? null;
     state.selectedDocumentId = next ? next.id : null;
   }
+  hideOriginalPreview({ silent: true });
   hidePopover();
   recompute();
   renderAll();
@@ -716,13 +1077,7 @@ function renderReplacements(): void {
     ? state.review.entries.filter((entry) => entry.count > 0)
     : [];
   const filtered = entries.filter((entry) => matchesQuery(entry, state.query));
-
-  const visibleCount = filtered.length;
-  const totalCount = entries.length;
-  replacementsCount.textContent =
-    state.query && visibleCount !== totalCount
-      ? `${visibleCount} / ${totalCount}`
-      : String(totalCount);
+  replacementsCount.textContent = "";
 
   if (entries.length === 0) {
     replacementsBody.innerHTML = `<p class="placeholder">No replacements yet. Add documents or a manual term.</p>`;
@@ -735,26 +1090,32 @@ function renderReplacements(): void {
 
   const groups = groupByKind(filtered);
   const orderedKinds = Object.keys(groups).sort(sortKinds);
+  const footerText = formatReplacementTotals(filtered);
 
-  replacementsBody.innerHTML = orderedKinds
-    .map((kind) => {
-      const items = groups[kind];
-      const collapsed = state.collapsedKinds.has(kind);
-      const style = kindStyle(kind);
-      return `
-        <section class="cat-group" data-kind="${escapeHtml(kind)}">
-          <button type="button" class="cat-head${collapsed ? " collapsed" : ""}" data-toggle-kind="${escapeHtml(kind)}">
-            <span class="cat-name" style="${style.labelCss}">${escapeHtml(kindLabel(kind))}</span>
-            <span class="cat-count">${items.length}</span>
-            <span class="cat-chevron">${icon.chevronDown}</span>
-          </button>
-          <div class="cat-items-grid${collapsed ? " collapsed" : ""}">
-            <div class="cat-items">${items.map((entry, i) => renderEntryRow(entry, i)).join("")}</div>
-          </div>
-        </section>
-      `;
-    })
-    .join("");
+  replacementsBody.innerHTML = `
+    ${orderedKinds
+      .map((kind) => {
+        const items = groups[kind];
+        const collapsed = !state.expandedKinds.has(kind);
+        const style = kindStyle(kind);
+        return `
+          <section class="cat-group" data-kind="${escapeHtml(kind)}">
+            <button type="button" class="cat-head${collapsed ? " collapsed" : ""}" data-toggle-kind="${escapeHtml(kind)}">
+              <span class="cat-name" style="${style.labelCss}">${escapeHtml(kindLabel(kind))}</span>
+              <span class="cat-count">${items.length}</span>
+              <span class="cat-chevron">${icon.chevronDown}</span>
+            </button>
+            <div class="cat-items-grid${collapsed ? " collapsed" : ""}">
+              <div class="cat-items">${items.map((entry, i) => renderEntryRow(entry, i)).join("")}</div>
+            </div>
+          </section>
+        `;
+      })
+      .join("")}
+    <div class="replacements-footer" aria-label="${escapeHtml(footerText)}">
+      ${escapeHtml(footerText)}
+    </div>
+  `;
 
   replacementsBody
     .querySelectorAll<HTMLButtonElement>("[data-toggle-kind]")
@@ -763,14 +1124,14 @@ function renderReplacements(): void {
         const kind = button.dataset.toggleKind!;
         const section = button.closest(".cat-group")!;
         const grid = section.querySelector(".cat-items-grid")!;
-        if (state.collapsedKinds.has(kind)) {
-          state.collapsedKinds.delete(kind);
-          button.classList.remove("collapsed");
-          grid.classList.remove("collapsed");
-        } else {
-          state.collapsedKinds.add(kind);
+        if (state.expandedKinds.has(kind)) {
+          state.expandedKinds.delete(kind);
           button.classList.add("collapsed");
           grid.classList.add("collapsed");
+        } else {
+          state.expandedKinds.add(kind);
+          button.classList.remove("collapsed");
+          grid.classList.remove("collapsed");
         }
       });
     });
@@ -798,6 +1159,19 @@ function renderReplacements(): void {
         jumpToEntryInPreview(id);
       });
     });
+  updateOmniboxAddAction();
+}
+
+function updateOmniboxAddAction(): void {
+  const trimmed = searchInput.value.trim();
+  const showAdd = trimmed !== "" && !state.entries.some(
+    (entry) => entry.value.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (showAdd) {
+    omniboxAddAction.removeAttribute("hidden");
+  } else {
+    omniboxAddAction.setAttribute("hidden", "");
+  }
 }
 
 function renderEntryRow(entry: ReplacementEntry, index: number = 0): string {
@@ -805,8 +1179,17 @@ function renderEntryRow(entry: ReplacementEntry, index: number = 0): string {
   const hitTitle = `${entry.count} ${entry.count === 1 ? "hit" : "hits"}`;
   return `
     <div class="entry-row" data-jump-entry="${escapeHtml(entry.id)}" style="--anim-index: ${index}">
-      <s class="entry-value" style="--strike-color: ${style.color}" title="${escapeHtml(hitTitle)}">${escapeHtml(entry.value)}</s>
+      <span class="entry-hit-count" aria-label="${escapeHtml(hitTitle)}">${escapeHtml(formatHitMultiplier(entry))}</span>
+      <div class="entry-source">
+        <s class="entry-value" style="--strike-color: ${style.color}">${escapeHtml(entry.value)}</s>
+      </div>
       <div class="entry-controls">
+        <button
+          type="button"
+          class="entry-delete"
+          data-delete-entry="${escapeHtml(entry.id)}"
+          aria-label="Un-redact ${escapeHtml(entry.value)}"
+        >${icon.x}</button>
         <input
           type="text"
           class="entry-replacement"
@@ -815,12 +1198,6 @@ function renderEntryRow(entry: ReplacementEntry, index: number = 0): string {
           aria-label="Replacement for ${escapeHtml(entry.value)}"
           autocomplete="off"
         />
-        <button
-          type="button"
-          class="entry-delete"
-          data-delete-entry="${escapeHtml(entry.id)}"
-          aria-label="Delete replacement for ${escapeHtml(entry.value)}"
-        >${icon.x}</button>
       </div>
     </div>
   `;
@@ -829,17 +1206,64 @@ function renderEntryRow(entry: ReplacementEntry, index: number = 0): string {
 function renderPreview(): void {
   const reviewDoc = selectedReviewDoc();
   previewTitle.textContent = "Preview";
+  previewVisibilityToggle.disabled = !reviewDoc;
+  previewVisibilityToggle.classList.toggle("active", state.showOriginalPreview);
+  previewVisibilityToggle.setAttribute(
+    "aria-pressed",
+    String(state.showOriginalPreview),
+  );
+  previewVisibilityToggle.setAttribute(
+    "aria-label",
+    state.showOriginalPreview ? "Hide original text" : "Show original text",
+  );
+  previewVisibilityToggle.title = state.showOriginalPreview
+    ? "Hide original text"
+    : "Show original text";
+  const toggleIcon = previewVisibilityToggle.querySelector("i");
+  if (toggleIcon) {
+    toggleIcon.className = state.showOriginalPreview
+      ? "ph ph-eye-slash"
+      : "ph ph-eye";
+  }
+  previewSearchToggle.disabled = !reviewDoc;
+  previewSearchToggle.classList.toggle("active", state.showPreviewSearch);
+  previewSearchToggle.setAttribute(
+    "aria-pressed",
+    String(state.showPreviewSearch),
+  );
+  previewSearchToggle.setAttribute(
+    "aria-label",
+    state.showPreviewSearch ? "Hide preview search" : "Show preview search",
+  );
+  previewSearchToggle.title = state.showPreviewSearch
+    ? "Hide preview search"
+    : "Show preview search";
   copyDocButton.disabled = !reviewDoc;
   downloadDocButton.disabled = !reviewDoc;
+  previewSearchInput.disabled = !reviewDoc;
+  previewSearchClear.hidden = state.previewQuery.length === 0;
+  previewSearch.hidden = !reviewDoc || !state.showPreviewSearch;
 
   if (!reviewDoc) {
     previewBody.innerHTML = `<p class="placeholder">Select a document to review it.</p>`;
+    renderPreviewSearch();
     return;
   }
 
   const fragment = document.createDocumentFragment();
+  const query = state.showPreviewSearch ? state.previewQuery : "";
+  const searchSource = state.showOriginalPreview ? "original" : "redacted";
+  const hitIndex = { value: 0 };
   for (const segment of reviewDoc.segments) {
-    if (segment.entryId) {
+    if (state.showOriginalPreview) {
+      appendHighlightedText(
+        fragment,
+        segment.value ?? segment.text,
+        query,
+        searchSource,
+        hitIndex,
+      );
+    } else if (segment.entryId) {
       const style = kindStyle(segment.kind ?? "PROPER_NOUN");
       const span = document.createElement("span");
       span.className = "redacted";
@@ -852,14 +1276,426 @@ function renderPreview(): void {
         `Redacted term. Original: ${segment.value ?? ""}. Activate to edit.`,
       );
       span.setAttribute("style", style.spanCss);
-      span.textContent = segment.replacement ?? segment.text;
+      appendHighlightedText(
+        span,
+        segment.replacement ?? segment.text,
+        query,
+        searchSource,
+        hitIndex,
+      );
       fragment.appendChild(span);
     } else {
-      fragment.appendChild(document.createTextNode(segment.text));
+      appendHighlightedText(
+        fragment,
+        segment.text,
+        query,
+        searchSource,
+        hitIndex,
+      );
     }
   }
   previewBody.innerHTML = "";
   previewBody.appendChild(fragment);
+  renderPreviewSearch();
+}
+
+function renderPreviewSearch(): void {
+  const reviewDoc = selectedReviewDoc();
+  const query = state.previewQuery.trim();
+  if (!reviewDoc || !state.showPreviewSearch) {
+    previewSearch.classList.remove("has-results");
+    previewSearchSummary.hidden = false;
+    previewSearchSummary.textContent = "";
+    previewSearchResults.hidden = true;
+    previewSearchResults.innerHTML = "";
+    return;
+  }
+
+  if (!query) {
+    previewSearch.classList.remove("has-results");
+    previewSearchSummary.hidden = true;
+    previewSearchSummary.textContent = "";
+    previewSearchResults.hidden = true;
+    previewSearchResults.innerHTML = "";
+    return;
+  }
+
+  const buckets = previewSearchBuckets(reviewDoc, query);
+  const totalHits =
+    buckets.nonRedactedHits.length +
+    buckets.redactedOriginalHits.length +
+    buckets.redactionOnlyHits.length;
+  if (totalHits === 0) {
+    previewSearch.classList.remove("has-results");
+    previewSearchSummary.hidden = false;
+    previewSearchSummary.textContent =
+      "No matches in the redacted output or original text.";
+    previewSearchResults.hidden = true;
+    previewSearchResults.innerHTML = "";
+    return;
+  }
+
+  previewSearch.classList.add("has-results");
+  previewSearchSummary.textContent = "";
+  previewSearchSummary.hidden = true;
+  previewSearchResults.hidden = false;
+  previewSearchResults.innerHTML = renderPreviewSearchResults(buckets);
+  previewSearchResults
+    .querySelectorAll<HTMLButtonElement>("[data-search-jump]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        jumpToSearchHit(button.dataset.searchJump!);
+      });
+    });
+  previewSearchResults
+    .querySelectorAll<HTMLButtonElement>("[data-search-toggle-more]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        togglePreviewSearchMore(button);
+      });
+    });
+}
+
+function renderPreviewSearchResults(buckets: PreviewSearchBuckets): string {
+  const {
+    nonRedactedHits,
+    redactedOriginalHits,
+    redactionOnlyHits,
+  } = buckets;
+  const originalHitCount =
+    nonRedactedHits.length + redactedOriginalHits.length;
+
+  if (nonRedactedHits.length === 0 && redactionOnlyHits.length === 0) {
+    return renderPreviewSearchGroup(
+      `No matches in the redacted text. ${redactedOriginalStatus(redactedOriginalHits.length, true)}`,
+      redactedOriginalHits,
+      "success",
+    );
+  }
+
+  if (originalHitCount === 0) {
+    return renderPreviewSearchGroup(
+      `No matches in original. ${redactionsOnlyStatus(redactionOnlyHits.length)}`,
+      redactionOnlyHits,
+    );
+  }
+
+  if (
+    redactedOriginalHits.length === 0 &&
+    redactionOnlyHits.length === 0
+  ) {
+    return renderPreviewSearchGroup(
+      nonRedactedStatus(nonRedactedHits.length, true),
+      nonRedactedHits,
+      "danger",
+    );
+  }
+
+  const sections: string[] = [];
+  if (nonRedactedHits.length > 0) {
+    sections.push(
+      renderPreviewSearchGroup(
+        nonRedactedStatus(nonRedactedHits.length, false),
+        nonRedactedHits,
+        "danger",
+      ),
+    );
+  }
+  if (redactedOriginalHits.length > 0) {
+    sections.push(
+      renderPreviewSearchGroup(
+        redactedOriginalStatus(redactedOriginalHits.length, false),
+        redactedOriginalHits,
+      ),
+    );
+  }
+  if (redactionOnlyHits.length > 0) {
+    sections.push(
+      renderPreviewSearchGroup(
+        redactionsOnlyStatus(redactionOnlyHits.length),
+        redactionOnlyHits,
+      ),
+    );
+  }
+  return sections.join("");
+}
+
+function renderPreviewSearchGroup(
+  statusHtml: string,
+  hits: PreviewSearchHit[],
+  tone: "neutral" | "success" | "danger" = "neutral",
+): string {
+  const visibleLimit = 8;
+  const remaining = Math.max(0, hits.length - visibleLimit);
+  return `
+    <div class="preview-search-block ${tone}">
+      <p class="preview-search-status ${tone}">${statusHtml}</p>
+      ${
+        hits.length > 0
+          ? hits
+              .map((hit, index) =>
+                renderPreviewSearchHit(hit, index >= visibleLimit),
+              )
+              .join("")
+          : ""
+      }
+      ${
+        remaining > 0
+          ? `<button type="button" class="preview-search-more" data-search-toggle-more data-more-count="${remaining}" aria-expanded="false">${escapeHtml(`Show ${formatMoreMatches(remaining)}`)}</button>`
+          : ""
+      }
+    </div>
+  `;
+}
+
+function renderPreviewSearchHit(hit: PreviewSearchHit, hidden = false): string {
+  const label =
+    hit.context === "redaction-only"
+      ? "Redaction"
+      : hit.source === "redacted"
+        ? "Visible"
+        : "Redacted";
+  return `
+    <button type="button" class="preview-search-hit-row ${hit.source} ${hit.context}" data-search-jump="${escapeHtml(hit.id)}"${hidden ? " data-extra-hit hidden" : ""}>
+      <span class="preview-search-source">${label}</span>
+      <span class="preview-search-snippet">${renderSnippet(hit)}</span>
+    </button>
+  `;
+}
+
+function togglePreviewSearchMore(button: HTMLButtonElement): void {
+  const block = button.closest(".preview-search-block");
+  if (!block) return;
+  const expanded = button.getAttribute("aria-expanded") === "true";
+  const nextExpanded = !expanded;
+  block
+    .querySelectorAll<HTMLButtonElement>("[data-extra-hit]")
+    .forEach((row) => {
+      row.hidden = !nextExpanded;
+    });
+  button.setAttribute("aria-expanded", String(nextExpanded));
+  const moreCount = Number(button.dataset.moreCount ?? "0");
+  button.textContent = nextExpanded
+    ? "Show less"
+    : `Show ${formatMoreMatches(moreCount)}`;
+}
+
+function renderSnippet(hit: PreviewSearchHit): string {
+  return `${hit.leadingEllipsis ? "..." : ""}${escapeHtml(hit.before)}<mark>${escapeHtml(hit.match)}</mark>${escapeHtml(hit.after)}${
+    hit.trailingEllipsis ? "..." : ""
+  }`;
+}
+
+interface PreviewSearchHit {
+  id: string;
+  source: "redacted" | "original";
+  context: "non-redacted" | "redacted-original" | "redaction-only";
+  before: string;
+  match: string;
+  after: string;
+  leadingEllipsis: boolean;
+  trailingEllipsis: boolean;
+}
+
+interface PreviewSearchBuckets {
+  nonRedactedHits: PreviewSearchHit[];
+  redactedOriginalHits: PreviewSearchHit[];
+  redactionOnlyHits: PreviewSearchHit[];
+}
+
+interface PreviewSearchTextRange {
+  start: number;
+  end: number;
+  redactedSegment: boolean;
+}
+
+interface PreviewSearchTextModel {
+  text: string;
+  ranges: PreviewSearchTextRange[];
+}
+
+function appendHighlightedText(
+  parent: Node,
+  text: string,
+  query: string,
+  source: "redacted" | "original",
+  hitIndex: { value: number },
+): void {
+  const matches = findQueryMatches(text, query);
+  if (matches.length === 0) {
+    parent.appendChild(document.createTextNode(text));
+    return;
+  }
+  let position = 0;
+  for (const match of matches) {
+    if (match.start > position) {
+      parent.appendChild(
+        document.createTextNode(text.slice(position, match.start)),
+      );
+    }
+    const mark = document.createElement("mark");
+    mark.className = "preview-search-mark";
+    mark.dataset.searchResultId = `${source}-${hitIndex.value}`;
+    mark.textContent = text.slice(match.start, match.end);
+    parent.appendChild(mark);
+    hitIndex.value += 1;
+    position = match.end;
+  }
+  if (position < text.length) {
+    parent.appendChild(document.createTextNode(text.slice(position)));
+  }
+}
+
+function previewSearchBuckets(
+  reviewDoc: NonNullable<ReturnType<typeof selectedReviewDoc>>,
+  query: string,
+): PreviewSearchBuckets {
+  const redactedText = previewSearchTextModel(reviewDoc, "redacted");
+  const originalText = previewSearchTextModel(reviewDoc, "original");
+  const redactedHits = findSearchHits(redactedText, query, "redacted");
+  const originalHits = findSearchHits(originalText, query, "original");
+  return {
+    nonRedactedHits: redactedHits.filter(
+      (hit) => hit.context === "non-redacted",
+    ),
+    redactedOriginalHits: originalHits.filter(
+      (hit) => hit.context === "redacted-original",
+    ),
+    redactionOnlyHits: redactedHits.filter(
+      (hit) => hit.context === "redaction-only",
+    ),
+  };
+}
+
+function findSearchHits(
+  model: PreviewSearchTextModel,
+  query: string,
+  source: "redacted" | "original",
+): PreviewSearchHit[] {
+  const hits: PreviewSearchHit[] = [];
+  const { text, ranges } = model;
+  for (const match of findQueryMatches(text, query)) {
+    const { start, end } = match;
+    const snippetStart = Math.max(0, start - 54);
+    const snippetEnd = Math.min(text.length, end + 54);
+    hits.push({
+      id: `${source}-${hits.length}`,
+      source,
+      context: searchHitContext(source, ranges, start, end),
+      before: text.slice(snippetStart, start),
+      match: text.slice(start, end),
+      after: text.slice(end, snippetEnd),
+      leadingEllipsis: snippetStart > 0,
+      trailingEllipsis: snippetEnd < text.length,
+    });
+  }
+  return hits;
+}
+
+function findQueryMatches(
+  text: string,
+  query: string,
+): Array<{ start: number; end: number }> {
+  const matches: Array<{ start: number; end: number }> = [];
+  if (!query) return matches;
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  let position = 0;
+  while (position < text.length) {
+    const start = lowerText.indexOf(lowerQuery, position);
+    if (start === -1) break;
+    const end = start + query.length;
+    matches.push({ start, end });
+    position = end;
+  }
+  return matches;
+}
+
+function previewSearchTextModel(
+  reviewDoc: NonNullable<ReturnType<typeof selectedReviewDoc>>,
+  source: "redacted" | "original",
+): PreviewSearchTextModel {
+  let text = "";
+  const ranges: PreviewSearchTextRange[] = [];
+  for (const segment of reviewDoc.segments) {
+    const segmentText =
+      source === "original"
+        ? segment.value ?? segment.text
+        : segment.replacement ?? segment.text;
+    const start = text.length;
+    text += segmentText;
+    ranges.push({
+      start,
+      end: text.length,
+      redactedSegment: Boolean(segment.entryId),
+    });
+  }
+  return { text, ranges };
+}
+
+function searchHitContext(
+  source: "redacted" | "original",
+  ranges: PreviewSearchTextRange[],
+  start: number,
+  end: number,
+): PreviewSearchHit["context"] {
+  const overlapsRedactedSegment = ranges.some(
+    (range) =>
+      range.redactedSegment && start < range.end && end > range.start,
+  );
+  if (!overlapsRedactedSegment) return "non-redacted";
+  return source === "original" ? "redacted-original" : "redaction-only";
+}
+
+function jumpToSearchHit(id: string): void {
+  const source = id.startsWith("original-") ? "original" : "redacted";
+  if (source === "original" && !state.showOriginalPreview) {
+    showOriginalPreview();
+  } else if (source === "redacted" && state.showOriginalPreview) {
+    hideOriginalPreview({ silent: true });
+  }
+  window.requestAnimationFrame(() => {
+    const mark = previewBody.querySelector<HTMLElement>(
+      `[data-search-result-id="${cssEscape(id)}"]`,
+    );
+    if (!mark) return;
+    mark.scrollIntoView({ block: "center", behavior: "smooth" });
+    mark.classList.add("flash");
+    window.setTimeout(() => mark.classList.remove("flash"), 900);
+  });
+}
+
+function showOriginalPreview(): void {
+  if (!selectedReviewDoc()) return;
+  if (originalPreviewTimer !== undefined) {
+    window.clearTimeout(originalPreviewTimer);
+  }
+  state.showOriginalPreview = true;
+  hidePopover();
+  renderPreview();
+  showToast("", {
+    durationMs: 10000,
+    progress: true,
+    countdownText: (secondsLeft) =>
+      `Showing original text for ${secondsLeft}s.`,
+  });
+  originalPreviewTimer = window.setTimeout(() => {
+    hideOriginalPreview();
+  }, 10000);
+}
+
+function hideOriginalPreview(options: { silent?: boolean } = {}): void {
+  if (originalPreviewTimer !== undefined) {
+    window.clearTimeout(originalPreviewTimer);
+    originalPreviewTimer = undefined;
+  }
+  if (!state.showOriginalPreview) {
+    renderPreview();
+    return;
+  }
+  state.showOriginalPreview = false;
+  renderPreview();
+  if (!options.silent) showToast("Preview is redacted again.");
 }
 
 function renderLevelControl(): void {
@@ -898,7 +1734,9 @@ function openPopover(entryId: string, anchor: HTMLElement): void {
   const entry = state.entries.find((item) => item.id === entryId);
   if (!entry) return;
   state.selectedEntryId = entryId;
+  const style = kindStyle(entry.kind);
   popoverOriginal.textContent = entry.value;
+  popoverOriginal.style.setProperty("--strike-color", style.color);
   popoverReplacement.value = entry.replacement;
   popover.hidden = false;
   positionPopover(anchor);
@@ -935,11 +1773,6 @@ function hidePopover(): void {
   state.selectedEntryId = null;
 }
 
-popoverClose.addEventListener("click", () => {
-  hidePopover();
-  renderReplacements();
-});
-
 popoverReplacement.addEventListener("input", () => {
   if (!state.selectedEntryId) return;
   setEntryReplacement(state.selectedEntryId, popoverReplacement.value);
@@ -972,7 +1805,7 @@ popoverFind.addEventListener("click", () => {
 function expandKindForEntry(id: string): void {
   const entry = state.entries.find((item) => item.id === id);
   if (!entry) return;
-  state.collapsedKinds.delete(entry.kind);
+  state.expandedKinds.add(entry.kind);
 }
 
 document.addEventListener("click", (event) => {
@@ -997,7 +1830,8 @@ document.addEventListener("selectionchange", () => {
     return;
   }
   const text = selection.toString();
-  if (!text.trim()) {
+  const trimmed = text.trim();
+  if (!trimmed) {
     hideRedactButton();
     return;
   }
@@ -1011,6 +1845,7 @@ document.addEventListener("selectionchange", () => {
     hideRedactButton();
     return;
   }
+  pendingRedactionText = trimmed;
   showRedactButton(range);
 });
 
@@ -1031,13 +1866,52 @@ function hideRedactButton(): void {
 redactSelectionBtn.addEventListener("mousedown", (event) =>
   event.preventDefault(),
 );
-redactSelectionBtn.addEventListener("click", () => {
+redactSelectionBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
   const selection = window.getSelection();
-  const text = selection?.toString().trim() ?? "";
-  if (text) addManualEntry(text);
+  const text = pendingRedactionText || selection?.toString().trim() || "";
+  pendingRedactionText = "";
+  const result = text ? addManualEntry(text, "preview") : null;
   selection?.removeAllRanges();
   hideRedactButton();
+  if (result) revealManualEntry(result.id);
 });
+
+function revealManualEntry(id: string): void {
+  window.requestAnimationFrame(() => {
+    const span = previewBody.querySelector<HTMLElement>(
+      `[data-entry-id="${cssEscape(id)}"]`,
+    );
+    if (!span) {
+      revealManualEntryControls(id);
+      return;
+    }
+    span.scrollIntoView({ block: "center", behavior: "auto" });
+    revealManualEntryControls(id);
+  });
+}
+
+function revealManualEntryControls(id: string): void {
+  state.expandedKinds.add("CUSTOM");
+  renderReplacements();
+  window.requestAnimationFrame(() => {
+    flashReplacementRow(id);
+    const span = previewBody.querySelector<HTMLElement>(
+      `[data-entry-id="${cssEscape(id)}"]`,
+    );
+    if (span) openPopover(id, span);
+  });
+}
+
+function flashReplacementRow(id: string): void {
+  const row = replacementsBody.querySelector<HTMLElement>(
+    `[data-jump-entry="${cssEscape(id)}"]`,
+  );
+  if (!row) return;
+  row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  row.classList.add("flash");
+  window.setTimeout(() => row.classList.remove("flash"), 900);
+}
 
 /* --------------- Preview ↔ list jump helpers ----------------------- */
 
@@ -1086,16 +1960,51 @@ function setStatus(message: string): void {
   showToast(message);
 }
 
-function showToast(message: string): void {
-  if (!message.trim()) return;
+function showToast(
+  message: string,
+  options: {
+    durationMs?: number;
+    progress?: boolean;
+    countdownText?: (secondsLeft: number) => string;
+  } = {},
+): void {
+  const durationMs = options.durationMs ?? 2600;
+  const startedAt = Date.now();
+  const endsAt = startedAt + durationMs;
+  const formatCountdownText = (): string => {
+    const secondsLeft = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+    return options.countdownText?.(secondsLeft) ?? message;
+  };
+  const initialMessage = formatCountdownText();
+  if (!initialMessage.trim()) return;
   const toast = document.createElement("div");
   toast.className = "toast-bubble";
-  toast.textContent = message;
+  if (options.progress) {
+    toast.classList.add("toast-bubble-timed");
+    toast.style.setProperty("--toast-duration", `${durationMs}ms`);
+  }
+  const text = document.createElement("span");
+  text.textContent = initialMessage;
+  toast.appendChild(text);
+  const countdownInterval = options.countdownText
+    ? window.setInterval(() => {
+        text.textContent = formatCountdownText();
+      }, 250)
+    : undefined;
+  if (options.progress) {
+    const progress = document.createElement("span");
+    progress.className = "toast-progress";
+    progress.setAttribute("aria-hidden", "true");
+    toast.appendChild(progress);
+  }
   toastRegion.appendChild(toast);
   window.setTimeout(() => {
+    if (countdownInterval !== undefined) {
+      window.clearInterval(countdownInterval);
+    }
     toast.classList.add("leaving");
     window.setTimeout(() => toast.remove(), 180);
-  }, 2600);
+  }, durationMs);
 }
 
 function isSupportedFile(file: File): boolean {
@@ -1108,6 +2017,56 @@ function sanitizedFilename(name: string): string {
 
 function pluralize(count: number, singular: string): string {
   return `${count} ${count === 1 ? singular : `${singular}s`}`;
+}
+
+function formatHits(count: number): string {
+  return `${count} ${count === 1 ? "hit" : "hits"}`;
+}
+
+function formatMatches(count: number): string {
+  return `${count} ${count === 1 ? "match" : "matches"}`;
+}
+
+function formatMoreMatches(count: number): string {
+  return `${count} more ${count === 1 ? "match" : "matches"}`;
+}
+
+function hasHave(count: number): string {
+  return count === 1 ? "has" : "have";
+}
+
+function isAre(count: number): string {
+  return count === 1 ? "is" : "are";
+}
+
+function remainsRemain(count: number): string {
+  return count === 1 ? "remains" : "remain";
+}
+
+function allMatchesSubject(count: number): string {
+  return count === 1 ? "The 1 match" : `All ${count} matches`;
+}
+
+function warningText(value: string): string {
+  return `<span class="preview-search-warning-word">${escapeHtml(value)}</span>`;
+}
+
+function nonRedactedStatus(count: number, allMatches: boolean): string {
+  if (allMatches) {
+    return `${allMatchesSubject(count)} ${isAre(count)} ${warningText("non-redacted")}.`;
+  }
+  return `${formatMatches(count)} ${remainsRemain(count)} ${warningText("non-redacted")}.`;
+}
+
+function redactedOriginalStatus(count: number, allMatches: boolean): string {
+  if (allMatches) {
+    return `${allMatchesSubject(count)} in original ${hasHave(count)} been redacted.`;
+  }
+  return `${formatMatches(count)} in original ${hasHave(count)} been redacted.`;
+}
+
+function redactionsOnlyStatus(count: number): string {
+  return `${formatMatches(count)} in redactions only.`;
 }
 
 function downloadText(text: string, filename: string): void {
@@ -1375,4 +2334,5 @@ function initDevMode(): void {
 /* ------------------------------ Boot ------------------------------- */
 
 renderAll();
+renderRoute();
 if (DEV_MODE) initDevMode();
