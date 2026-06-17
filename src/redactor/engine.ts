@@ -991,6 +991,90 @@ export class Detector {
         1,
         "bank account number label",
       ],
+      [
+        "BUSINESS_ID",
+        // HR / payroll identifiers, label-bound. Employee ID, Personnel No.,
+        // Payroll ID, Employee Number, etc. identify a specific person or payroll
+        // account on employment agreements, offer letters, and internal HR/payroll
+        // forms. Consistent with finance/procurement references, the full labeled
+        // phrase is the candidate value and the value must contain a digit so
+        // prose (e.g. "Employee Number of staff", "Employee ID: pending") and
+        // bare figures stay readable. Without these rules the trailing digit run
+        // is mislabeled as PHONE and the alphabetic prefix leaks.
+        /\b(?:Employee|Personnel|Payroll)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "HR/payroll identifier label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Compound HR/payroll reference labels, mirroring the Round 8
+        // "Payment Reference" rule. "Payroll Reference" / "Shareholder Reference"
+        // are two-word labels with no separate qualifier; the bare-colon
+        // "Reference:" detector only matches the trailing substring and left the
+        // "Payroll " / "Shareholder " prefix unscoped. The value must contain a
+        // digit so prose (e.g. "the payroll reference will follow") stays readable.
+        /\b(?:Payroll|Shareholder)\s+(?:References?|Ref)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "compound HR/payroll reference label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Equity award identifiers, label-bound. Grant No., Grant ID, Grant
+        // Number, Equity Grant ID, Option Grant No., and Award ID identify a
+        // specific equity grant on option/RSU award notices and employment
+        // agreements. Consistent with finance references, the full labeled phrase
+        // is the candidate value and the value must contain a digit so prose and
+        // bare figures stay readable. Without this rule the trailing digit run is
+        // mislabeled as PHONE and the grant prefix leaks.
+        /\b(?:Equity\s+Grant|Option\s+Grant|Grant|Award)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "equity award identifier label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Share certificate identifiers, label-bound. Certificate No., Certificate
+        // Number, Share Certificate No., and the bare-colon "Share Certificate:"
+        // field identify a specific share certificate on cap-table excerpts and
+        // equity award notices. Label-bound and digit-required so prose and bare
+        // figures stay readable. Without this rule the trailing digit run is
+        // mislabeled as PHONE and the certificate prefix leaks.
+        /\b(?:Share\s+Certificate|Certificate)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "share certificate identifier label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Bare-colon "Share Certificate:" field (no qualifier), e.g.
+        // "Share Certificate: SHC-778210". The colon anchor distinguishes this
+        // from prose ("the share certificate of incorporation"); the digit
+        // lookahead rejects prose values.
+        /\bShare\s+Certificate\s*[:#]\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "share certificate label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Governance document references, label-bound. Written Consent (board
+        // written consent reference) and Approval ID (internal approval memo)
+        // identify a specific corporate record. The bare-colon "Written Consent:"
+        // form is common because the qualifier is often omitted. Label-bound and
+        // digit-required so prose ("by written consent of the board",
+        // "subject to approval") and bare figures stay readable. Without this
+        // rule the trailing digit run is mislabeled as PHONE/DATE and the prefix
+        // leaks.
+        /\b(?:Written\s+Consent\s+(?:IDs?|Nos?|Numbers?)|Approval\s+(?:IDs?|Nos?|Numbers?))\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "governance reference label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Bare-colon "Written Consent:" field (qualifier omitted), e.g.
+        // "Written Consent: WC-2026-014". The colon anchor + digit requirement
+        // keeps prose such as "by written consent of the board" readable.
+        /\bWritten\s+Consent\s*[:#]\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "written consent label",
+      ],
       ["BUNDLE_REF", /\b[A-Z]\/\d{2,5}\/\d{2,6}\b/g, 2, "bundle reference"],
       ["EXHIBIT_REF", /\b[RCDEF]-\d{1,4}\b/g, 2, "exhibit reference"],
       ["EXHIBIT_REF", /\b[CR]L-\d{1,4}\b/g, 2, "legal authority reference"],
@@ -1263,6 +1347,58 @@ export class Detector {
         1,
         "account number label",
       ],
+      // HR / payroll identifier labels (employment agreements, offer letters,
+      // internal HR/payroll forms). Line-anchored companions to the inline
+      // BUSINESS_ID rules above; the shared digit guard rejects prose values
+      // such as "Employee ID: pending" and multi-value lines are split.
+      [
+        /^\s*(?:Employee|Personnel|Payroll)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "HR/payroll identifier label",
+      ],
+      [
+        /^\s*(?:Payroll|Shareholder)\s+(?:References?|Ref)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "compound HR/payroll reference label",
+      ],
+      // Equity award identifier labels (option/RSU award notices, employment
+      // agreements, cap-table excerpts). Line-anchored companions to the inline
+      // BUSINESS_ID rules; digit guard rejects prose values.
+      [
+        /^\s*(?:Equity\s+Grant|Option\s+Grant|Grant|Award)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "equity award identifier label",
+      ],
+      [
+        /^\s*(?:Share\s+Certificate|Certificate)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "share certificate identifier label",
+      ],
+      [
+        /^\s*Share\s+Certificate\s*[:：]\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "share certificate label",
+      ],
+      // Governance reference labels (board minutes, written consents, internal
+      // approval memos). Line-anchored companions to the inline BUSINESS_ID
+      // rules; digit guard rejects prose such as "Written Consent: to be filed".
+      [
+        /^\s*(?:Written\s+Consent\s+(?:IDs?|Nos?|Numbers?)|Approval\s+(?:IDs?|Nos?|Numbers?))\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "governance reference label",
+      ],
+      [
+        /^\s*Written\s+Consent\s*[:：]\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "written consent label",
+      ],
       [/^\s*Ref\.?\s*[:：]\s*(.+)$/i, "CASE_REF", 1, "reference label"],
     ];
 
@@ -1377,12 +1513,22 @@ export class Detector {
     value: string,
     kind: CandidateKind,
   ): boolean {
-    if (/^(?:Whom It May Concern|Dear Sir(?:s)?|Dear Madam|Dear Sir or Madam)$/i.test(value))
+    if (
+      /^(?:Whom It May Concern|Dear Sir(?:s)?|Dear Madam|Dear Sir or Madam)$/i.test(
+        value,
+      )
+    )
       return false;
     if (this.looksLikeDepartmentOrRole(value)) return false;
     if (looksLikeContractDefinedTermCandidate(value)) return false;
-    if (ORG_SUFFIX_NAME_TOKENS.has(value.split(/\s+/).at(-1) ?? "")) return true;
-    if (kind === "PERSON_OR_ORG" && /(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|PLC|GmbH)$/i.test(value))
+    if (ORG_SUFFIX_NAME_TOKENS.has(value.split(/\s+/).at(-1) ?? ""))
+      return true;
+    if (
+      kind === "PERSON_OR_ORG" &&
+      /(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|PLC|GmbH)$/i.test(
+        value,
+      )
+    )
       return true;
 
     const nameLike =
@@ -1603,7 +1749,10 @@ export class Detector {
       /\b([A-Z][A-Za-z'’-]+(?:[\s\u00A0]+[A-Z][A-Za-z'’-]+){0,3}),?[\s\u00A0]+Esq\.?\b/g,
     )) {
       const name = cleanValue(match[1]);
-      if (this.looksLikePersonName(name) || this.looksLikeSinglePersonToken(name))
+      if (
+        this.looksLikePersonName(name) ||
+        this.looksLikeSinglePersonToken(name)
+      )
         this.add(
           name,
           "PERSON",
@@ -2385,6 +2534,12 @@ export class Detector {
       /\bProject\s+[A-Z][A-Za-z0-9_-]+\b/g,
     )) {
       const codename = match[0].replace(/^Project\s+/, "");
+      // "Project Manager", "Project Coordinator", "Project Engineer" are job
+      // titles, not project codenames. When the token after "Project" is itself
+      // a role / defined-term word, the phrase names a role and must stay
+      // readable instead of being redacted as a project (or turning the role
+      // word into a project alias that then redacts every later "Manager").
+      if (isContractDefinedTermToken(codename)) continue;
       this.add(
         match[0],
         "PROJECT",
@@ -2840,6 +2995,7 @@ export class Detector {
       "Chair",
       "President",
       "Officer",
+      "Manager",
       "Treasurer",
       "Auditor",
       "Registrar",
@@ -2859,8 +3015,10 @@ export class Detector {
       "Summary",
       "Method",
       "Information",
+      "Table",
     ]);
-    if (tokens.length >= 2 && DOCUMENT_HEADING_ENDINGS.has(lastToken)) return false;
+    if (tokens.length >= 2 && DOCUMENT_HEADING_ENDINGS.has(lastToken))
+      return false;
     // Reject government / regulator agency fragments caught by the
     // communication-context, list, or standalone-line detectors (e.g. "Drug
     // Administration", "Trade Commission", "Drug Administration Silver

@@ -2385,4 +2385,251 @@ VAT: 20%
     expect(output).toContain("Terms & Conditions");
     expect(output).toContain("Research & Development");
   });
+
+  // ---- Round 9: HR, employment, board/shareholder, governance documents ----
+
+  it("redacts HR and payroll identifiers after their labels", () => {
+    // Employee ID, Personnel No., Payroll ID, and Employee Number identify a
+    // specific person or payroll account on employment agreements, offer
+    // letters, and HR/payroll forms. The trailing digit run was previously
+    // mislabeled as PHONE and the alphabetic prefix leaked. The value must
+    // contain a digit so prose and placeholder values stay readable.
+    const output = redact(
+      `
+Employee ID: EMP-44719
+Personnel No.: PERS-002841
+Payroll ID: PAY-882104
+Employee Number: 447821
+Employee ID: pending
+The Employee Number of staff in this group is twelve.
+`,
+      "light",
+    );
+
+    for (const leaked of ["EMP-44719", "PERS-002841", "PAY-882104", "447821"]) {
+      expect(output).not.toContain(leaked);
+    }
+    // Placeholder / prose values without a digit stay readable.
+    expect(output).toContain("Employee ID: pending");
+    expect(output).toContain("Employee Number of staff");
+    expect(output).toContain("BUSINESS_ID_");
+    // The personnel/payroll numbers must not be mislabeled as phone numbers.
+    expect(output).not.toMatch(/Employee ID: PHONE_/);
+    expect(output).not.toMatch(/Payroll ID: PHONE_/);
+  });
+
+  it("redacts Payroll and Shareholder compound reference labels", () => {
+    // "Payroll Reference" / "Shareholder Reference" are two-word labels with no
+    // separate qualifier. The bare-colon "Reference:" detector only matched the
+    // trailing substring and left the "Payroll " / "Shareholder " prefix
+    // unscoped; a dedicated compound label captures the full reference. Prose
+    // must stay readable because the value must contain a digit.
+    const output = redact(
+      `
+Payroll Reference: PRF-2026-882104
+Shareholder Reference: SHR-2026-55219
+Payroll Ref: PRF-0091
+The payroll reference will follow once payroll closes.
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("PRF-2026-882104");
+    expect(output).not.toContain("SHR-2026-55219");
+    expect(output).not.toContain("PRF-0091");
+    // Prose without a digit-bearing reference value stays readable.
+    expect(output).toContain("payroll reference will follow");
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("redacts equity award identifiers after their labels", () => {
+    // Grant No., Grant ID, Grant Number, Equity Grant ID, Option Grant No., and
+    // Award ID identify a specific equity grant on option/RSU award notices and
+    // employment agreements. The trailing digit run was previously mislabeled as
+    // PHONE and the grant prefix leaked. Prose stays readable because the value
+    // must contain a digit.
+    const output = redact(
+      `
+Grant No. GRT-2026-1192
+Grant ID: EQ-2026-03814
+Grant Number: OPT-2026-22841
+Equity Grant ID: EQ-2026-03814
+Option Grant No.: OG-2026-0042
+Award ID: AWD-2026-0091
+Grant ID: to be determined
+The grant of options is subject to board approval.
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "GRT-2026-1192",
+      "EQ-2026-03814",
+      "OPT-2026-22841",
+      "OG-2026-0042",
+      "AWD-2026-0091",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    // Placeholder / prose values without a digit stay readable.
+    expect(output).toContain("Grant ID: to be determined");
+    expect(output).toContain("grant of options");
+    expect(output).toContain("BUSINESS_ID_");
+    // The grant identifiers must not be mislabeled as phone numbers.
+    expect(output).not.toMatch(/Grant ID: PHONE_/);
+    expect(output).not.toMatch(/Grant Number: PHONE_/);
+  });
+
+  it("redacts share certificate identifiers after their labels", () => {
+    // Certificate No., Certificate Number, and the bare-colon "Share
+    // Certificate:" field identify a specific share certificate on cap-table
+    // excerpts and equity award notices. The trailing digit run was previously
+    // mislabeled as PHONE. Prose stays readable because the value must contain
+    // a digit and the bare-colon form requires a colon anchor.
+    const output = redact(
+      `
+Certificate No.: CERT-2026-00482
+Certificate Number: CERT-2026-00919
+Share Certificate No.: SHC-778210
+Share Certificate: SHC-5512
+Certificate No.: pending
+The share certificate of incorporation is on file.
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "CERT-2026-00482",
+      "CERT-2026-00919",
+      "SHC-778210",
+      "SHC-5512",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("Certificate No.: pending");
+    expect(output).toContain("share certificate of incorporation");
+    expect(output).toContain("BUSINESS_ID_");
+    expect(output).not.toMatch(/Certificate No\.: PHONE_/);
+  });
+
+  it("redacts Written Consent and Approval ID governance references", () => {
+    // Written Consent (board written consent reference) and Approval ID
+    // (internal approval memo) identify a specific corporate record. The
+    // bare-colon "Written Consent:" form is common because the qualifier is
+    // often omitted. The trailing digit run was previously mislabeled as PHONE
+    // or DATE. Prose stays readable via the colon anchor and digit requirement.
+    const output = redact(
+      `
+Written Consent: WC-2026-014
+Written Consent No.: WC-2026-022
+Approval ID: APP-2026-0091
+Approval No.: APP-2026-0188
+Written Consent: to be filed
+The action was taken by written consent of the board.
+Subject to approval by the Compensation Committee.
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "WC-2026-014",
+      "WC-2026-022",
+      "APP-2026-0091",
+      "APP-2026-0188",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("Written Consent: to be filed");
+    expect(output).toContain("by written consent of the board");
+    expect(output).toContain("Subject to approval");
+    expect(output).toContain("BUSINESS_ID_");
+    expect(output).not.toMatch(/Written Consent: PHONE_/);
+    expect(output).not.toMatch(/Written Consent: DATE_/);
+  });
+
+  it("keeps governance/HR role and committee labels readable", () => {
+    // Board committees (Audit, Compensation, Nominating, Governance, Ethics),
+    // the Board of Directors, officer/role labels, the Capitalization Table
+    // heading, and the Hiring Manager role must stay readable instead of being
+    // redacted as organizations, people, or proper nouns. "Audit Committee"
+    // previously became ORG because "Audit" was not a defined-term token
+    // (unlike "Compensation"); "Hiring Manager" previously became PERSON
+    // because "Manager" was a single trailing contract token; "Capitalization
+    // Table" previously became PERSON via the standalone-line detector.
+    const output = redact(
+      `
+The Board of Directors met with the Audit Committee, the Compensation Committee, the Nominating Committee, the Governance Committee, and the Ethics Committee.
+Please contact the Hiring Manager, the Office Manager, or our Human Resources team.
+The Account Manager and Project Manager must sign off.
+
+Capitalization Table
+Amortization Table
+
+The Chief Executive Officer and the Compensation Committee recommend approval.
+`,
+      "heavy",
+    );
+
+    for (const kept of [
+      "Board of Directors",
+      "Audit Committee",
+      "Compensation Committee",
+      "Nominating Committee",
+      "Governance Committee",
+      "Ethics Committee",
+      "Hiring Manager",
+      "Office Manager",
+      "Human Resources",
+      "Account Manager",
+      "Project Manager",
+      "Capitalization Table",
+      "Amortization Table",
+      "Chief Executive Officer",
+    ]) {
+      expect(output).toContain(kept);
+    }
+    // None of these role/committee labels should become an ORG/PERSON token.
+    expect(output).not.toMatch(/Audit Committee[\s\n]*ORG_/);
+    expect(output).not.toMatch(/Hiring Manager[\s\n]*PERSON_/);
+    expect(output).not.toMatch(/Capitalization Table[\s\n]*PERSON_/);
+  });
+
+  it("keeps earlier-round canaries intact in an HR/governance context", () => {
+    // HR/board documents still carry court/SEC/finance references, phones,
+    // postcodes, and procurement IDs, and they must behave as in earlier
+    // rounds alongside the new HR/equity/governance fields.
+    const output = redact(
+      `
+File No. 333-45346
+Purchase Order No.: PO-CCS-009876
+Customer No.: CUST-778210
+Bank Account No.: 00123468
+VAT No. DE123456789
+Employee ID: EMP-44719
+Grant ID: EQ-2026-03814
+Phone: (650) 555-0142
+Office: 1 Technology Drive, Austin, TX 78701
+Net 30. The Company and The Bank confirmed the terms.
+`,
+      "balanced",
+    );
+
+    for (const leaked of [
+      "333-45346",
+      "PO-CCS-009876",
+      "CUST-778210",
+      "00123468",
+      "DE123456789",
+      "EMP-44719",
+      "EQ-2026-03814",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    // Boilerplate and defined terms stay readable.
+    expect(output).toContain("Net 30");
+    expect(output).toContain("The Company");
+    expect(output).toContain("The Bank");
+    expect(output).toContain("BUSINESS_ID_");
+    expect(output).toContain("BANK_ACCOUNT_");
+  });
 });

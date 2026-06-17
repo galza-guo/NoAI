@@ -2,6 +2,34 @@
 
 The redaction engine uses semantic versioning independently from the app package.
 
+## 1.0.15 - 2026-06-18
+
+HR, employment, board/shareholder, and governance documents pass. Audited synthetic samples covering an employment agreement, an offer letter, a separation/severance agreement, board minutes, a shareholder/AGM notice, a stock-option award notice, a cap-table excerpt, and an internal approval memo, so the engine stays useful for documents that name individual employees, directors, equity grants, and corporate records without being legal pleadings or SEC correspondence, with no new AI/backend dependencies.
+
+New direct-identifier coverage (all label-bound to avoid false positives on bare figures, table quantities, share counts, and prose; the full labeled phrase is the candidate value, consistent with procurement/finance references and SEC file numbers, and the value must contain a digit):
+
+- HR/payroll identifiers after their label + qualifier: `Employee ID/No./Number`, `Personnel No./Number/ID`, and `Payroll ID/No./Number` (`BUSINESS_ID`). Without this rule the trailing digit run was mislabeled as `PHONE` and the alphabetic prefix (e.g. `EMP-`, `PERS-`, `PAY-`) leaked.
+- Compound `Payroll Reference` / `Payroll Ref` and `Shareholder Reference` / `Shareholder Ref` labels (`BUSINESS_ID`), mirroring the Round 8 `Payment Reference` rule. The bare-colon `Reference:` detector only matched the trailing substring and left the `Payroll ` / `Shareholder ` prefix unscoped.
+- Equity award identifiers after their label + qualifier: `Grant No./Number/ID`, `Equity Grant ID`, `Option Grant No.`, and `Award ID/Number` (`BUSINESS_ID`). Without this rule the trailing digit run was mislabeled as `PHONE` and the grant prefix (e.g. `EQ-`, `GRT-`, `OPT-`) leaked.
+- Share certificate identifiers: `Certificate No./Number/ID`, `Share Certificate No./Number/ID`, and the bare-colon `Share Certificate:` field (`BUSINESS_ID`). Without this rule the trailing digit run was mislabeled as `PHONE`.
+- Governance record references: `Written Consent` / `Written Consent No./Number/ID` (including the common bare-colon `Written Consent:` form where the qualifier is omitted) and `Approval ID/No./Number` (`BUSINESS_ID`). Without this rule the trailing digit run was mislabeled as `PHONE` or `DATE`.
+- Same labels are also recognized as line-anchored form fields (`Label: value`), with multi-value splitting and the shared digit guard.
+
+False-positive guardrails (kept readable at all levels):
+
+- All new identifier patterns require a label + qualifier (or a compound label, or a colon anchor for the bare forms) plus a digit-bearing value, so unlabeled bare numbers (`447821`, `5512`), share counts in tables (`5,000,000`), placeholder values (`Employee ID: pending`, `Grant ID: to be determined`, `Written Consent: to be filed`), and prose (`Employee Number of staff`, `grant of options`, `by written consent of the board`, `subject to approval`) remain readable.
+- `Manager` is no longer treated as a plausible surname token in a title-case name, so role labels such as `Hiring Manager`, `Office Manager`, `Account Manager`, and `Project Manager` stay readable instead of being redacted as people.
+- `Table` is no longer treated as a plausible surname token in a title-case standalone line, so document headings such as `Capitalization Table` and `Amortization Table` stay readable instead of being redacted as people.
+- `Project <Role>` phrases (e.g. `Project Manager`, `Project Coordinator`, `Project Engineer`) are no longer treated as project codenames; when the token after `Project` is itself a role/defined-term word the phrase names a job title and stays readable. Real project names (`Project Falcon`, `Project X`) are unaffected.
+- Standing board-committee qualifiers (`Audit`, `Nominating`, `Governance`, `Ethics`) were added to the defined-term token set, so `Audit Committee`, `Nominating Committee`, `Governance Committee`, and `Ethics Committee` stay readable instead of being redacted as organizations or people. (`Compensation Committee` already stayed readable because `Compensation` is a defined-term token.)
+
+Known trade-offs:
+
+- The HR/equity/certificate label (e.g. `Grant ID`) is consumed within the redacted reference phrase, consistent with how procurement IDs, finance references, and SEC file numbers are handled. The label word in other contexts (e.g. the standalone `Grant` verb, `Written Consent` in prose) remains readable.
+- A `Tax/Payroll Reference:` field whose label contains a slash (e.g. `Tax/Payroll Reference: TPR-99-044821`) redacts only the trailing reference value (via the generic `Reference:` label); the `Tax/` prefix is left readable because the slash form is not a compound label. The sensitive value itself is redacted. This is the same single-line label-value limitation noted in Round 8.
+- Numeric share counts inside cap-table table cells (e.g. `5,000,000`, `12,500`) are not redacted, because a bare number in a table is ambiguous (it could be a quantity, price, or count) and there is no currency anchor. Only explicitly labeled share references (e.g. `Certificate No.`, `Share Certificate:`) redact. This mirrors how finance Round 8 handled table line items.
+- A specific equity plan name that repeats three or more times (e.g. `2026 Omnibus Equity Incentive Plan`) may be redacted as a proper noun at heavy level, consistent with how heavy treats other repeated capitalized defined-term-like phrases. The `Option Plan` role label and the plan reference at light/balanced stay readable.
+
 ## 1.0.14 - 2026-06-17
 
 Release-candidate repair after auditing the synthetic `public/dev-sample.md` engagement letter.

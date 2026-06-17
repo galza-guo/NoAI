@@ -841,6 +841,15 @@ export const CONTRACT_DEFINED_TERM_TOKENS = new Set([
   "Chairman",
   "Chief",
   "General",
+  // Standing board-committee qualifiers ("Audit Committee",
+  // "Nominating Committee", "Governance Committee", "Ethics Committee").
+  // These are governance/structural concepts, never plausible surname
+  // components; adding them keeps the standard board committees readable
+  // instead of being redacted as organizations or people.
+  "Audit",
+  "Nominating",
+  "Governance",
+  "Ethics",
   // Government / regulatory / legal
   "Act",
   "Acts",
