@@ -306,14 +306,14 @@ Documents
     expect(output).toContain("Costs Schedule");
   });
 
-  it("strict mode localizes chronology rows", () => {
+  it("heavy mode localizes chronology rows", () => {
     const output = redact(
       `
 | Date | Bundle Ref | Exhibit Number | Description |
 | --- | --- | --- | --- |
 | 2025.07.11 | D/042/123 | C-4 | Mr Michael Li attended the meeting |
 `,
-      "strict",
+      "heavy",
     );
 
     expect(output).toContain("CHRONO_DATE_001");
@@ -324,7 +324,7 @@ Documents
     expect(output).not.toContain("C-4");
   });
 
-  it("strict mode quarantines legal contact blocks", () => {
+  it("heavy mode quarantines legal contact blocks", () => {
     const output = redact(
       `
 For the Tribunal
@@ -335,7 +335,7 @@ Email: tribunal@example.com
 1. INTRODUCTION
 The merits continue here.
 `,
-      "strict",
+      "heavy",
     );
 
     expect(output).toContain("[CONTACT_SECTION_001]");
@@ -506,14 +506,14 @@ Further dates were 28th Nov, 28-Nov-2025, Nov 28, and November 28, 2025.
     expect(output).toContain("DATE_");
   });
 
-  it("strict mode redacts repeated non-person capitalized phrases", () => {
+  it("heavy mode redacts repeated non-person capitalized phrases", () => {
     const output = redact(
       `
 Records mention Crimson Falcon Ledger Compass Beacon often.
 Counsel cited Crimson Falcon Ledger Compass Beacon again.
 Crimson Falcon Ledger Compass Beacon appears a third time.
 `,
-      "strict",
+      "heavy",
     );
 
     expect(output).not.toContain("Crimson Falcon Ledger Compass Beacon");
@@ -1842,7 +1842,7 @@ The Vendor invoice is due.
 Contract notes about the scope remain visible.
 Purchase Order for the equipment was issued last week.
 `,
-      "strict",
+      "heavy",
     );
 
     for (const kept of [
@@ -1882,10 +1882,10 @@ Bidder Name: Acme Supplies LLC
     expect(output).toContain("PERSON_");
   });
 
-  it("preserves procurement boilerplate at strict level", () => {
-    // Scope of Work, Statement of Work, Terms and Conditions, Net 30,
+  it("preserves procurement boilerplate at heavy level", () => {
+    // scope of Work, Statement of Work, Terms and Conditions, Net 30,
     // Accounts Payable, Contract Award Notice, and Purchase Order are standard
-    // procurement headings/labels. They must stay readable even at strict.
+    // procurement headings/labels. They must stay readable even at heavy.
     const output = redact(
       `
 Scope of Work
@@ -1897,7 +1897,7 @@ Request for Proposal
 Payment Terms: Net 30
 This Purchase Order is issued under the standard terms.
 `,
-      "strict",
+      "heavy",
     );
 
     for (const kept of [
@@ -2068,7 +2068,7 @@ The Federal Trade Commission issued a Complaint.
 The Environmental Protection Agency Region 5 reviewed the matter.
 The Information Commissioner's Office issued an Enforcement Notice.
 `,
-      "strict",
+      "heavy",
     );
 
     for (const kept of [
@@ -2098,7 +2098,7 @@ Section 5 of the Federal Trade Commission Act.
 Section 309 of the Clean Water Act, 33 U.S.C. § 1319.
 This is a Warning Letter and Enforcement Notice.
 `,
-      "strict",
+      "heavy",
     );
 
     expect(output).toContain("paragraph 9384");
@@ -2113,5 +2113,194 @@ This is a Warning Letter and Enforcement Notice.
     // No false BUSINESS_ID or CASE_REF from these unlabeled prose forms.
     expect(output).not.toContain("BUSINESS_ID_");
     expect(output).not.toContain("CASE_REF_");
+  });
+
+  // ---- Round 8: finance operations, invoice, remittance, AP documents ----
+
+  it("redacts finance document references after their labels", () => {
+    // Remittance Advice No., Remittance No., and Customer No. identify a
+    // specific payment document or customer account on invoices, remittance
+    // advice, and accounts-payable forms. The full labeled phrase is the
+    // candidate value and must contain a digit so prose stays readable.
+    const output = redact(
+      `
+Remittance Advice No.: RA-2026-5512
+Remittance No. RMT-0042
+Customer No.: CUST-778210
+Customer Number: CUST-2099
+Customer ID 88210
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("RA-2026-5512");
+    expect(output).not.toContain("RMT-0042");
+    expect(output).not.toContain("CUST-778210");
+    expect(output).not.toContain("CUST-2099");
+    expect(output).not.toContain("Customer ID 88210");
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("redacts the Payment Reference compound label", () => {
+    // "Payment Reference" is a two-word label with no separate qualifier. The
+    // bare-colon "Reference:" detector only matches the trailing substring, so
+    // a dedicated compound label captures the full reference. Prose must stay
+    // readable because the value must contain a digit.
+    const output = redact(
+      `
+Payment Reference: PAY-2026-5512-CUST2099
+Payment Ref: ACH-2026-088342
+The payment reference will follow once the batch clears.
+Please send payment reference 0000 to treasury.
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("PAY-2026-5512-CUST2099");
+    expect(output).not.toContain("ACH-2026-088342");
+    // Prose without a digit-bearing reference value stays readable.
+    expect(output).toContain("payment reference will follow");
+    // A digit value after the label IS a reference and redacts.
+    expect(output).not.toContain("payment reference 0000");
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("redacts tax identifiers after their labels but keeps VAT rates readable", () => {
+    // VAT Registration No., VAT No., VAT ID, Tax ID, and Tax Identification No.
+    // identify a taxable entity. Bare "TIN" is excluded (common word). A VAT
+    // rate/amount without the qualifier must stay readable.
+    const output = redact(
+      `
+VAT Registration No.: GB123456789
+VAT No. DE123456789
+VAT ID: FR12345678901
+Tax ID: 39-8765432
+Tax Identification No.: 84-1234567
+Tax ID: pending
+VAT: 20%
+VAT (20%): 2,648.50
+Tax: 32.00
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("GB123456789");
+    expect(output).not.toContain("DE123456789");
+    expect(output).not.toContain("FR12345678901");
+    expect(output).not.toContain("39-8765432");
+    expect(output).not.toContain("84-1234567");
+    expect(output).toContain("Tax ID: pending");
+    // The rate/amount labels without a qualifier stay readable.
+    expect(output).toContain("VAT: 20");
+    expect(output).toContain("VAT (20");
+    expect(output).toContain("Tax: 32.00");
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("redacts Bank Account No. as BANK_ACCOUNT and keeps Account No. as a case reference", () => {
+    // A digit-only bank account number was previously mislabeled as PHONE.
+    // The label-bound rule classifies it as BANK_ACCOUNT. The abbreviated
+    // "Account No." (CASE_REF) behavior is unchanged, and the full-word
+    // "Account Number" also becomes BANK_ACCOUNT.
+    const output = redact(
+      `
+Bank Account No.: 00123468
+Bank Account Number: 0099112233
+Account Number: 000011113334
+Account No.: 99-2026-04827
+Bank Account Number: to be confirmed
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("00123468");
+    expect(output).not.toContain("0099112233");
+    expect(output).not.toContain("000011113334");
+    expect(output).not.toContain("99-2026-04827");
+    expect(output).toContain("Bank Account Number: to be confirmed");
+    expect(output).toContain("BANK_ACCOUNT_");
+    // The bank account number must not be mislabeled as a phone number.
+    expect(output).not.toMatch(/Bank Account No\.: PHONE_/);
+  });
+
+  it("preserves invoice table headers, boilerplate, and unlabeled line items", () => {
+    // Counterexample: finance labels, boilerplate terms, manufacturer item
+    // codes, table quantities, unit prices, totals, and version numbers must
+    // remain readable. Only labeled references and explicit fields redact.
+    const output = redact(
+      `
+Remittance Advice
+Payment Terms: Net 30
+Subtotal: 365.00
+Freight: 35.00
+Discount: 10.00
+Tax: 32.00
+Total Due: 432.00
+Balance Due: 0.00
+Payment Due: 2026-08-31
+
+| Description                | Qty | Unit Price | Amount  |
+|----------------------------|-----|------------|---------|
+| Stainless bolt (AB1234567890) | 500 | 0.42     | 210.00  |
+| Nylon washer (SKU NW-WS-3) | 500 | 0.08       | 40.00   |
+
+Row 1 of the ledger. Internal queue 567890. Version 2.1 applies.
+`,
+      "heavy",
+    );
+
+    for (const kept of [
+      "Remittance Advice",
+      "Payment Terms",
+      "Net 30",
+      "Subtotal",
+      "Freight",
+      "Discount",
+      "Total Due",
+      "Balance Due",
+      "Payment Due",
+      "Description",
+      "Qty",
+      "Unit Price",
+      "AB1234567890",
+      "SKU NW-WS-3",
+      "567890",
+      "Version 2.1",
+    ]) {
+      expect(output).toContain(kept);
+    }
+  });
+
+  it("keeps earlier-round canaries intact in a finance-operations context", () => {
+    // Finance documents still carry court/SEC/regulator references, phones,
+    // postcodes, and procurement IDs. They must behave as in earlier rounds,
+    // and legal boilerplate must stay readable alongside the finance fields.
+    const output = redact(
+      `
+File No. 333-45346
+Docket No. 9384
+Purchase Order No.: PO-CCS-009876
+Vendor ID: V-0098233
+Invoice No.: INV-2026-0067
+Customer No.: CUST-778210
+Phone: (650) 555-0142
+Office: 1 Technology Drive, Austin, TX 78701
+Net 30. The Company and The Bank confirmed the terms.
+forum non conveniens does not apply to this dispute.
+`,
+      "balanced",
+    );
+
+    // Finance references redact (label-bound).
+    expect(output).not.toContain("333-45346");
+    expect(output).not.toContain("PO-CCS-009876");
+    expect(output).not.toContain("V-0098233");
+    expect(output).not.toContain("INV-2026-0067");
+    expect(output).not.toContain("CUST-778210");
+    // Boilerplate and defined terms stay readable.
+    expect(output).toContain("Net 30");
+    expect(output).toContain("The Company");
+    expect(output).toContain("The Bank");
+    expect(output).toContain("forum non conveniens");
   });
 });

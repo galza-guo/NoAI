@@ -1,9 +1,9 @@
-export type RedactionLevel = "light" | "balanced" | "strict";
+export type RedactionLevel = "light" | "balanced" | "heavy";
 
 export const LEVELS: Record<RedactionLevel, number> = {
   light: 1,
   balanced: 2,
-  strict: 3,
+  heavy: 3,
 };
 
 export type CandidateKind =

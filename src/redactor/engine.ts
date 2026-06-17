@@ -312,7 +312,7 @@ function escapeRegExp(value: string): string {
 function levelName(level: number): RedactionLevel {
   if (level <= 1) return "light";
   if (level === 2) return "balanced";
-  return "strict";
+  return "heavy";
 }
 
 function normalizedContractTermToken(token: string): string {
@@ -452,7 +452,7 @@ export class Detector {
       this.detectOrganizations(doc);
       this.detectMatterTerms(doc);
       this.detectLocations(doc);
-      this.detectStrictProperNouns(doc);
+      this.detectHeavyProperNouns(doc);
       this.detectCustomTerms(doc);
     }
     this.addPersonAliases();
@@ -897,6 +897,55 @@ export class Detector {
         1,
         "regulator establishment/registration identifier",
       ],
+      [
+        "BUSINESS_ID",
+        // Finance operations document references, label-bound. Remittance Advice
+        // No. and Customer No. identify a specific payment document or customer
+        // account on invoices, remittance advice, and accounts-payable forms.
+        // Consistent with procurement references, the full labeled phrase is the
+        // candidate value and the value must contain a digit so prose and bare
+        // figures (table quantities, item codes) stay readable.
+        /\b(?:Remittance\s+Advice|Remittance|Customer)\s+(?:Nos?|Numbers?|IDs?|Reference|Code)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "finance document reference",
+      ],
+      [
+        "BUSINESS_ID",
+        // "Payment Reference" / "Payment Ref" as a compound label (no separate
+        // qualifier), e.g. "Payment Reference: PAY-2026-5512-CUST2099". The word
+        // boundary after Reference/Ref (and digit lookahead) keeps prose such as
+        // "the payment reference will follow" readable while catching the labeled
+        // reference. Required because the bare-colon "Reference:" detector only
+        // matches the trailing "Reference:" substring, leaving "Payment " unscoped.
+        /\bPayment\s+(?:References?|Ref)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "payment reference label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Tax identifiers, label-bound. VAT Registration No. (UK/EU), VAT No.,
+        // VAT ID, Tax ID, Tax No., Tax Identification No., and Taxpayer ID all
+        // identify a taxable entity. A bare number is usually a figure, so the
+        // label anchor is required; the value must contain a digit so prose stays
+        // readable. Bare "TIN" is deliberately excluded because lowercase "tin"
+        // is a common word.
+        /\b(?:VAT\s+(?:Registration\s+)?(?:Nos?|Numbers?|IDs?)|Tax(?:payer)?\s+(?:Identification\s+)?(?:IDs?|Nos?|Numbers?))\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "tax identifier label",
+      ],
+      [
+        "BANK_ACCOUNT",
+        // Bank account number, label-bound. Distinct from IBAN (format-bound)
+        // and from the generic abbreviated "Account No." case reference, a
+        // "Bank Account No." / "Bank Account Number" / "Account Number" field
+        // on an invoice or remittance names the payee's bank account. Restricted
+        // to the "Bank Account" label or the full word "Account Number" so the
+        // existing abbreviated "Account No." (CASE_REF) behavior is unchanged.
+        // Without this rule a digit-only account number is mislabeled as PHONE.
+        /\b(?:Bank\s+Account\s+(?:Nos?|Numbers?)|Account\s+Number)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        1,
+        "bank account number label",
+      ],
       ["BUNDLE_REF", /\b[A-Z]\/\d{2,5}\/\d{2,6}\b/g, 2, "bundle reference"],
       ["EXHIBIT_REF", /\b[RCDEF]-\d{1,4}\b/g, 2, "exhibit reference"],
       ["EXHIBIT_REF", /\b[CR]L-\d{1,4}\b/g, 2, "legal authority reference"],
@@ -1132,6 +1181,43 @@ export class Detector {
         1,
         "registered-agent label",
       ],
+      // Finance operations reference labels (invoices, remittance advice,
+      // accounts-payable forms). Remittance Advice No., Customer No., Payment
+      // Reference, VAT/Tax identifiers, and Bank Account No. name a specific
+      // payment document, account, or taxable entity. Kept label-bound so bare
+      // figures, table quantities, and item codes stay readable. The
+      // abbreviated "Account No." stays CASE_REF (above); only the explicit
+      // "Bank Account" label and full-word "Account Number" become BANK_ACCOUNT.
+      [
+        /^\s*(?:Remittance\s+Advice|Remittance|Customer)\s+(?:Nos?|Numbers?|IDs?|Reference|Code)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "finance document reference label",
+      ],
+      [
+        /^\s*Payment\s+(?:References?|Ref)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "payment reference label",
+      ],
+      [
+        /^\s*(?:VAT\s+(?:Registration\s+)?(?:Nos?|Numbers?|IDs?)|Tax(?:payer)?\s+(?:Identification\s+)?(?:IDs?|Nos?|Numbers?))\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "tax identifier label",
+      ],
+      [
+        /^\s*Bank\s+Account\s+(?:Nos?|Numbers?)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BANK_ACCOUNT",
+        1,
+        "bank account number label",
+      ],
+      [
+        /^\s*Account\s+Number\b\.?\s*[:：]?\s*(.+)$/i,
+        "BANK_ACCOUNT",
+        1,
+        "account number label",
+      ],
       [/^\s*Ref\.?\s*[:：]\s*(.+)$/i, "CASE_REF", 1, "reference label"],
     ];
 
@@ -1146,6 +1232,13 @@ export class Detector {
         const match = stripped.match(regex);
         if (!match) continue;
         for (const part of this.splitLabelValue(match[1], kind)) {
+          if (
+            (kind === "CASE_REF" ||
+              kind === "BUSINESS_ID" ||
+              kind === "BANK_ACCOUNT") &&
+            !/\d/.test(part)
+          )
+            continue;
           // Attention/Attn labels occasionally point at a department or role
           // rather than a person (e.g. "Attention: Legal Department",
           // "Attn: Human Resources"). Skip values that are contract/role
@@ -2248,7 +2341,7 @@ export class Detector {
     }
   }
 
-  private detectStrictProperNouns(doc: RedactionInput): void {
+  private detectHeavyProperNouns(doc: RedactionInput): void {
     const counts = new Map<string, number>();
     const firstPos = new Map<string, number>();
     const eligible = new Map<string, boolean>();
@@ -2500,7 +2593,7 @@ export class Detector {
   private finalizeCandidates(): void {
     // When the same exact surface string was detected under multiple kinds,
     // keep a single winner so replacement stays consistent. Prefer the lowest
-    // minLevel so a strict-only detection can never shadow a lighter one and
+    // minLevel so a heavy-only detection can never shadow a lighter one and
     // remove a redaction that used to apply at lower levels.
     for (const [value, kinds] of this.exactIndex) {
       if (kinds.size <= 1) continue;
@@ -2635,6 +2728,21 @@ export class Detector {
       "Proxy",
     ]);
     if (tokens.length >= 2 && ROLE_ENDINGS.has(lastToken)) return false;
+    // Reject finance/operations document-section headings caught by the
+    // standalone-line or list detectors on invoices, remittance advice, and
+    // accounts-payable forms (e.g. "Remittance Advice", "Bank Details",
+    // "Beneficiary Details", "Wire Instructions", "Line Items"). These are
+    // section titles, not people; the heading nouns never appear as surnames.
+    const DOCUMENT_HEADING_ENDINGS = new Set([
+      "Advice",
+      "Instructions",
+      "Details",
+      "Items",
+      "Summary",
+      "Method",
+      "Information",
+    ]);
+    if (tokens.length >= 2 && DOCUMENT_HEADING_ENDINGS.has(lastToken)) return false;
     // Reject government / regulator agency fragments caught by the
     // communication-context, list, or standalone-line detectors (e.g. "Drug
     // Administration", "Trade Commission", "Drug Administration Silver
@@ -2761,7 +2869,7 @@ function stripWordAnchors(text: string): string {
 }
 
 function applyChronologyPolicy(text: string, level: number): string {
-  if (level < LEVELS.strict) return text;
+  if (level < LEVELS.heavy) return text;
   const lines = text.split(/\r?\n/);
   let inChronology = false;
   let row = 0;
@@ -2804,7 +2912,7 @@ function splitMarkdownRow(line: string): string[] | null {
 }
 
 function quarantineLegalContactSections(text: string, level: number): string {
-  if (level < LEVELS.strict) return text;
+  if (level < LEVELS.heavy) return text;
   const lines = text.split(/\r?\n/);
   const output: string[] = [];
   let counter = 0;

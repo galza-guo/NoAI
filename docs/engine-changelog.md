@@ -2,6 +2,42 @@
 
 The redaction engine uses semantic versioning independently from the app package.
 
+## 1.0.13 - 2026-06-17
+
+Pre-release level-name cleanup.
+
+- Standardized the strongest redaction setting on `heavy` throughout the engine/API surface, removing the temporary `strict` alias before initial release.
+
+## 1.0.12 - 2026-06-17
+
+Release-candidate audit repair after the Round 8 finance operations pass.
+
+- Required label-based `CASE_REF`, `BUSINESS_ID`, and `BANK_ACCOUNT` values to contain a digit, so placeholder prose such as `Tax ID: pending` or `Bank Account Number: to be confirmed` stays readable.
+
+## 1.0.11 - 2026-06-17
+
+Finance operations, invoice, remittance, and accounts-payable pass. Audited synthetic samples covering a utility monthly invoice, a UK VAT vendor invoice, a university remittance advice, a purchase order with line items, an accounts-payable policy, international wire/remittance instructions, a vendor invoice submission guide, and a vendor onboarding form, so the engine stays useful for operational documents that look like tables and forms rather than legal prose, with no new AI/backend dependencies.
+
+New direct-identifier coverage (all label-bound to avoid false positives on bare figures, quantities, unit prices, totals, item codes, and version numbers):
+
+- Finance document references after their label + qualifier: `Remittance Advice No./Number`, `Remittance No.`, and `Customer No./Number/ID` (`BUSINESS_ID`). The full labeled phrase is the candidate value (consistent with procurement references and SEC file numbers), so only the labeled occurrence is redacted and a bare number elsewhere stays readable. The value must contain a digit.
+- `Payment Reference` / `Payment Ref` as a compound label, e.g. `Payment Reference: PAY-2026-5512-CUST2099` (`BUSINESS_ID`). The bare-colon `Reference:` detector only matches the trailing substring and left the `Payment ` prefix unscoped; this compound label captures the full reference. Prose such as "the payment reference will follow" stays readable because the value must contain a digit.
+- Tax identifiers after their label: `VAT Registration No./Number`, `VAT No.`, `VAT ID`, `Tax ID`, `Tax No.`, `Tax Identification No./Number`, and `Taxpayer ID` (`BUSINESS_ID`). Bare `TIN` is deliberately excluded because lowercase `tin` is a common word. `VAT:` followed by a rate/amount is not matched because the qualifier is required.
+- `Bank Account No./Number` and the full-word `Account Number` (`BANK_ACCOUNT`). Previously a digit-only bank account number was mislabeled as `PHONE`; the label-bound rule now classifies it correctly. The abbreviated `Account No.` (CASE_REF) behavior is unchanged.
+
+False-positive guardrails (kept readable at all levels):
+
+- The finance reference/tax patterns require a label + qualifier anchor (or the compound `Payment Reference` label), so unlabeled bare numbers (`1234`, `567890`), manufacturer item codes (`AB1234567890`, which also fails the ISIN checksum), table quantities, `Unit Price`, `Version 2.1`, and `Section 12` remain readable.
+- `VAT: 20%`, `VAT (20%): ...`, and `Tax: 32.00` are not treated as tax identifiers because they lack the `No./Number/ID` qualifier; the rate/amount stays an ordinary amount and the label stays readable.
+- Added finance operations boilerplate to the heavy proper-noun stop list: `Remittance Advice`, `Payment Terms`, `Net 30`/`Net 60`/`Net 90`, `Subtotal`, `Total Due`, `Balance Due`, `Payment Due`, `Bill To`, `Ship To`, `Remit To`. The standalone `Remittance Advice` document/section title and `Accounts Payable` (added in Round 6) stay readable.
+- Invoice table column headers (`Invoice No.`, `PO Number`, `Description`, `Qty`, `Unit Price`, `Amount`) and line-item descriptions stay readable; only inline labeled references and explicit contact/bank fields redact.
+
+Known trade-offs:
+
+- The finance label (e.g. `Remittance Advice No.`) is consumed within the redacted reference phrase, consistent with how procurement IDs and SEC file numbers are handled. The label word in other contexts (e.g. the standalone `Remittance Advice` title) remains readable.
+- A `From:`/`To:` correspondence field whose value contains a department suffix (e.g. `From: Cedar Grove Public University - Accounts Payable`) redacts the whole sender line, so `Accounts Payable` is consumed within that single sender value; the standalone `Accounts Payable` label elsewhere is preserved. This is a pre-existing single-line label-value limitation, not specific to finance documents.
+- Spaced/grouped VAT numbers such as `GB 123 4567 89` and bare `VAT: GB123456789` (without a `No.`/`ID` qualifier) are not matched; the no-space qualified form `VAT No. GB123456789` is covered.
+
 ## 1.0.10 - 2026-06-17
 
 Additional deterministic redaction repairs after another corpus pass.
@@ -62,7 +98,7 @@ New direct-identifier coverage (all label-bound to avoid false positives on bare
 False-positive guardrails (kept readable at all levels):
 
 - Procurement role labels (`Purchaser`, `Supplier`, `Vendor`, `Bidder`, `Contractor`, `Subcontractor`, `Procurement`, `Buyer`) are no longer treated as standalone person-name components, so prose like "The Vendor shall deliver" stays readable.
-- Added procurement boilerplate to the Strict proper-noun stop list: `Scope of Work`, `Statement of Work`, `Terms and Conditions`, `Contract Award Notice`, `Accounts Payable`, `Request for Proposal`, `Request for Quotation`, `Invitation for Bid`, `Procurement Officer`, `Procurement Manager`, `Purchase Order`.
+- Added procurement boilerplate to the heavy proper-noun stop list: `Scope of Work`, `Statement of Work`, `Terms and Conditions`, `Contract Award Notice`, `Accounts Payable`, `Request for Proposal`, `Request for Quotation`, `Invitation for Bid`, `Procurement Officer`, `Procurement Manager`, `Purchase Order`.
 - The procurement ID patterns require a label + qualifier (or label + colon) anchor, so unlabeled bare numbers (`1234`, `567890`), table quantities, `AB1234567890`, `Version 2.1`, and `Section 12` remain readable.
 
 Known trade-off: the procurement label (e.g. `Purchase Order No.`) is consumed within the redacted reference phrase, consistent with how SEC file numbers are handled. `Purchase Order` in other contexts ("This Purchase Order is issued under...") remains readable because it lacks the reference qualifier.
@@ -89,7 +125,7 @@ New direct-identifier coverage (all label- or format-bound to avoid false positi
 Over-redaction fixes for exchange/listing-venue boilerplate (kept readable at all levels):
 
 - Listing-venue entity names and disclaimer fragments are no longer carved into ORG/PERSON candidates: `Hong Kong Exchanges and Clearing`, `Stock Exchange`, `The Stock Exchange of Hong Kong Limited`, `London Stock Exchange`, `Singapore Exchange`, and the `CHANGE OF COMPANY` heading.
-- Added stock-exchange regulatory/meeting boilerplate to the Strict proper-noun stop list: `Annual General Meeting`, `Extraordinary General Meeting`, `Company Secretary`, `Proxy Form`, `Ordinary Resolution`, `Ordinary Shares`, `Results Announcement`, `Registration Statement`, `Listing Rule`, `Main Board Rule`, `GEM Rule`, `AIM Rules`, `Annual/Directors'/Auditor's/Remuneration/Financial/Sustainability Report`, `Explanatory Statement`, `Notice of Meeting`, `Non-Executive/Independent/Executive Director`, `Group Chief Executive Officer`, `Performance Rights`, `For personal use only`.
+- Added stock-exchange regulatory/meeting boilerplate to the heavy proper-noun stop list: `Annual General Meeting`, `Extraordinary General Meeting`, `Company Secretary`, `Proxy Form`, `Ordinary Resolution`, `Ordinary Shares`, `Results Announcement`, `Registration Statement`, `Listing Rule`, `Main Board Rule`, `GEM Rule`, `AIM Rules`, `Annual/Directors'/Auditor's/Remuneration/Financial/Sustainability Report`, `Explanatory Statement`, `Notice of Meeting`, `Non-Executive/Independent/Executive Director`, `Group Chief Executive Officer`, `Performance Rights`, `For personal use only`.
 - Corporate-governance role phrases ending in `Director`/`Directors`/`Representative`/`Secretary`/`Chairman`/`Officer`/... are no longer treated as person names (`Independent Non-executive Directors`, `Authorised Representative`, `Chief Executive Officer`).
 - Person-list and communication-context detectors skip fragments ending in a legal-form suffix (`Clearing Limited` from `Hong Kong Exchanges and Clearing Limited`) while preserving genuine litigation-role captures such as `Respondent Northwind Inc`.
 - Removed the corpus-specific `Stock Exchange of Hong Kong` known-organization entry so the listing venue is not redacted.

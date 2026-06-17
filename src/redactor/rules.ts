@@ -461,7 +461,7 @@ export const PROPER_NOUN_STOP_TERMS = new Set([
   "Hearing Bundle",
   // Stock-exchange / listed-issuer regulatory boilerplate. These phrases are
   // standard across HKEX, SGX, ASX, and LSE/AIM filings and identify neither
-  // the issuer nor an individual; redacting them at Strict only harms
+  // the issuer nor an individual; redacting them at heavy only harms
   // readability of mandatory disclosure language.
   "Stock Exchange",
   "The Stock Exchange",
@@ -500,7 +500,7 @@ export const PROPER_NOUN_STOP_TERMS = new Set([
   "Group Chief Executive Officer",
   "Chief Executive Officer",
   // Procurement document boilerplate. These phrases identify neither a
-  // vendor nor an individual; redacting them at Strict only harms
+  // vendor nor an individual; redacting them at heavy only harms
   // readability of standard solicitation/PO/contract language.
   "Scope of Work",
   "Statement of Work",
@@ -513,10 +513,25 @@ export const PROPER_NOUN_STOP_TERMS = new Set([
   "Procurement Officer",
   "Procurement Manager",
   "Purchase Order",
+  // Finance operations / accounts-payable boilerplate. These standard invoice,
+  // remittance, and AP labels identify neither a vendor nor an individual;
+  // redacting them at heavy only harms readability of finance documents.
+  "Remittance Advice",
+  "Payment Terms",
+  "Net 30",
+  "Net 60",
+  "Net 90",
+  "Subtotal",
+  "Total Due",
+  "Balance Due",
+  "Payment Due",
+  "Bill To",
+  "Ship To",
+  "Remit To",
 ]);
 
 // Common title-case words that should not, by themselves, turn a capitalized
-// phrase into a redacted proper noun in strict mode.
+// phrase into a redacted proper noun in heavy mode.
 export const COMMON_TITLE_WORDS = new Set([
   "The",
   "This",
