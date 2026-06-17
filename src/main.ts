@@ -12,6 +12,7 @@ import {
   ReviewModel,
 } from "./redactor/types";
 import { ENGINE_VERSION, ENGINE_VERSION_DATE } from "./redactor/version";
+import packageMeta from "../package.json";
 
 /* ------------------------------------------------------------------ *
  * NoAI review workspace (frontend track)
@@ -33,7 +34,13 @@ interface LoadedDocument {
   warnings: string[];
 }
 
-type AppRoute = "workspace" | "faq" | "about" | "privacy" | "terms" | "changelog";
+type AppRoute =
+  | "workspace"
+  | "faq"
+  | "about"
+  | "privacy"
+  | "terms"
+  | "changelog";
 type InfoRoute = Exclude<AppRoute, "workspace">;
 
 interface AppState {
@@ -57,9 +64,12 @@ interface AppState {
   selectedEntryId: string | null;
   showOriginalPreview: boolean;
   showPreviewSearch: boolean;
+  changelogExpanded: boolean;
+  devModeActive: boolean;
 }
 
-const APP_VERSION = "0.1.0";
+const APP_VERSION = packageMeta.version;
+const FIRST_VISIT_COVER_KEY = "noai_visited";
 
 const state: AppState = {
   route: routeFromHash(),
@@ -78,13 +88,27 @@ const state: AppState = {
   selectedEntryId: null,
   showOriginalPreview: false,
   showPreviewSearch: false,
+  changelogExpanded: false,
+  devModeActive: false,
 };
+
+type InfoBlock =
+  | { type: "text"; text: string }
+  | { type: "html"; html: string }
+  | { type: "qa"; question: string; answer: string[] }
+  | { type: "qa-html"; question: string; answerHtml: string[] }
+  | { type: "qa-rich"; question: string; bodyHtml: string };
+
+interface InfoSection {
+  heading: string;
+  blocks: InfoBlock[];
+}
 
 interface InfoPageScaffold {
   route: InfoRoute;
   title: string;
   summary: string;
-  sections: string[];
+  sections: InfoSection[];
 }
 
 const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
@@ -92,62 +116,714 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
     route: "faq",
     title: "FAQ",
     summary:
-      "Scaffold for plain-language answers about how NoAI works, what it can and cannot do, and how users should review output.",
+      "Frequently asked questions about how NoAI works, what it can and cannot do, and how to use its output. Plain answers, no fine print.",
     sections: [
-      "How NoAI works",
-      "Files and exports",
-      "Redaction levels",
-      "Accuracy and review limits",
-      "Using the output with external AI tools",
+      {
+        heading: "How NoAI works",
+        blocks: [
+          {
+            type: "qa-rich",
+            question: "Does NoAI send my documents anywhere?",
+            bodyHtml: `
+              <p>No. NoAI is a static web app: the app downloads to your browser, then your browser runs it on your device. When you add a document, NoAI's rule-based scripts read and redact it locally. The redaction process does not upload any document content to any server or call any AI model.</p>
+              <p>That is different from sending a document to, say, ChatGPT. In that flow, the document goes to OpenAI's servers, gets processed there, and then a response comes back to you.</p>
+              <div class="privacy-flow-comparison" aria-label="Comparison of where document processing happens">
+                <div class="privacy-model privacy-model-remote">
+                  <div class="privacy-model-head">
+                    <i class="ph ph-chat-circle-text" aria-hidden="true"></i>
+                    <span>When an AI server is involved</span>
+                  </div>
+                  <div class="privacy-tier-map">
+                    <div class="privacy-tier privacy-tier-server">
+                      <span class="privacy-tier-node">
+                        <i class="ph ph-cloud" aria-hidden="true"></i>
+                        <span>AI server</span>
+                      </span>
+                    </div>
+                    <div class="privacy-action-band privacy-action-band-remote">
+                      <span class="privacy-action privacy-action-upload">
+                        <i class="ph ph-arrow-up" aria-hidden="true"></i>
+                        <span>Upload document</span>
+                      </span>
+                      <span class="privacy-action privacy-action-return">
+                        <i class="ph ph-arrow-down" aria-hidden="true"></i>
+                        <span>Response returns</span>
+                      </span>
+                    </div>
+                    <div class="privacy-tier privacy-tier-browser">
+                      <span class="privacy-tier-node">AI chat page</span>
+                    </div>
+                    <div class="privacy-action-band privacy-action-band-user">
+                      <span class="privacy-action privacy-action-upload">
+                        <i class="ph ph-arrow-up" aria-hidden="true"></i>
+                        <span>Send document</span>
+                      </span>
+                      <span class="privacy-action privacy-action-return">
+                        <i class="ph ph-arrow-down" aria-hidden="true"></i>
+                        <span>Get response</span>
+                      </span>
+                    </div>
+                    <div class="privacy-tier privacy-tier-you">
+                      <span class="privacy-tier-node">You</span>
+                    </div>
+                  </div>
+                  <p>Documents are processed on the server, so an upload is involved.</p>
+                </div>
+                <div class="privacy-model privacy-model-local">
+                  <div class="privacy-model-head">
+                    <i class="ph ph-shield-check" aria-hidden="true"></i>
+                    <span>How NoAI works</span>
+                  </div>
+                  <div class="privacy-tier-map">
+                    <div class="privacy-tier privacy-tier-server">
+                      <span class="privacy-tier-node">
+                        <i class="ph ph-cloud" aria-hidden="true"></i>
+                        <span>NoAI static site</span>
+                      </span>
+                    </div>
+                    <div class="privacy-action-band privacy-action-band-download">
+                      <span class="privacy-action privacy-action-download">
+                        <i class="ph ph-arrow-down" aria-hidden="true"></i>
+                        <span>Download web app</span>
+                      </span>
+                    </div>
+                    <div class="privacy-tier privacy-tier-browser privacy-tier-browser-local">
+                      <span class="privacy-tier-node">Browser</span>
+                    </div>
+                    <div class="privacy-action-band privacy-action-band-local">
+                      <span class="privacy-action">
+                        <i class="ph ph-arrow-up" aria-hidden="true"></i>
+                        <span>Open document</span>
+                      </span>
+                      <span class="privacy-action privacy-action-local-return">
+                        <i class="ph ph-arrow-down" aria-hidden="true"></i>
+                        <span>Get redacted Markdown</span>
+                      </span>
+                    </div>
+                    <div class="privacy-tier privacy-tier-you">
+                      <span class="privacy-tier-node">You</span>
+                    </div>
+                  </div>
+                  <p>The app downloads to your browser. Documents are processed on your device, so no upload is involved.</p>
+                </div>
+              </div>
+            `,
+          },
+          {
+            type: "qa",
+            question: "Does NoAI use AI to find sensitive text?",
+            answer: [
+              "No. Detection uses fixed, rule-based patterns, like a checklist applied the same way every time. It is deterministic and inspectable: each item NoAI finds is listed so you can keep, change, or remove it before exporting.",
+            ],
+          },
+          {
+            type: "qa",
+            question: 'What does "local and mechanical" mean?',
+            answer: [
+              "The same input always produces the same redactions on the same settings. There is no learning, no model, and no remote processing of your text.",
+              "For example, a phone number is redacted because it matches a fixed pattern, not because NoAI learned what a phone number is. Run the same document twice and you get the same result both times.",
+            ],
+          },
+          {
+            type: "qa-html",
+            question: "Does NoAI learn from my documents?",
+            answerHtml: [
+              "No. NoAI has no access to your documents.",
+              'However, the developer does update the engine from time to time by testing them against publicly available business and legal documents. See our <a href="#/changelog">changelog</a>.',
+            ],
+          },
+          {
+            type: "qa-html",
+            question: "How do I know what you say is true?",
+            answerHtml: [
+              "NoAI is open-source software, and its full source code is available on <a href=\"https://github.com/guolite/NoAI\" target=\"_blank\" rel=\"noopener\">GitHub</a>. You can review the code yourself, or ask your AI assistant to verify it using a prompt like this:",
+              `<div class="sample-prompt-container">
+                <div class="sample-prompt-header">
+                  <span class="sample-prompt-title">Sample Prompt</span>
+                  <button type="button" class="copy-prompt-btn" data-copy-text="Here is the source code for NoAI: https://github.com/guolite/NoAI. Please review the redaction engine and confirm whether it uploads my documents to any external server or uses an AI model." aria-label="Copy prompt" title="Copy prompt">
+                    <i class="ph ph-copy" aria-hidden="true"></i>
+                  </button>
+                </div>
+                <div class="sample-prompt-body">
+                  <pre><code id="verification-prompt-code">Here is the source code for NoAI: https://github.com/guolite/NoAI. Please review the redaction engine and confirm whether it uploads my documents to any external server or uses an AI model.</code></pre>
+                </div>
+              </div>`,
+            ],
+          },
+        ],
+      },
+      {
+        heading: "Files and exports",
+        blocks: [
+          {
+            type: "qa",
+            question: "Which file types can I use?",
+            answer: [
+              "Markdown (.md), plain text (.txt), Word documents (.docx), and text-based PDFs.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Can I redact scanned PDFs or images?",
+            answer: [
+              "Not reliably. Convert or paste the text in first.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "What can I export?",
+            answer: [
+              "A redacted Markdown file for each document, or a combined Markdown file when you process several at once.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "What is Markdown and why?",
+            answer: [
+              "Markdown is a lightweight plain-text formatting syntax. It is the 'native' format for most AI agents and LLMs, making it the most reliable way to feed structured text into them.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "Redaction levels",
+        blocks: [
+          {
+            type: "qa",
+            question: "What are Light, Balanced, and Heavy?",
+            answer: [
+              "They set how aggressively NoAI redacts text. Each level includes everything in the previous level:",
+              "• Light: Direct identifiers including Email, Phone, URL, Address, Postcode, National ID, Business ID, Bank IBAN, and Case References.",
+              "• Balanced (default): Adds contextual identifiers including Person Names, Organizations, Dates, Amounts, Locations, and Exhibit, Bundle, Transcript, and Procedural References.",
+              "• Heavy: Adds Proper Nouns (general capitalized phrases, project names, and brands).",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Do my custom terms still apply at every level?",
+            answer: [
+              "Yes. Anything you add as a custom term is redacted consistently at Light, Balanced, and Heavy.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "Accuracy and review limits",
+        blocks: [
+          {
+            type: "qa",
+            question: "Does NoAI catch everything?",
+            answer: [
+              "No. It reliably finds common patterns such as emails, phone numbers, dates, amounts, and reference numbers, but it can miss things or redact more than you would like. Treat the result as a strong first pass, not a guarantee.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Do I need to check the result?",
+            answer: [
+              "Yes. Always review the redacted output before you share it or paste it into another tool. You can keep, change, or remove any redaction before exporting.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "Using the output with external AI tools",
+        blocks: [
+          {
+            type: "qa",
+            question: "Why Markdown?",
+            answer: [
+              "It is widely supported by AI tools and chatbots and pastes in cleanly, so your redacted document is easy to reuse.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "What should I do before pasting into another AI tool?",
+            answer: [
+              "Review the redacted output first, then copy only what you are comfortable sharing. NoAI does not control or see what you do in other tools.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Does NoAI connect to those tools for me?",
+            answer: [
+              "No. NoAI only prepares the text. Any sharing is something you do yourself, after reviewing.",
+            ],
+          },
+        ],
+      },
     ],
   },
   about: {
     route: "about",
     title: "About",
     summary:
-      "Scaffold for project purpose, maintainer details, support/contact information, version metadata, source, and license.",
+      `NoAI is a browser-only redaction tool for people who want to review and reduce sensitive details before sharing documents with external AI tools. Version ${APP_VERSION}.`,
     sections: [
-      "What NoAI is",
-      "Maintainer and contact",
-      "Version information",
-      "License and source",
+      {
+        heading: "What NoAI is",
+        blocks: [
+          {
+            type: "text",
+            text: "Redact documents before sharing them with external AI tools.",
+          },
+          {
+            type: "text",
+            text: "Everything runs in your browser: no AI calls, no document uploads, no backend conversion service.",
+          },
+          {
+            type: "text",
+            text: "It is a first pass, not a guarantee. Always review the output before sharing.",
+          },
+        ],
+      },
+      {
+        heading: "Contact",
+        blocks: [
+          {
+            type: "html",
+            html: '<p>Gallant GUO<br><a href="mailto:glt@gallantguo.com">glt@gallantguo.com</a></p>',
+          },
+        ],
+      },
+      {
+        heading: "License and source",
+        blocks: [
+          {
+            type: "html",
+            html: `
+              <div class="info-link-list">
+                <a href="https://github.com/guolite/NoAI" target="_blank" rel="noopener">
+                  <i class="ph ph-github-logo" aria-hidden="true"></i>
+                  <span>Open source</span>
+                </a>
+                <a href="https://github.com/guolite/NoAI/blob/main/LICENSE" target="_blank" rel="noopener">
+                  <i class="ph ph-scroll" aria-hidden="true"></i>
+                  <span>AGPL v3.0</span>
+                </a>
+              </div>
+            `,
+          },
+        ],
+      },
     ],
   },
   privacy: {
     route: "privacy",
     title: "Privacy Policy",
     summary:
-      "Scaffold for concrete privacy disclosures: local processing, no document upload path, no AI calls, storage, third parties, and contact.",
+      "How NoAI handles information. Short version: document text is processed in your browser, not uploaded to NoAI, and not sent to an AI model by NoAI.",
     sections: [
-      "Information NoAI processes",
-      "Local browser processing",
-      "Network requests and third parties",
-      "Storage and retention",
-      "User choices and contact",
+      {
+        heading: "Information NoAI processes",
+        blocks: [
+          {
+            type: "qa",
+            question: "What information does NoAI read?",
+            answer: [
+              "NoAI reads the files you choose to add to the app, such as Markdown, plain text, Word documents, and text-based PDFs. It uses that text to find likely sensitive items and produce redacted Markdown.",
+              "The document text is handled in your browser session. NoAI does not intentionally collect, store, or upload the contents of your documents.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Does NoAI collect account information?",
+            answer: [
+              "NoAI does not currently have user accounts, sign-in, subscriptions, or a payment flow in this app.",
+              "Because there is no account system, NoAI does not ask for names, passwords, billing details, or profile information before you use the redaction workspace.",
+            ],
+          },
+          {
+            type: "qa-html",
+            question: "Does NoAI collect analytics?",
+            answerHtml: [
+              "NoAI does not include analytics, telemetry, crash reporting, advertising pixels, or product-tracking scripts that inspect document contents.",
+              'If this changes in a future release, this policy should be updated before release. You can also inspect the source code on <a href="https://github.com/guolite/NoAI" target="_blank" rel="noopener">GitHub</a>.',
+            ],
+          },
+        ],
+      },
+      {
+        heading: "Local browser processing",
+        blocks: [
+          {
+            type: "qa",
+            question: "Where does redaction happen?",
+            answer: [
+              "Redaction happens locally in your browser. The website loads the app code, then your browser reads the selected files and applies deterministic redaction rules on your device.",
+              "NoAI does not send your document text to a backend server, conversion service, or AI model as part of the redaction process.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Does NoAI use AI or large language models?",
+            answer: [
+              "No. NoAI's redaction path is rule-based. It uses fixed patterns and deterministic checks, not an AI model.",
+              "This makes the behavior easier to inspect, but it also means NoAI can miss sensitive details that a person would notice. Review the redacted output before sharing it.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "What happens when I export Markdown?",
+            answer: [
+              "The export is generated in your browser from the redacted text. Downloading or copying the output does not upload the original document to NoAI.",
+              "After export, you control where the Markdown goes. If you paste it into an external AI tool, that separate tool's privacy policy and terms apply.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "Network requests and third parties",
+        blocks: [
+          {
+            type: "qa",
+            question: "What network requests can happen when I open NoAI?",
+            answer: [
+              "Your browser has to request the NoAI website files from the site host, such as HTML, JavaScript, styles, icons, and the logo. The current app may also request web fonts from Google Fonts, depending on how the site is deployed.",
+              "Those requests are for loading the app interface. They are not document uploads by NoAI.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Do third parties receive my document text?",
+            answer: [
+              "NoAI's redaction code does not intentionally send document text to third parties.",
+              "Be careful with what you do after export. If you upload the original file or paste redacted Markdown into another service, that action is outside NoAI and is governed by that service's rules.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Does NoAI use remote OCR or file conversion?",
+            answer: [
+              "No. NoAI does not send files to a remote OCR or conversion provider.",
+              "Text-based PDFs can be read in the browser. Scanned-image PDFs may not contain readable text, so NoAI may not be able to redact them unless you convert them to text before using NoAI.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "Storage and retention",
+        blocks: [
+          {
+            type: "qa",
+            question: "Does NoAI keep my documents?",
+            answer: [
+              "NoAI does not intentionally save your document contents to its servers.",
+              "During a browser session, your selected document text is kept in memory so the workspace can preview, edit, and export redactions. If you refresh or close the page, the session state is normally cleared by the browser.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Does NoAI use browser storage?",
+            answer: [
+              "NoAI may store small interface preferences in your browser, such as whether you have already seen the first-use notice. These preferences are not document contents.",
+              "Your browser, operating system, or downloaded files folder may keep copies of files you choose to save. Manage those copies through your own device and browser settings.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Can NoAI delete documents from my device?",
+            answer: [
+              "No. NoAI can remove a document from the current workspace view, but it cannot delete the original file from your computer.",
+              "If you download redacted Markdown, that downloaded file is stored wherever your browser saves downloads.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "User choices and contact",
+        blocks: [
+          {
+            type: "qa",
+            question: "How can I reduce privacy risk while using NoAI?",
+            answer: [
+              "Use NoAI on a device and browser you trust. Review the redacted preview and the redaction list before exporting. Search the output for names, emails, phone numbers, case numbers, and any terms you know are sensitive.",
+              "For high-risk documents, treat NoAI as a first pass. Have a human review the final output before sharing it with an AI tool or anyone else.",
+            ],
+          },
+          {
+            type: "qa-html",
+            question: "How do I ask privacy questions or report a concern?",
+            answerHtml: [
+              'Use the contact details on the <a href="#/about">About</a> page once they are added. If you are reviewing the source code, you can also use the project repository to raise implementation questions.',
+              "Please do not send private client, legal, personal, or proprietary documents when reporting a bug. Use a synthetic example that shows the pattern without exposing real information.",
+            ],
+          },
+        ],
+      },
     ],
   },
   terms: {
     route: "terms",
     title: "User Agreement",
     summary:
-      "Scaffold for user responsibilities, no legal advice, redaction limitations, acceptable use, warranty limits, and governing details.",
+      "The ground rules for using NoAI. NoAI is a practical redaction helper, not a guarantee, and you remain responsible for reviewing what you share.",
     sections: [
-      "Using NoAI",
-      "User responsibility",
-      "No legal or professional advice",
-      "No perfect-redaction guarantee",
-      "License, warranty, and liability",
+      {
+        heading: "Using NoAI",
+        blocks: [
+          {
+            type: "qa",
+            question: "What is NoAI for?",
+            answer: [
+              "NoAI helps you prepare documents before using external AI tools. It reads supported files in your browser, applies deterministic redaction rules, and exports redacted Markdown.",
+              "It is designed for practical review workflows, especially for people and small teams who want a local first-pass privacy check before pasting material into another tool.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "What do I agree to by using it?",
+            answer: [
+              "By using NoAI, you agree to use it responsibly and to review the output before sharing it.",
+              "You also agree not to use NoAI to break the law, violate someone else's rights, or create a false impression that a document has been fully anonymized or legally redacted when it has not been reviewed.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Can these terms change?",
+            answer: [
+              "Yes. NoAI may update these terms as the app changes. The current version shown in the app is the version that applies when you use it.",
+              "If a change matters to privacy, redaction behavior, or user responsibility, it should be reflected clearly in the release-facing pages before release.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "User responsibility",
+        blocks: [
+          {
+            type: "qa",
+            question: "Who is responsible for the final document?",
+            answer: [
+              "You are. NoAI can help find and replace likely sensitive text, but it cannot know every fact, relationship, code name, unusual identifier, or context-specific detail that matters in your document.",
+              "Before sharing anything, review the redacted Markdown yourself. For important or high-risk material, ask a qualified human reviewer to check it too.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "What should I check before sharing output?",
+            answer: [
+              "Check for visible names, email addresses, phone numbers, URLs, addresses, account numbers, case references, project names, client names, and other details that would identify a person, company, matter, or transaction.",
+              "Also check context. A document can reveal sensitive information even after obvious identifiers are removed.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "What happens after I paste output into another AI tool?",
+            answer: [
+              "That is outside NoAI. Once you paste or upload anything to another service, that service's privacy policy, terms, retention settings, and account controls apply.",
+              "NoAI cannot control what external AI tools do with text you choose to send them.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "No legal or professional advice",
+        blocks: [
+          {
+            type: "qa",
+            question: "Is NoAI legal advice?",
+            answer: [
+              "No. NoAI is software, not a lawyer, compliance advisor, privacy officer, or professional reviewer.",
+              "It does not tell you whether a document is safe to disclose, whether a redaction is legally sufficient, or whether using an external AI tool is allowed for your situation.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "When should I get professional help?",
+            answer: [
+              "Get professional advice before using NoAI as part of a legal production, regulatory response, client disclosure, employment matter, medical or financial workflow, or any situation where disclosure could harm someone or breach a duty.",
+              "NoAI can support preparation, but it should not be the only safeguard for high-risk documents.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "No perfect-redaction guarantee",
+        blocks: [
+          {
+            type: "qa",
+            question: "Does NoAI guarantee complete redaction?",
+            answer: [
+              "No. NoAI does not guarantee perfect redaction, anonymization, de-identification, or confidentiality.",
+              "The redaction engine is deterministic and rule-based. That makes it inspectable, but it can still miss unusual names, rare formats, implied identifiers, handwritten or scanned text, and sensitive context that only a person would understand.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Can NoAI over-redact?",
+            answer: [
+              "Yes. NoAI may redact text that is not actually sensitive, especially in the Heavy review setting.",
+              "Use the review list to adjust replacements, remove incorrect redactions, and add custom terms that matter for your document.",
+            ],
+          },
+          {
+            type: "qa-html",
+            question: "How should I treat the output?",
+            answerHtml: [
+              'Treat NoAI output as a draft for review. The <a href="#/faq">FAQ</a> explains how the tool works and why human review still matters.',
+              "Do not publish, disclose, or send documents solely because NoAI produced a redacted version.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "License, warranty, and liability",
+        blocks: [
+          {
+            type: "qa-html",
+            question: "What license applies to NoAI?",
+            answerHtml: [
+              'NoAI is open-source software licensed under the GNU Affero General Public License v3.0 only. You can inspect the source code on <a href="https://github.com/guolite/NoAI" target="_blank" rel="noopener">GitHub</a>.',
+              "If you modify NoAI and offer the modified version to users over a network, the AGPL may require you to make your modified source code available under the same license.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "Is NoAI provided with a warranty?",
+            answer: [
+              "NoAI is provided as-is, without a promise that it will be error-free, fit for a particular purpose, or sufficient for your specific legal, business, compliance, or privacy needs.",
+              "To the extent allowed by applicable law, the maintainers are not responsible for losses that result from your use of NoAI, your review decisions, or your sharing of documents with third-party services.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "What if the law gives me rights these terms cannot limit?",
+            answer: [
+              "Nothing in these terms is intended to remove rights or protections that cannot legally be waived.",
+              "If any part of these terms is not enforceable, the rest should still apply as far as the law allows.",
+            ],
+          },
+        ],
+      },
     ],
   },
   changelog: {
     route: "changelog",
     title: "Version History",
     summary:
-      "Scaffold for release notes. The redaction engine history can be populated from docs/engine-changelog.md.",
+      "A plain-English record of NoAI app and redaction engine changes. Engine updates improve deterministic detection, but NoAI is still a first-pass tool: review the output before sharing it.",
     sections: [
-      "Current versions",
-      "Engine changelog",
-      "App release notes",
+      {
+        heading: "Engine changelog",
+        blocks: [
+          {
+            type: "qa",
+            question: "1.0.10 - additional release-candidate repairs",
+            answer: [
+              "Tightened person and organization detection so labels and neighboring text are less likely to be swept into the same redaction.",
+              "Improved handling for multi-line legal correspondence fields.",
+              "Added regression tests for the repaired edge cases.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "1.0.9 - regulatory notice repair",
+            answer: [
+              "Improved detection when labels such as To: or Firm Name: are on one line and the person or organization appears on the next line.",
+              "Kept generic salutations, such as Whom It May Concern, readable.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "1.0.8 - regulatory and compliance documents",
+            answer: [
+              "Added coverage for common regulator matter numbers, docket numbers, complaint numbers, charge numbers, agency case codes, registration identifiers, and regulator letter signature blocks.",
+              "Reduced false positives around government agency names, statute references, notice headings, and common order language.",
+              "This pass was tested with synthetic examples modeled on regulatory enforcement and compliance notices.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "1.0.7 - procurement repair",
+            answer: [
+              "Added detection for compound procurement and payment references, such as a labeled payment reference number.",
+              "Treated Buyer Name and Bidder Name fields as person-or-organization labels, since those fields can contain either a contact or an entity.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "1.0.6 - procurement, RFP, and purchase order documents",
+            answer: [
+              "Added coverage for solicitation numbers, RFP/RFQ/RFI/IFB numbers, purchase order numbers, contract numbers, requisition numbers, vendor IDs, invoice numbers, bid numbers, tender numbers, and quote numbers when they are clearly labeled.",
+              "Added contact-field detection for procurement officers, procurement contacts, buyers, and bidders.",
+              "Reduced false positives around procurement boilerplate such as Scope of Work, Terms and Conditions, Vendor, Contractor, and Purchase Order when those phrases are not acting as identifiers.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "1.0.5 - securities identifier repair",
+            answer: [
+              "Added checksum validation for ISIN detection so real securities identifiers are covered without redacting arbitrary 12-character codes that only look similar.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "1.0.4 - listed-company and stock-exchange documents",
+            answer: [
+              "Added coverage for exchange stock codes, ISINs, SEDOLs, LEIs, Australian ABNs, ACNs, ARBNs, and common filing-officer fields.",
+              "Reduced over-redaction around stock exchange names, meeting boilerplate, director role titles, and listing-rule language.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "1.0.3 - release-candidate repair",
+            answer: [
+              "Improved detection for local phone numbers, dot-separated business phone numbers, P.O. Box addresses, directional street addresses, Singapore postcodes, and Dutch postcodes in address context.",
+              "Reduced false positives around SEC-style file numbers, ZIP+4 values, and some organization-suffix matches.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "1.0.2 - mixed business and legal documents",
+            answer: [
+              "Improved handling for operational legal and business documents such as offer letters, acquisition letters, separation agreements, legal opinion letters, and advisory engagement letters.",
+              "Reduced false positives around defined terms, departments, date wording, business-number labels, and boilerplate markers.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "1.0.1 - early coverage expansion",
+            answer: [
+              "Expanded deterministic coverage for additional legal and business patterns.",
+              "Added boundary checks, normalization, replacement consistency improvements, and regression tests.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "1.0.0 - initial versioned engine baseline",
+            answer: [
+              "Established the first versioned baseline for common English business and legal documents.",
+              "Covered common identifiers such as emails, phone numbers, URLs, addresses, postcodes, IDs, bank details, case and filing references, names, organizations, dates, amounts, locations, project terms, correspondence metadata, litigation captions, contact blocks, and signature blocks.",
+              "Known limit: the engine is rule-based and inspectable, so unusual names, rare address formats, and context-only identifiers can still require human review.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "App release notes",
+        blocks: [
+          {
+            type: "qa",
+            question: "0.1.0 - release-candidate interface",
+            answer: [
+              "Browser-only static app for dropping Markdown, text, Word, and text-based PDF files.",
+              "Three review levels: Light, Balanced, and Heavy.",
+              "Document preview, editable redaction list, manual redaction terms, per-document export, and combined Markdown export.",
+              "Release-facing help pages, privacy and terms scaffolds, version history, and a first-use notice.",
+              "The app does not add AI calls, backend document uploads, analytics over document contents, or remote conversion services.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "What should I do after an update?",
+            answer: [
+              "If you are preparing sensitive material, run the document again and review the new output. Redaction improvements can change what gets caught or left readable.",
+              "NoAI is designed to reduce obvious privacy risk before using external AI tools, not to replace human review.",
+            ],
+          },
+        ],
+      },
     ],
   },
 };
@@ -158,7 +834,11 @@ const SITE_LINKS: Array<{ route: AppRoute; label: string; icon: string }> = [
   { route: "about", label: "About", icon: "ph-info" },
   { route: "privacy", label: "Privacy", icon: "ph-shield-check" },
   { route: "terms", label: "Terms", icon: "ph-scroll" },
-  { route: "changelog", label: "Version History", icon: "ph-clock-counter-clockwise" },
+  {
+    route: "changelog",
+    label: "Version History",
+    icon: "ph-clock-counter-clockwise",
+  },
 ];
 
 const SITE_MENU_LINKS = SITE_LINKS.filter((link) => link.route !== "workspace");
@@ -172,7 +852,7 @@ function nextDocId(): string {
 const LEVEL_DESCRIPTIONS: Record<RedactionLevel, string> = {
   light: "Direct identifiers only; best readability.",
   balanced: "Names, orgs, dates, amounts; default review.",
-  strict: "More aggressive; strongest privacy pass.",
+  heavy: "More aggressive; strongest privacy pass.",
 };
 
 import "@phosphor-icons/web/regular";
@@ -250,6 +930,46 @@ app.innerHTML = `
       </div>
     </header>
 
+    <section class="first-visit-cover" id="first-visit-cover">
+      <div class="cover-content">
+        <h1 class="cover-title">You don't trust AI.<br/>Neither do we.</h1>
+        <p class="cover-subtitle">Sanitize your documents locally.<br/>Nothing leaves your device.</p>
+        <div class="cover-guarantees">
+          <p class="guarantee-item">
+            <span class="guarantee-icon" aria-hidden="true">
+              <i class="ph ph-brain"></i>
+              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
+                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+              </svg>
+            </span>
+            <span>No AI</span>
+          </p>
+          <p class="guarantee-item">
+            <span class="guarantee-icon" aria-hidden="true">
+              <i class="ph ph-hard-drives"></i>
+              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
+                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+              </svg>
+            </span>
+            <span>No servers</span>
+          </p>
+          <p class="guarantee-item">
+            <span class="guarantee-icon" aria-hidden="true">
+              <i class="ph ph-cloud-arrow-up"></i>
+              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
+                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+              </svg>
+            </span>
+            <span>No uploads</span>
+          </p>
+        </div>
+        <button type="button" id="start-redacting-btn" class="start-redacting-btn">
+          Start Redacting
+        </button>
+      </div>
+      <a href="#/faq" class="cover-learn-more-link">How this works</a>
+    </section>
+
     <section class="workspace" id="workspace-view">
 
       <!-- Empty state: large dropzone shown before any document is loaded -->
@@ -307,7 +1027,7 @@ app.innerHTML = `
                       <span class="level-desc">Names, orgs, dates, amounts; default review.</span>
                     </span>
                   </button>
-                  <button type="button" class="level-option" data-level="strict" aria-pressed="false">
+                  <button type="button" class="level-option" data-level="heavy" aria-pressed="false">
                     <span class="level-icon" aria-hidden="true">
                       <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <text x="20" y="34" class="redaction-a-base" text-anchor="middle">A</text>
@@ -317,7 +1037,7 @@ app.innerHTML = `
                       </svg>
                     </span>
                     <span class="level-copy">
-                      <span class="level-title">Strict</span>
+                      <span class="level-title">Heavy</span>
                       <span class="level-desc">More aggressive; strongest privacy pass.</span>
                     </span>
                   </button>
@@ -433,8 +1153,15 @@ const replacementsCount = document.querySelector<HTMLElement>(
   "#replacements-count",
 )!;
 const searchInput = document.querySelector<HTMLInputElement>("#search-input")!;
-const omniboxAddAction =
-  document.querySelector<HTMLElement>("#omnibox-add-action")!;
+const omniboxAddAction = document.querySelector<HTMLElement>(
+  "#omnibox-add-action",
+)!;
+
+const firstVisitCover =
+  document.querySelector<HTMLElement>("#first-visit-cover")!;
+const startRedactingBtn = document.querySelector<HTMLButtonElement>(
+  "#start-redacting-btn",
+)!;
 
 const levelButtons =
   document.querySelectorAll<HTMLButtonElement>("[data-level]");
@@ -461,9 +1188,8 @@ const previewSearchResults = document.querySelector<HTMLElement>(
 const previewVisibilityToggle = document.querySelector<HTMLButtonElement>(
   "#preview-visibility-toggle",
 )!;
-const copyDocButton = document.querySelector<HTMLButtonElement>(
-  "#copy-doc-button",
-)!;
+const copyDocButton =
+  document.querySelector<HTMLButtonElement>("#copy-doc-button")!;
 const downloadDocButton = document.querySelector<HTMLButtonElement>(
   "#download-doc-button",
 )!;
@@ -472,7 +1198,9 @@ const downloadButton =
 const toastRegion = document.querySelector<HTMLElement>("#toast-region")!;
 
 const filesPanel = document.querySelector<HTMLElement>(".files-panel")!;
-const replacementsPanel = document.querySelector<HTMLElement>(".replacements-panel")!;
+const replacementsPanel = document.querySelector<HTMLElement>(
+  ".replacements-panel",
+)!;
 const resizerLeft = document.querySelector<HTMLElement>("#resizer-left")!;
 const resizerRight = document.querySelector<HTMLElement>("#resizer-right")!;
 
@@ -491,6 +1219,66 @@ const redactSelectionBtn =
 
 let pendingRedactionText = "";
 let originalPreviewTimer: number | undefined;
+
+/* ----------------------------- Init Cover -------------------------- */
+
+const isLocalDev = import.meta.env.DEV;
+const isVisited = safeReadStorage(FIRST_VISIT_COVER_KEY) === "true";
+
+if (isVisited && !isLocalDev) {
+  firstVisitCover.classList.add("hidden-up");
+  // Remove from DOM to ensure it does not take up resources or block focus
+  firstVisitCover.remove();
+}
+
+startRedactingBtn.addEventListener("click", () => {
+  dismissFirstVisitCover();
+});
+
+function dismissFirstVisitCover(): void {
+  firstVisitCover.classList.add("hidden-up");
+  safeWriteStorage(FIRST_VISIT_COVER_KEY, "true");
+  syncCoverAccessibility();
+  window.setTimeout(() => {
+    firstVisitCover.remove();
+    syncCoverAccessibility();
+  }, 600); // Matches transition duration
+}
+
+function firstVisitCoverIsActive(): boolean {
+  return Boolean(
+    firstVisitCover.parentElement &&
+      state.route === "workspace" &&
+      !firstVisitCover.hidden &&
+      !firstVisitCover.classList.contains("hidden-up"),
+  );
+}
+
+function syncCoverAccessibility(): void {
+  const coverActive = firstVisitCoverIsActive();
+  workspaceView.toggleAttribute("inert", coverActive);
+  if (coverActive) {
+    workspaceView.setAttribute("aria-hidden", "true");
+  } else {
+    workspaceView.removeAttribute("aria-hidden");
+  }
+}
+
+function safeReadStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeWriteStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Storage can be blocked in private or hardened browser contexts.
+  }
+}
 
 /* ----------------------------- Routing ----------------------------- */
 
@@ -518,11 +1306,36 @@ window.addEventListener("hashchange", () => {
   renderRoute();
 });
 
+infoView.addEventListener("click", (event) => {
+  const btn = (event.target as HTMLElement).closest(".copy-prompt-btn");
+  if (!btn) return;
+
+  const text = btn.getAttribute("data-copy-text");
+  if (!text) return;
+
+  navigator.clipboard.writeText(text).then(() => {
+    btn.innerHTML = `<i class="ph ph-check" aria-hidden="true"></i>`;
+    btn.classList.add("copied");
+    window.setTimeout(() => {
+      btn.innerHTML = `<i class="ph ph-copy" aria-hidden="true"></i>`;
+      btn.classList.remove("copied");
+    }, 2000);
+  }).catch((err) => {
+    console.error("Failed to copy text: ", err);
+  });
+});
+
 function renderRoute(): void {
   const showingWorkspace = state.route === "workspace";
   workspaceView.hidden = !showingWorkspace;
   infoView.hidden = showingWorkspace;
   appShell.classList.toggle("info-page-active", !showingWorkspace);
+
+  if (firstVisitCover.parentElement) {
+    firstVisitCover.hidden = !showingWorkspace;
+  }
+  syncCoverAccessibility();
+
   document.title =
     state.route === "workspace"
       ? "NoAI"
@@ -532,10 +1345,78 @@ function renderRoute(): void {
   if (state.route !== "workspace") renderInfoPage(state.route);
 }
 
+function renderInfoBlocks(blocks: InfoBlock[]): string {
+  if (blocks.length === 0) return "<p>TODO: Draft this section.</p>";
+  return blocks
+    .map((block) => {
+      if (block.type === "text") {
+        return `<p>${escapeHtml(block.text)}</p>`;
+      }
+      if (block.type === "html") {
+        return block.html;
+      }
+      if (block.type === "qa-html") {
+        const answer = block.answerHtml
+          .map((line) => `<p>${line}</p>`)
+          .join("");
+        return `<div class="info-qa"><h3>${escapeHtml(block.question)}</h3>${answer}</div>`;
+      }
+      if (block.type === "qa-rich") {
+        return `<div class="info-qa"><h3>${escapeHtml(block.question)}</h3>${block.bodyHtml}</div>`;
+      }
+      const answer = block.answer
+        .map((line) => `<p>${escapeHtml(line)}</p>`)
+        .join("");
+      return `<div class="info-qa"><h3>${escapeHtml(block.question)}</h3>${answer}</div>`;
+    })
+    .join("");
+}
+
+const COLLAPSED_CHANGELOG_ITEM_COUNT = 4;
+
+function renderInfoSection(route: InfoRoute, section: InfoSection): string {
+  const isCollapsibleChangelog =
+    route === "changelog" && section.heading === "Engine changelog";
+  const shouldCollapse =
+    isCollapsibleChangelog &&
+    !state.changelogExpanded &&
+    section.blocks.length > COLLAPSED_CHANGELOG_ITEM_COUNT;
+  const visibleBlocks = shouldCollapse
+    ? section.blocks.slice(0, COLLAPSED_CHANGELOG_ITEM_COUNT)
+    : section.blocks;
+  const hiddenCount = Math.max(
+    0,
+    section.blocks.length - COLLAPSED_CHANGELOG_ITEM_COUNT,
+  );
+  const toggle =
+    isCollapsibleChangelog && hiddenCount > 0
+      ? `
+        <button
+          type="button"
+          class="ghost-button info-toggle"
+          data-changelog-toggle
+          aria-expanded="${state.changelogExpanded}"
+        >
+          ${state.changelogExpanded ? "Show Less" : `Show All (${hiddenCount} more)`}
+        </button>
+      `
+      : "";
+
+  const id = section.heading.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+  return `
+    <section id="${id}" class="info-section">
+      <h2>${escapeHtml(section.heading)}</h2>
+      ${renderInfoBlocks(visibleBlocks)}
+      ${toggle}
+    </section>
+  `;
+}
+
 function renderInfoPage(route: InfoRoute): void {
   const page = INFO_PAGE_SCAFFOLDS[route];
   const versionMeta =
-    route === "about" || route === "changelog"
+    route === "changelog"
       ? `
         <dl class="version-grid">
           <div>
@@ -554,37 +1435,126 @@ function renderInfoPage(route: InfoRoute): void {
       `
       : "";
 
+  let sidebarHtml = "";
+  if (page.sections.length > 0) {
+    const tocLinks = page.sections
+      .map((section) => {
+        const id = section.heading.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+        return `<a href="${routeHref(route)}#${id}" class="toc-link" data-target="${id}">${escapeHtml(section.heading)}</a>`;
+      })
+      .join("");
+
+    sidebarHtml = `
+      <aside class="info-sidebar" aria-label="Table of contents">
+        <nav class="info-toc">
+          ${tocLinks}
+        </nav>
+      </aside>
+    `;
+  }
+
   infoView.innerHTML = `
     <article class="info-page" aria-labelledby="info-title">
-      <header class="info-hero">
-        <a class="info-back-link" href="#/">
-          <i class="ph ph-arrow-left" aria-hidden="true"></i>
-          <span>Back to workspace</span>
-        </a>
-        <h1 id="info-title">${escapeHtml(page.title)}</h1>
-        <p>${escapeHtml(page.summary)}</p>
-        ${versionMeta}
-      </header>
-      <div class="info-section-list">
-        ${page.sections
-          .map(
-            (section) => `
-              <section class="info-section">
-                <h2>${escapeHtml(section)}</h2>
-                <p>TODO: Draft this section.</p>
-              </section>
-            `,
-          )
-          .join("")}
+      <div class="info-page-layout">
+        ${sidebarHtml}
+        <div class="info-content-wrap">
+          <header class="info-hero">
+            <a class="info-back-link" href="#/">
+              <i class="ph ph-arrow-left" aria-hidden="true"></i>
+              <span>Back to workspace</span>
+            </a>
+            <h1 id="info-title">${escapeHtml(page.title)}</h1>
+            ${renderInfoHeroSummary(route, page.summary)}
+            ${versionMeta}
+          </header>
+          <div class="info-section-list">
+            ${page.sections
+              .map((section) => renderInfoSection(route, section))
+              .join("")}
+          </div>
+          <footer class="info-footer">
+            ${SITE_LINKS.map(
+              (link) =>
+                `<a href="${routeHref(link.route)}">${escapeHtml(link.label)}</a>`,
+            ).join("")}
+          </footer>
+        </div>
       </div>
-      <footer class="info-footer">
-        ${SITE_LINKS.map(
-          (link) =>
-            `<a href="${routeHref(link.route)}">${escapeHtml(link.label)}</a>`,
-        ).join("")}
-      </footer>
     </article>
   `;
+  infoView
+    .querySelector<HTMLButtonElement>("[data-changelog-toggle]")
+    ?.addEventListener("click", () => {
+      state.changelogExpanded = !state.changelogExpanded;
+      renderInfoPage(route);
+    });
+
+  if (page.sections.length > 0) {
+    setupScrollSpy();
+  }
+}
+
+function setupScrollSpy(): void {
+  const sections = infoView.querySelectorAll<HTMLElement>(".info-section");
+  const tocLinks = infoView.querySelectorAll<HTMLAnchorElement>(".toc-link");
+  if (sections.length === 0 || tocLinks.length === 0) return;
+
+  const observerOptions = {
+    root: null,
+    rootMargin: "-20% 0px -60% 0px",
+    threshold: 0
+  };
+
+  const activeSections = new Set<string>();
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        activeSections.add(entry.target.id);
+      } else {
+        activeSections.delete(entry.target.id);
+      }
+    });
+
+    let highlightedId: string | null = null;
+    for (const section of Array.from(sections)) {
+      if (activeSections.has(section.id)) {
+        highlightedId = section.id;
+        break;
+      }
+    }
+
+    if (!highlightedId && activeSections.size === 0) {
+      return;
+    }
+
+    tocLinks.forEach(link => {
+      if (link.dataset.target === highlightedId) {
+        link.classList.add("active");
+        link.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      } else {
+        link.classList.remove("active");
+      }
+    });
+  }, observerOptions);
+
+  sections.forEach(sec => observer.observe(sec));
+
+  tocLinks.forEach(link => {
+    link.addEventListener("click", (e) => {
+      const targetId = link.dataset.target;
+      const targetSection = document.getElementById(targetId || "");
+      if (targetSection) {
+        e.preventDefault();
+        window.history.pushState(null, "", link.href);
+        targetSection.scrollIntoView({ behavior: "smooth" });
+      }
+    });
+  });
+
+  if (tocLinks.length > 0) {
+    tocLinks[0].classList.add("active");
+  }
 }
 
 function setInfoMenuOpen(open: boolean): void {
@@ -625,7 +1595,7 @@ function renderSiteMenuLinks(): string {
 }
 
 function routeFromHash(): AppRoute {
-  const route = window.location.hash.replace(/^#\/?/, "");
+  const route = window.location.hash.replace(/^#\/?/, "").split("#")[0];
   if (route === "faq") return "faq";
   if (route === "about") return "about";
   if (route === "privacy") return "privacy";
@@ -760,7 +1730,7 @@ searchInput.addEventListener("keydown", (event) => {
     const trimmed = searchInput.value.trim();
     if (!trimmed) return;
     const showAdd = !state.entries.some(
-      (entry) => entry.value.toLowerCase() === trimmed.toLowerCase()
+      (entry) => entry.value.toLowerCase() === trimmed.toLowerCase(),
     );
     if (showAdd) {
       event.preventDefault();
@@ -777,7 +1747,7 @@ omniboxAddAction.addEventListener("click", () => {
   const trimmed = searchInput.value.trim();
   if (!trimmed) return;
   const showAdd = !state.entries.some(
-    (entry) => entry.value.toLowerCase() === trimmed.toLowerCase()
+    (entry) => entry.value.toLowerCase() === trimmed.toLowerCase(),
   );
   if (showAdd) {
     addManualEntry(trimmed);
@@ -796,11 +1766,14 @@ downloadButton.addEventListener("click", () => {
 copyDocButton.addEventListener("click", () => {
   const reviewDoc = selectedReviewDoc();
   if (!reviewDoc) return;
-  navigator.clipboard.writeText(reviewDoc.sanitized).then(() => {
-    showToast("Copied to clipboard!");
-  }).catch(() => {
-    showToast("Failed to copy text.");
-  });
+  navigator.clipboard
+    .writeText(reviewDoc.sanitized)
+    .then(() => {
+      showToast("Copied to clipboard!");
+    })
+    .catch(() => {
+      showToast("Failed to copy text.");
+    });
 });
 
 previewVisibilityToggle.addEventListener("click", () => {
@@ -1164,9 +2137,11 @@ function renderReplacements(): void {
 
 function updateOmniboxAddAction(): void {
   const trimmed = searchInput.value.trim();
-  const showAdd = trimmed !== "" && !state.entries.some(
-    (entry) => entry.value.toLowerCase() === trimmed.toLowerCase()
-  );
+  const showAdd =
+    trimmed !== "" &&
+    !state.entries.some(
+      (entry) => entry.value.toLowerCase() === trimmed.toLowerCase(),
+    );
   if (showAdd) {
     omniboxAddAction.removeAttribute("hidden");
   } else {
@@ -1200,6 +2175,16 @@ function renderEntryRow(entry: ReplacementEntry, index: number = 0): string {
         />
       </div>
     </div>
+  `;
+}
+
+function renderInfoHeroSummary(route: InfoRoute, summary: string): string {
+  if (route !== "about") return `<p>${escapeHtml(summary)}</p>`;
+  return `
+    <p>
+      ${escapeHtml(summary)}
+      <a href="#/changelog">History</a>
+    </p>
   `;
 }
 
@@ -1357,13 +2342,8 @@ function renderPreviewSearch(): void {
 }
 
 function renderPreviewSearchResults(buckets: PreviewSearchBuckets): string {
-  const {
-    nonRedactedHits,
-    redactedOriginalHits,
-    redactionOnlyHits,
-  } = buckets;
-  const originalHitCount =
-    nonRedactedHits.length + redactedOriginalHits.length;
+  const { nonRedactedHits, redactedOriginalHits, redactionOnlyHits } = buckets;
+  const originalHitCount = nonRedactedHits.length + redactedOriginalHits.length;
 
   if (nonRedactedHits.length === 0 && redactionOnlyHits.length === 0) {
     return renderPreviewSearchGroup(
@@ -1380,10 +2360,7 @@ function renderPreviewSearchResults(buckets: PreviewSearchBuckets): string {
     );
   }
 
-  if (
-    redactedOriginalHits.length === 0 &&
-    redactionOnlyHits.length === 0
-  ) {
+  if (redactedOriginalHits.length === 0 && redactionOnlyHits.length === 0) {
     return renderPreviewSearchGroup(
       nonRedactedStatus(nonRedactedHits.length, true),
       nonRedactedHits,
@@ -1620,8 +2597,8 @@ function previewSearchTextModel(
   for (const segment of reviewDoc.segments) {
     const segmentText =
       source === "original"
-        ? segment.value ?? segment.text
-        : segment.replacement ?? segment.text;
+        ? (segment.value ?? segment.text)
+        : (segment.replacement ?? segment.text);
     const start = text.length;
     text += segmentText;
     ranges.push({
@@ -1640,8 +2617,7 @@ function searchHitContext(
   end: number,
 ): PreviewSearchHit["context"] {
   const overlapsRedactedSegment = ranges.some(
-    (range) =>
-      range.redactedSegment && start < range.end && end > range.start,
+    (range) => range.redactedSegment && start < range.end && end > range.start,
   );
   if (!overlapsRedactedSegment) return "non-redacted";
   return source === "original" ? "redacted-original" : "redaction-only";
@@ -2273,9 +3249,7 @@ async function loadSampleDocument(replace: boolean): Promise<void> {
   try {
     const response = await fetch(DEV_SAMPLE_PATH);
     const loadedFromFile = response.ok;
-    const text = loadedFromFile
-      ? await response.text()
-      : EMBEDDED_DEV_SAMPLE;
+    const text = loadedFromFile ? await response.text() : EMBEDDED_DEV_SAMPLE;
     if (replace) {
       state.documents = [];
       state.selectedDocumentId = null;
@@ -2309,22 +3283,66 @@ async function loadSampleDocument(replace: boolean): Promise<void> {
   }
 }
 
+function updateDevFab(fab: HTMLButtonElement): void {
+  if (state.devModeActive) {
+    fab.classList.remove("off");
+    fab.setAttribute("aria-label", "Turn off dev mode");
+    fab.title = "Dev mode is ON. Click to turn off.";
+    fab.innerHTML =
+      '<i class="ph ph-flask" aria-hidden="true"></i><span>DEV: ON</span>';
+  } else {
+    fab.classList.add("off");
+    fab.setAttribute("aria-label", "Turn on dev mode");
+    fab.title = "Dev mode is OFF. Click to turn on and reload sample.";
+    fab.innerHTML =
+      '<i class="ph ph-flask" aria-hidden="true"></i><span>DEV: OFF</span>';
+  }
+}
+
+function unloadSampleDocument(): void {
+  const sampleFileName = DEV_SAMPLE_PATH.split("/").pop() ?? "dev-sample.md";
+  const embeddedFileName = "embedded-dev-sample.md";
+  const initialLength = state.documents.length;
+  state.documents = state.documents.filter(
+    (doc) =>
+      doc.fileName !== sampleFileName && doc.fileName !== embeddedFileName,
+  );
+  if (state.documents.length !== initialLength) {
+    const selectedDocExists = state.documents.some(
+      (d) => d.id === state.selectedDocumentId,
+    );
+    if (!selectedDocExists) {
+      state.selectedDocumentId =
+        state.documents.length > 0 ? state.documents[0].id : null;
+    }
+    recompute();
+    renderAll();
+    setStatus("Unloaded synthetic dev sample.");
+  }
+}
+
 /** Mount the bottom-left FAB that reloads the sample. */
 function installDevFab(): void {
   const fab = document.createElement("button");
   fab.type = "button";
   fab.className = "dev-fab";
-  fab.setAttribute("aria-label", "Reload synthetic dev sample document");
-  fab.title = "Dev mode — reload the synthetic sample document";
-  fab.innerHTML =
-    '<i class="ph ph-flask" aria-hidden="true"></i><span>DEV</span>';
+  updateDevFab(fab);
   fab.addEventListener("click", () => {
-    void loadSampleDocument(true);
+    if (state.devModeActive) {
+      state.devModeActive = false;
+      updateDevFab(fab);
+      unloadSampleDocument();
+    } else {
+      state.devModeActive = true;
+      updateDevFab(fab);
+      void loadSampleDocument(true);
+    }
   });
   document.body.appendChild(fab);
 }
 
 function initDevMode(): void {
+  state.devModeActive = true;
   installDevFab();
   if (state.documents.length === 0) {
     void loadSampleDocument(false);
