@@ -899,6 +899,232 @@ Relief Defendant RIVERSTONE CAPITAL CORP consented.
     }
     expect(output).toContain("ORG_");
   });
+
+  // ---- Round 4: mixed business / legal operational documents ----
+
+  it("detects inline SEC 'File No.' references instead of leaking them as phone numbers", () => {
+    // Previously the capturing-group typo `(:?...)` made match[1] the separator
+    // whitespace, so the file number was discarded and only the bare digits were
+    // caught (and mislabeled as a phone).
+    const output = redact(`
+filed with the Commission on March 3, 2014 (File No. 333-987654), as amended.
+`);
+
+    expect(output).not.toContain("333-987654");
+    expect(output).not.toContain("File No. 333-987654");
+    expect(output).toContain("CASE_REF_");
+    // A nearby phone number on its own line is still redacted as a phone.
+    const withPhone = redact(`
+Call our desk at +1 (212) 555-0142.
+File No. 333-987654 was amended.
+`);
+    expect(withPhone).not.toContain("+1 (212) 555-0142");
+  });
+
+  it("still redacts ordinary hyphenated and dot-separated phone numbers", () => {
+    const output = redact(`
+Call the service desk at 555-0142 or 1.844.623.9008.
+The filing reference is File No. 333-45346.
+`);
+
+    expect(output).not.toContain("555-0142");
+    expect(output).not.toContain("1.844.623.9008");
+    expect(output).not.toContain("333-45346");
+    expect(output).toContain("PHONE_");
+    expect(output).toContain("CASE_REF_");
+  });
+
+  it("classifies US ZIP+4 codes as postcodes rather than phone numbers", () => {
+    const output = redact(`
+Mail deliveries go to Sunnyvale, CA 94088-3453.
+`);
+
+    expect(output).not.toContain("94088-3453");
+    expect(output).toContain("POSTCODE_");
+    expect(output).not.toContain("PHONE_");
+  });
+
+  it("does not stitch organization names across sentence boundaries", () => {
+    // Headings/sections ending in a suffix word ("... Management", "... Company")
+    // must not absorb the following sentence's "The Company".
+    const output = redact(`
+8.5 Due Diligence. The Company shall provide all records.
+Moreover, Meridian Capital Partners, LLC declined to comment.
+Congress. The Company believes the statute applies.
+`);
+
+    // The real org is still redacted.
+    expect(output).not.toContain("Meridian Capital Partners, LLC");
+    expect(output).toContain("ORG_");
+    // The stitched boilerplate forms are NOT turned into orgs.
+    expect(output).toContain("Due Diligence. The Company");
+    expect(output).toContain("Congress. The Company");
+    expect(output).not.toContain("ORG_ shall provide all records");
+  });
+
+  it("keeps generic defined-term references such as 'The Company' readable", () => {
+    const output = redact(`
+Under this Agreement, the Company indemnifies each Director.
+The Bank shall maintain the accounts. The Firm provides advice.
+`);
+
+    expect(output).toContain("the Company indemnifies");
+    expect(output).toContain("The Bank shall maintain");
+    expect(output).toContain("The Firm provides advice");
+    expect(output).not.toMatch(/ORG_[0-9]+ indemnifies/);
+  });
+
+  it("still redacts a real ', Inc' / ', LLC' organization after the comma fix", () => {
+    const output = redact(`
+Counterparty Northwind Logistics, LLC delivered the notice.
+Counsel at Crestview Advisors, Inc. reviewed the schedules.
+`);
+
+    expect(output).not.toContain("Northwind Logistics, LLC");
+    expect(output).not.toContain("Crestview Advisors, Inc");
+    expect(output).toContain("ORG_");
+  });
+
+  it("does not redact the common word 'forum' as a known organization", () => {
+    const output = redact(`
+The exclusive forum for any dispute shall be the state courts.
+Parties may object on forum non conveniens grounds.
+`);
+
+    expect(output).toContain("forum for any dispute");
+    expect(output).toContain("forum non conveniens");
+    // No organization candidate should be produced from the common word.
+    expect(output).not.toMatch(/^ORG_/m);
+  });
+
+  it("does not treat 'Date of this Agreement' prose as a labelled date", () => {
+    // The date label previously accepted an optional colon, so any line starting
+    // with the word "date" ("Date of this Agreement", wrapped "date, and ...
+    //") captured the whole line as a date.
+    const output = redact(`
+Effective as of the Date of this Agreement, including but not limited to:
+the obligations set forth in Section 4.
+Date: March 14, 2024
+`);
+
+    expect(output).toContain("Date of this Agreement");
+    expect(output).toContain("including but not limited to:");
+    // A real labelled date is still redacted.
+    expect(output).not.toContain("March 14, 2024");
+    expect(output).toContain("DATE_");
+  });
+
+  it("requires a digit in labelled business/registration numbers", () => {
+    // "Company notifies" was matched as "Company" + "No" + "tifies" because the
+    // case-insensitive value class matched any 5+ letter word.
+    const output = redact(`
+In the event the Company notifies the advisor of its intention.
+Registered No. 201401884Z appears on the filing.
+`);
+
+    expect(output).toContain("Company notifies");
+    expect(output).not.toContain("201401884Z");
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("keeps securities defined terms readable (Debt/Preferred/Depositary)", () => {
+    const output = redact(`
+The registration covers the "Debt Securities", the "Preferred Stock",
+the "Depositary Shares", and Common Stock of the Company.
+Underwriting warrants (the "Warrants") and Units may also be issued.
+`);
+
+    for (const term of [
+      "Debt Securities",
+      "Preferred Stock",
+      "Depositary Shares",
+      "Common Stock",
+      "Warrants",
+      "Units",
+    ]) {
+      expect(output).toContain(term);
+    }
+    expect(output).not.toContain("PERSON_");
+  });
+
+  it("detects numbered street addresses with directional abbreviations", () => {
+    const output = redact(`
+Send notices to 6409 E. Nisbet Road, Scottsdale, AZ.
+The office is at 5435 NE Dawson Creek Drive, Building 2.
+Section 12 of the lease remains unchanged.
+`);
+
+    expect(output).not.toContain("6409 E. Nisbet Road");
+    expect(output).not.toContain("5435 NE Dawson Creek Drive");
+    expect(output).toContain("Section 12 of the lease remains unchanged.");
+    expect(output).toContain("ADDRESS_");
+  });
+
+  it("redacts Singapore and Dutch postal codes in address context", () => {
+    const output = redact(`
+Registered office: 1 Scotts Road, #24-05 Shaw Centre, Singapore 228208.
+Branch office: 5611 BD Eindhoven, The Netherlands.
+A figure of 123456 units remains visible.
+Section 1234 AB remains visible as a non-address table marker.
+`);
+
+    expect(output).not.toContain("228208");
+    expect(output).not.toContain("5611 BD");
+    expect(output).toContain("123456 units");
+    expect(output).toContain("Section 1234 AB");
+    expect(output).toContain("POSTCODE_");
+  });
+
+  it("redacts post office boxes without treating every PO token as an address", () => {
+    const output = redact(`
+Notices may be sent to P.O. Box 3453.
+The label PO 12 in the schedule remains visible.
+`);
+
+    expect(output).not.toContain("P.O. Box 3453");
+    expect(output).toContain("PO 12 in the schedule");
+    expect(output).toContain("ADDRESS_");
+  });
+
+  it("keeps 'Attention: Legal Department' readable and strips 'Dear' salutations", () => {
+    const output = redact(`
+Attention: Legal Department
+Dear Morgan Whitfield:
+Please direct questions to the Corporate Secretary's office.
+`);
+
+    expect(output).toContain("Attention: Legal Department");
+    expect(output).toContain("Corporate Secretary");
+    // The salutation word stays, the person does not.
+    expect(output).toContain("Dear ");
+    expect(output).not.toContain("Morgan Whitfield");
+    expect(output).toContain("PERSON_");
+  });
+
+  it("does not redact boilerplate parentheticals and markers as people", () => {
+    const output = redact(`
+Payment due by 5:00 p.m. (Central European Time) on the closing date.
+Director compensation: Not Applicable
+`);
+
+    expect(output).toContain("Central European Time");
+    expect(output).toContain("Not Applicable");
+    expect(output).not.toContain("PERSON_");
+  });
+
+  it("does not swallow a sentence as an OCR-spaced email", () => {
+    // A sentence that merely ends in an email must not be matched as one giant
+    // OCR-spaced email; only the real address is redacted.
+    const output = redact(`
+Please contact the Benefits Department at 1.844.623.9008 or by email to
+atwork.USbenefits@acme.com for help.
+`);
+
+    expect(output).toContain("Please contact the Benefits Department");
+    expect(output).toContain("or by email to");
+    expect(output).not.toContain("atwork.USbenefits@acme.com");
+    expect(output).toContain("EMAIL_");
+  });
 });
 
 describe("interactive review model", () => {
@@ -1360,5 +1586,532 @@ Ms. Patrick Cash reviewed the schedules.
 
     expect(output).not.toContain("Jordan Price");
     expect(output).not.toContain("Patrick Cash");
+  });
+
+  // ---- Round 5: stock-exchange / listed-issuer document diversity ----
+
+  it("redacts HKEX stock/securities codes after their label", () => {
+    const output = redact(`
+(Stock Code: 1193)
+Stock code (if listed)          01919                          Description
+Stock code (if listed)          601919
+`);
+
+    for (const leaked of ["1193", "01919", "601919"]) {
+      expect(output).not.toContain(leaked);
+    }
+    // The boilerplate label itself is not sensitive and may remain.
+    expect(output).toContain("Stock code");
+  });
+
+  it("does not redact bare 4-6 digit figures that lack a stock-code label", () => {
+    const output = redact(`
+See note 1234 and paragraph 567890 for the cross-reference.
+`);
+
+    expect(output).toContain("1234");
+    expect(output).toContain("567890");
+  });
+
+  it("redacts ISIN, SEDOL, and LEI securities identifiers", () => {
+    const output = redact(`
+ISIN GB00B63HMG49 and ISIN US0378331005 are the security identifiers.
+SEDOL: B63HMG4
+LEI: 5493001KJTIIGC8Y1R12
+Legal Entity Identifier: 213800L41K64UK8Y6R11
+`);
+
+    for (const leaked of [
+      "GB00B63HMG49",
+      "US0378331005",
+      "B63HMG4",
+      "5493001KJTIIGC8Y1R12",
+      "213800L41K64UK8Y6R11",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+  });
+
+  it("does not redact ordinary 12-letter words or bare 20-char strings as ISIN/LEI", () => {
+    const output = redact(`
+The documentation highlighted BACKGROUNDINFO and a transaction hash abcdef1234567890abcd.
+The internal reference AB1234567890 is not a valid ISIN.
+`);
+
+    expect(output).toContain("BACKGROUNDINFO");
+    expect(output).toContain("AB1234567890");
+  });
+
+  it("redacts Australian ABN, ACN, and ARBN after their labels", () => {
+    const output = redact(`
+Ventia Services Group Limited ABN 53 603 253 541
+ACN 123 456 789
+ARBN 987 654 321
+`);
+
+    for (const leaked of ["53 603 253 541", "123 456 789", "987 654 321"]) {
+      expect(output).not.toContain(leaked);
+    }
+  });
+
+  it("redacts the 'Submitted by' and 'Name of Director' form fields", () => {
+    const output = redact(`
+Submitted by:              Xiao Junguang
+Title:                     Company Secretary
+Name of Director                                           Shaun Day
+`);
+
+    expect(output).not.toContain("Xiao Junguang");
+    expect(output).not.toContain("Shaun Day");
+    // The role/title boilerplate must stay readable.
+    expect(output).toContain("Company Secretary");
+  });
+
+  it("preserves exchange listing-venue names and meeting boilerplate", () => {
+    const output = redact(`
+Hong Kong Exchanges and Clearing Limited and The Stock Exchange of Hong Kong Limited take no responsibility for the contents of this announcement.
+The board of directors (the "Board") announces the change.
+To : Hong Kong Exchanges and Clearing Limited
+The form should be submitted to Market Operations at the London Stock Exchange by email.
+This is the Annual General Meeting and Proxy Form for the Ordinary Resolution.
+For personal use only.
+Appendix 3Y
+Main Board Rule 13.25C
+`);
+
+    for (const kept of [
+      "Exchanges and Clearing",
+      "Stock Exchange",
+      "London Stock Exchange",
+      "Annual General Meeting",
+      "Proxy Form",
+      "Ordinary Resolution",
+      "For personal use only",
+      "Appendix 3Y",
+      "Main Board Rule",
+    ]) {
+      expect(output).toContain(kept);
+    }
+  });
+
+  it("does not turn corporate-governance role headings into person redactions", () => {
+    const output = redact(`
+CHANGE OF COMPANY SECRETARY AND AUTHORISED REPRESENTATIVE
+The Independent Non-executive Directors and the Chief Executive Officer attended.
+`);
+
+    for (const kept of [
+      "CHANGE OF COMPANY",
+      "Independent Non-executive Directors",
+      "Chief Executive Officer",
+    ]) {
+      expect(output).toContain(kept);
+    }
+  });
+
+  it("keeps earlier-round counterexamples readable (contracts, opinions, correspondence)", () => {
+    // Commercial contract, legal opinion, and procurement-style labels from
+    // earlier rounds must not regress under the exchange boilerplate guards.
+    const output = redact(`
+Attention: Legal Department
+Date of this Agreement is 5 January 2026.
+The parties agree that forum non conveniens shall not apply.
+The Company and The Bank confirmed the terms.
+Procurement Reference: PO 3453
+`);
+
+    expect(output).toContain("Legal Department");
+    expect(output).toContain("forum non conveniens");
+    expect(output).toContain("The Company");
+    expect(output).toContain("The Bank");
+  });
+
+  // ---- Round 6: procurement, RFP, purchase order, and public contract docs ----
+
+  it("redacts procurement document reference numbers after their labels", () => {
+    // Solicitation, RFP, Purchase Order, Contract, Requisition, Vendor, and
+    // Invoice numbers all identify a specific transaction or supplier and are
+    // sensitive. They must redact at all levels because they are direct IDs.
+    const output = redact(
+      `
+Solicitation Number: 1234567R7
+Solicitation No.: SOL-2024-567890
+RFP No. RFP-2026-0071
+RFP Number: RFQ-2026-1199
+Purchase Order No.: 4500021937
+Purchase Order Number: P0001234
+PO Number: 45-9876543
+Contract No. C-2024-CT-00789
+Contract Number: 005-25-C-1234
+Requisition No.: REQ-2024-000456
+Requisition Number: R0012345
+Vendor ID: V1234567
+Vendor Number: 0000123456
+Invoice No.: INV-2026-0067
+Bid No.: BID-2026-001
+Tender No.: T-2026-042
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "1234567R7",
+      "SOL-2024-567890",
+      "RFP-2026-0071",
+      "RFQ-2026-1199",
+      "4500021937",
+      "P0001234",
+      "45-9876543",
+      "C-2024-CT-00789",
+      "005-25-C-1234",
+      "REQ-2024-000456",
+      "R0012345",
+      "V1234567",
+      "0000123456",
+      "INV-2026-0067",
+      "BID-2026-001",
+      "T-2026-042",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("BUSINESS_ID_");
+    // The label is part of the redacted reference phrase (consistent with SEC
+    // file numbers), so the full labeled line is replaced as a unit.
+  });
+
+  it("redacts bare procurement field headers followed by a colon and value", () => {
+    // "Purchase Order: VALUE" and "Reference: VALUE" with a colon directly
+    // before a digit-containing value are common on PO headers and remittance
+    // advice. The colon anchor distinguishes them from prose.
+    const output = redact(
+      `
+Purchase Order: PO-CCS-009876
+Contract: C-2026-014
+Vendor: V-0098233
+Reference: PAY-2026-0042
+Reference Number for Payment: PAY-2026-0043
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "PO-CCS-009876",
+      "C-2026-014",
+      "V-0098233",
+      "PAY-2026-0042",
+      "PAY-2026-0043",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+  });
+
+  it("does not redact bare figures, quantities, or unlabeled numbers", () => {
+    // Counterexample: unlabeled numbers (line items, quantities, notes,
+    // versions) must remain readable. The label anchor is required.
+    const output = redact(
+      `
+See line item 1234 and paragraph 567890 for the cross-reference.
+The total quantity is 2920 units across 4 line items.
+Item code 567890 was not found in the catalog.
+The internal reference AB1234567890 is not a valid identifier.
+The reference number for the table is shown in column two.
+Version 2.1 of the standard applies to this deliverable.
+`,
+      "light",
+    );
+
+    expect(output).toContain("1234");
+    expect(output).toContain("567890");
+    expect(output).toContain("2920 units");
+    expect(output).toContain("AB1234567890");
+    expect(output).toContain("reference number for the table");
+    expect(output).toContain("Version 2.1");
+  });
+
+  it("does not redact procurement role labels as people or references", () => {
+    // Purchaser, Supplier, Vendor, Bidder, and Contractor are role labels, not
+    // person names or reference IDs. They must stay readable in prose and must
+    // not trigger a BUSINESS_ID when followed by a non-reference word.
+    const output = redact(
+      `
+The Contractor shall complete the work on schedule.
+The Purchaser agrees to pay Net 30.
+The Supplier warrants all goods meet specifications.
+The Bidder acknowledges the Terms and Conditions.
+The Vendor invoice is due.
+Contract notes about the scope remain visible.
+Purchase Order for the equipment was issued last week.
+`,
+      "strict",
+    );
+
+    for (const kept of [
+      "Contractor shall",
+      "Purchaser agrees",
+      "Supplier warrants",
+      "Bidder acknowledges",
+      "Vendor invoice",
+      "Net 30",
+      "Terms and Conditions",
+      "Contract notes",
+      "Purchase Order for",
+    ]) {
+      expect(output).toContain(kept);
+    }
+    // No false BUSINESS_ID or PERSON from these prose role uses.
+    expect(output).not.toContain("BUSINESS_ID_");
+  });
+
+  it("redacts the Contact Person and Procurement Officer form fields", () => {
+    // SAM.gov solicitations and public bid forms label the buyer/bidder contact
+    // with "Contact Person" or "Procurement Officer". That value is a person.
+    const output = redact(
+      `
+Contact Person: Jordan Rivera
+Procurement Officer: Casey Whitfield
+Buyer Name: Dana Kowalski
+Bidder Name: Acme Supplies LLC
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("Jordan Rivera");
+    expect(output).not.toContain("Casey Whitfield");
+    expect(output).not.toContain("Dana Kowalski");
+    expect(output).not.toContain("Acme Supplies LLC");
+    expect(output).toContain("PERSON_");
+  });
+
+  it("preserves procurement boilerplate at strict level", () => {
+    // Scope of Work, Statement of Work, Terms and Conditions, Net 30,
+    // Accounts Payable, Contract Award Notice, and Purchase Order are standard
+    // procurement headings/labels. They must stay readable even at strict.
+    const output = redact(
+      `
+Scope of Work
+Statement of Work
+Terms and Conditions
+Contract Award Notice
+Accounts Payable
+Request for Proposal
+Payment Terms: Net 30
+This Purchase Order is issued under the standard terms.
+`,
+      "strict",
+    );
+
+    for (const kept of [
+      "Scope of Work",
+      "Statement of Work",
+      "Terms and Conditions",
+      "Contract Award Notice",
+      "Accounts Payable",
+      "Request for Proposal",
+      "Net 30",
+      "Purchase Order",
+    ]) {
+      expect(output).toContain(kept);
+    }
+  });
+
+  // ---- Round 7: regulatory enforcement and compliance notices ----
+
+  it("redacts regulator matter references after their labels", () => {
+    // FDA/ICO/FTC/EPA/EEOC notices use Reference No., Docket No., Complaint No.,
+    // Charge No., and Matter No. These identify a specific agency matter and
+    // are sensitive. They must redact at all levels because they are direct
+    // references. The full labeled phrase is the candidate value.
+    const output = redact(
+      `
+Reference No.: EN-038726/2026
+Docket No. 9384
+Docket No.: CWA-V-W-25-R098
+Complaint No.: C-4872
+Charge No.: 49-2026-04827
+Matter No. 25-R-0987
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "EN-038726/2026",
+      "9384",
+      "CWA-V-W-25-R098",
+      "C-4872",
+      "49-2026-04827",
+      "25-R-0987",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("CASE_REF_");
+  });
+
+  it("redacts agency-prefixed case and charge codes", () => {
+    // CMS Case #, EEOC No., and Document Control No. embed the agency prefix in
+    // the label. These must redact label-bound at all levels.
+    const output = redact(
+      `
+CMS Case #: 1-0429876-2026
+EEOC No. 35A-2026-1192
+Document Control No.: CMS-2026-088342
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "1-0429876-2026",
+      "35A-2026-1192",
+      "CMS-2026-088342",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("CASE_REF_");
+  });
+
+  it("redacts regulator establishment and registration identifiers", () => {
+    // FEI (FDA Firm Establishment Identifier), Establishment Identifier,
+    // Provider No. (CMS), ICO Registration, and Registry No. (EPA) identify the
+    // regulated entity itself. They are label-bound and redact as BUSINESS_ID.
+    const output = redact(
+      `
+FEI No.: 3009876543
+Establishment Identifier: 1234567
+Provider No.: 05-987654
+ICO Registration: ZA987654
+EPA Registry No.: ILR987654321
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "3009876543",
+      "1234567",
+      "05-987654",
+      "ZA987654",
+      "ILR987654321",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("redacts the Firm Name and Registered Agent form fields", () => {
+    // FDA notices label the inspected firm with "Firm Name:" and state AG /
+    // corporate filings register a named agent with "Registered Agent:". The
+    // value may be a company or a person, so it is PERSON_OR_ORG.
+    const output = redact(
+      `
+Firm Name: Northwind Pharmaceuticals LLC
+Registered Agent: Mark R. Whitfield
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("Northwind Pharmaceuticals LLC");
+    expect(output).not.toContain("Mark R. Whitfield");
+  });
+
+  it("redacts names and organizations on the line after an empty To label", () => {
+    const output = redact(
+      `
+To:
+Maria S. Velazquez
+
+Firm Name:
+Northwind Pharmaceuticals LLC
+
+To:
+Whom It May Concern
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("Maria S. Velazquez");
+    expect(output).not.toContain("Northwind Pharmaceuticals LLC");
+    expect(output).toContain("Whom It May Concern");
+  });
+
+  it("redacts signatory names printed on the line after a /S/ marker", () => {
+    // Regulator letter signature blocks put the printed name on the line below
+    // the "/S/" marker:
+    //   /S/
+    //   Judith A. Whitfield
+    //   District Director
+    // The engine must cross the single newline to capture the name.
+    const output = redact(
+      `
+Sincerely,
+
+/S/
+Judith A. Whitfield
+District Director
+New England District Office
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("Judith A. Whitfield");
+    expect(output).toContain("PERSON_");
+  });
+
+  it("keeps government/regulator agency names readable instead of redacting them as people", () => {
+    // Agency names ending in Administration/Commission/Department/Bureau/
+    // Authority are the regulator itself and must stay readable. The
+    // communication-context and list detectors previously carved "Drug
+    // Administration" out of "Food and Drug Administration" as a person.
+    const output = redact(
+      `
+Department of Health and Human Services
+Food and Drug Administration
+Silver Spring, MD 20993
+The Federal Trade Commission issued a Complaint.
+The Environmental Protection Agency Region 5 reviewed the matter.
+The Information Commissioner's Office issued an Enforcement Notice.
+`,
+      "strict",
+    );
+
+    for (const kept of [
+      "Food and Drug Administration",
+      "Federal Trade Commission",
+      "Environmental Protection Agency",
+      "Information Commissioner",
+    ]) {
+      expect(output).toContain(kept);
+    }
+    // No false PERSON from the agency name fragments.
+    expect(output).not.toMatch(
+      /PERSON_[0-9]+ (?:investigator|issued|reviewed)/,
+    );
+  });
+
+  it("does not redact bare figures, statute sections, or agency boilerplate as references", () => {
+    // Counterexample: unlabeled numbers, statute/regulation citations, and
+    // agency boilerplate must remain readable. The label anchor is required.
+    const output = redact(
+      `
+See paragraph 9384 and section 210 of the regulations.
+The internal reference 1234567 is not a regulator ID.
+Version 2.1 of the standard applies.
+Title 21, Code of Federal Regulations (CFR), Parts 210 and 211.
+Section 5 of the Federal Trade Commission Act.
+Section 309 of the Clean Water Act, 33 U.S.C. § 1319.
+This is a Warning Letter and Enforcement Notice.
+`,
+      "strict",
+    );
+
+    expect(output).toContain("paragraph 9384");
+    expect(output).toContain("section 210");
+    expect(output).toContain("1234567");
+    expect(output).toContain("Version 2.1");
+    expect(output).toContain("Parts 210 and 211");
+    expect(output).toContain("Section 5");
+    expect(output).toContain("Section 309");
+    expect(output).toContain("Warning Letter");
+    expect(output).toContain("Enforcement Notice");
+    // No false BUSINESS_ID or CASE_REF from these unlabeled prose forms.
+    expect(output).not.toContain("BUSINESS_ID_");
+    expect(output).not.toContain("CASE_REF_");
   });
 });

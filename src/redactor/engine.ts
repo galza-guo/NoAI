@@ -30,8 +30,14 @@ const WORD_ANCHOR_RE = /<span\s+id="_Toc\d+"\s+class="anchor"\s*><\/span>/gi;
 const WORD_TOC_NESTED_LINK_RE =
   /\[([^\[\]\n]+?)\s+\[(\d+)\]\(#_Toc\d+\)\]\(#_Toc\d+\)/g;
 const WORD_TOC_SIMPLE_LINK_RE = /\[([^\[\]\n]+)\]\(#_Toc\d+\)/g;
+// OCR-spaced email: each character is separated by whitespace, as produced by
+// some PDF-to-text extractors on letterhead logos (e.g. "j o h n @ a c m e . c o m").
+// The local AND domain parts must be made of SINGLE characters separated by
+// whitespace, so a normal multi-word sentence that merely ends in an email
+// address ("... email to atwork.USbenefits@allegion.com") is NOT swallowed.
+// The previous form `(?:[chars]\s*){2,}@...` greedily stitched whole sentences.
 const OCR_SPACED_EMAIL_RE =
-  /(?:[A-Za-z0-9._%+-]\s*){2,}@\s*[A-Za-z0-9.-]+\.[A-Za-z]{2,}/gi;
+  /(?<![A-Za-z0-9@.])(?:[A-Za-z0-9._%+-]\s){3,}@\s?(?:[A-Za-z0-9.-]\s?){3,}[A-Za-z]{2,4}(?![A-Za-z0-9])/gi;
 
 const STREET_SUFFIX_ALT = STREET_SUFFIXES.join("|");
 const UNIT_INDICATOR_ALT = UNIT_INDICATORS.join("|");
@@ -89,6 +95,28 @@ const ORG_SUFFIX_NAME_TOKENS = new Set([
   "GmbH",
   "PLC",
 ]);
+// Government / regulator agency tail words. A capitalized phrase containing
+// one of these as a token identifies the regulator itself (e.g. "Drug
+// Administration", "Trade Commission", "Human Services", "Information
+// Commissioner's Office") in enforcement/compliance notices, never a person.
+// Used to stop the communication-context, list, and "X and Y" standalone-line
+// person detectors from carving agency-name fragments out as people. These
+// words are never plausible personal-name components.
+const GOV_AGENCY_TOKENS = new Set([
+  "Administration",
+  "Commission",
+  "Department",
+  "Agency",
+  "Bureau",
+  "Authority",
+  "Directorate",
+  "Inspectorate",
+  "Office",
+  "Services",
+  "Council",
+  "Court",
+  "Tribunal",
+]);
 const PERSON_LIST_RE = new RegExp(
   String.raw`\b${PERSON_NAME_PATTERN}(?:(?:[^\S\r\n]*,[^\S\r\n]*|[^\S\r\n]*,?[^\S\r\n]+and[^\S\r\n]+)${PERSON_NAME_PATTERN})+`,
   "g",
@@ -98,7 +126,17 @@ const LEADING_PERSON_TITLE_RE = new RegExp(
   String.raw`^(?:${PERSON_TITLE_ALT})\.?\s+`,
   "i",
 );
-const ORGANIZATION_SUFFIXES = [
+// Organization suffixes split into two tiers by how they may be attached:
+//
+// LEGAL_FORM_ORG_SUFFIXES are structural entity markers (Inc, LLC, Corp, Ltd,
+// PLC, GmbH, ...). They may follow a comma ("Northwind Logistics, LLC") as
+// well as a plain space, because the ", <LegalSuffix>" form is standard.
+//
+// GENERIC_TAIL_ORG_SUFFIXES are softer tail words (Group, Capital, Management,
+// Partners, Bank, Fund, ...). They may only follow a plain space, never a
+// comma, so a person name followed by a role is not turned into an
+// organization (e.g. "Aldo Brennan, Group General Counsel" is left alone).
+const LEGAL_FORM_ORG_SUFFIXES = [
   "L\\.?L\\.?C\\.?",
   "Ltd",
   "LTD",
@@ -132,6 +170,8 @@ const ORGANIZATION_SUFFIXES = [
   "SARL",
   "SDN",
   "BHD",
+];
+const GENERIC_TAIL_ORG_SUFFIXES = [
   "Group",
   "GROUP",
   "Holdings",
@@ -172,6 +212,12 @@ const ORGANIZATION_SUFFIXES = [
   "Savills",
   "Ogier",
 ];
+const ORGANIZATION_SUFFIXES = [
+  ...LEGAL_FORM_ORG_SUFFIXES,
+  ...GENERIC_TAIL_ORG_SUFFIXES,
+];
+const LEGAL_FORM_ORG_SUFFIX_ALT = LEGAL_FORM_ORG_SUFFIXES.join("|");
+const GENERIC_TAIL_ORG_SUFFIX_ALT = GENERIC_TAIL_ORG_SUFFIXES.join("|");
 const ORGANIZATION_SUFFIX_ALT = ORGANIZATION_SUFFIXES.join("|");
 const GENERIC_ORGANIZATION_SUFFIX_TOKENS = new Set([
   "Services",
@@ -363,6 +409,28 @@ function looksLikeGenericOrganizationPhrase(value: string): boolean {
   );
 }
 
+function isValidIsin(value: string): boolean {
+  const isin = value.toLocaleUpperCase();
+  if (!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin)) return false;
+  const numeric = [...isin]
+    .map((char) =>
+      /[A-Z]/.test(char) ? String(char.charCodeAt(0) - 55) : char,
+    )
+    .join("");
+  let sum = 0;
+  let doubleDigit = false;
+  for (let index = numeric.length - 1; index >= 0; index -= 1) {
+    let digit = Number(numeric[index]);
+    if (doubleDigit) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    doubleDigit = !doubleDigit;
+  }
+  return sum % 10 === 0;
+}
+
 export class Detector {
   private candidates = new Map<string, Candidate>();
   private readonly exactIndex = new Map<string, Set<CandidateKind>>();
@@ -377,6 +445,7 @@ export class Detector {
     for (const doc of this.docs) {
       this.detectDirectPatterns(doc);
       this.detectLabelValues(doc);
+      this.detectLabelContinuationValues(doc);
       this.detectAddressContinuations(doc);
       this.detectStandaloneAddressLines(doc);
       this.detectPeople(doc);
@@ -411,6 +480,9 @@ export class Detector {
     const cleaned = cleanValue(value);
     if (!meaningful(cleaned)) return;
 
+    if (reason === "ISIN securities identifier" && !isValidIsin(cleaned))
+      return;
+
     if (kind === "PHONE") {
       const digits = cleaned.replace(/\D/g, "");
       if (digits.length < 7) return;
@@ -419,6 +491,16 @@ export class Detector {
       if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(cleaned)) return;
       if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(cleaned)) return;
       if (/^(?:19|20)\d{6}$/.test(digits)) return;
+      // A US ZIP+4 (ddddd-dddd) is a postcode, not a phone number. Without this
+      // guard the generic phone regex captures ZIP+4 codes and, because PHONE
+      // outranks POSTCODE in KIND_PRIORITY, the postcode is mislabeled.
+      if (/^\d{5}-\d{4}$/.test(cleaned)) return;
+      // SEC file/registration numbers look like d{1,3}-d{1,6} (e.g. "333-45346",
+      // "0-18225"). When they appear without their label they are caught by the
+      // phone regex; defer to the filing-number detectors by skipping only the
+      // 5- or 6-digit suffix shape. Do not skip normal local phones such as
+      // "555-0142".
+      if (/^\d{1,3}-\d{5,6}$/.test(cleaned)) return;
     }
 
     if (kind === "PERSON") {
@@ -483,6 +565,15 @@ export class Detector {
         1,
         "phone-like digit sequence",
       ],
+      [
+        "PHONE",
+        // Common US toll-free/business form such as "1.844.623.9008" or
+        // "844.623.9008". Keeping the final segment at four digits avoids IP
+        // addresses and most European decimal/amount formats.
+        /(?<![\w.])(?:\+?\d{1,3}\.)?\d{3}\.\d{3}\.\d{4}(?![A-Za-z0-9]|\.\d)/g,
+        1,
+        "dot-separated phone number",
+      ],
       ["URL", /https?:\/\/[^\s)>\]]+/g, 1, "URL"],
       [
         "INTERNAL_LINK",
@@ -503,14 +594,18 @@ export class Detector {
         "ADDRESS",
         // Numbered street address without a leading unit indicator, e.g.
         // "1 Technology Drive" or "221 Baker Street". Requires a street
-        // suffix so ordinary sentences with numbers are not caught.
+        // suffix so ordinary sentences with numbers are not caught. Allows an
+        // optional single/double-letter directional abbreviation as the first
+        // token ("6409 E. Nisbet Road", "5435 NE Dawson Creek Drive") because
+        // the main token class requires a 2+ letter capitalized word.
         new RegExp(
-          String.raw`(?<![A-Za-z0-9])\d{1,6}[A-Za-z]?\s+[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,4}\s+(?:${STREET_SUFFIX_ALT})\b`,
+          String.raw`(?<![A-Za-z0-9])\d{1,6}[A-Za-z]?\s+(?:(?:[NSEW]\.?|[NS][EW])\s+)?[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,4}\s+(?:${STREET_SUFFIX_ALT})\b`,
           "g",
         ),
         1,
         "numbered street address",
       ],
+      ["ADDRESS", /\bP\.?\s*O\.?\s+Box\s+\d{1,10}\b/gi, 1, "post office box"],
       [
         "CASE_REF",
         /\bHKIAC Arbitration No\.\s*[A-Z]?\d+\b/g,
@@ -563,6 +658,32 @@ export class Detector {
         "US ZIP code after state",
       ],
       [
+        "POSTCODE",
+        // Singapore 6-digit postal code, always written after the word
+        // "Singapore" (e.g. "Singapore 228208"). The location anchor is
+        // required because a bare 6-digit number is usually a figure, not a
+        // postcode.
+        /\bSingapore\s+(\d{6})\b/gi,
+        1,
+        "Singapore postal code",
+      ],
+      [
+        "POSTCODE",
+        // Dutch postal code "1234 AB" (four digits, space, two letters), only
+        // when an office/address label anchors the same line. A bare "1234 AB"
+        // can be an exhibit/range/table token, so it is not enough on its own.
+        /\b(?:registered\s+office|branch\s+office|principal\s+office|postal\s+address|mailing\s+address|registered\s+address|office|address)\s*[:：][^\r\n]{0,80}\b(\d{4}\s+[A-Z]{2})\b/gi,
+        1,
+        "Dutch postal code after address label",
+      ],
+      [
+        "POSTCODE",
+        // Same Dutch shape, anchored by a following Netherlands country line.
+        /\b(\d{4}\s+[A-Z]{2})\s+[A-Z][A-Za-z' -]+,\s+(?:The\s+)?Netherlands\b/g,
+        1,
+        "Dutch postal code before Netherlands",
+      ],
+      [
         "CASE_REF",
         /\[\d{4}\]\s*(?:UKSC|EWCA|EWHC|UKHL|UKPC|UKUT|EWFC|EWCOP)(?:\s+(?:Civ|Crim|Ch|QB|KB|Fam|Comm|Admin|Pat|TCC))?(?:\s+\d+)?(?:\s*\([A-Za-z]+\))?/g,
         1,
@@ -602,13 +723,19 @@ export class Detector {
       ],
       [
         "BUSINESS_ID",
-        /\b(?:CR|BR|Company|Registered|Registration|Business Registration)\s+No\.?\s*[:#]?\s*[A-Z0-9-]{5,}\b/gi,
+        // The value char class is case-insensitive (the `i` flag) so the label
+        // matches regardless of case. To stop the class from swallowing an
+        // ordinary word that follows the label (e.g. "Company notifies" was
+        // matched as "Company" + "No" + "tifies"), require the value to contain
+        // at least one digit via a lookahead. Real registration numbers always
+        // contain a digit.
+        /\b(?:CR|BR|Company|Registered|Registration|Business Registration)\s+No\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Z0-9-]{5,}\b/gi,
         1,
         "business registration number",
       ],
       [
         "BUSINESS_ID",
-        /\b(?:company number|registered no\.?|registration no\.?)\s*[:：]?\s*[A-Z0-9-]{5,}\b/gi,
+        /\b(?:company number|registered no\.?|registration no\.?)\s*[:：]?\s*(?=[A-Za-z0-9-]*\d)[A-Z0-9-]{5,}\b/gi,
         1,
         "business registration label",
       ],
@@ -634,9 +761,141 @@ export class Detector {
         // SEC Commission File Number / File No., e.g. "File No. 333-124741",
         // "File No. 0-18225", "File Nos. 333-214419 and 811-23211". The label
         // anchor avoids matching unrelated dddd-ddddd figures (dates, ranges).
-        /\b(?:Commission\s+File\s+Number|File\s+Nos?)\.?(:?\s*[:#]?)?\s*\d{1,3}-\d{1,6}(?:\s+(?:and|&)\s*\d{1,3}-\d{1,6})*/gi,
+        // NOTE: the separator group must be NON-capturing (?:...) not (:?...);
+        // otherwise match[1] holds the separator whitespace and the file number
+        // is silently discarded by the `match[1] ?? match[0]` value rule.
+        /\b(?:Commission\s+File\s+Number|File\s+Nos?)\.?(?:\s*[:#]?)?\s*\d{1,3}-\d{1,6}(?:\s+(?:and|&)\s*\d{1,3}-\d{1,6})*/gi,
         1,
         "SEC file number",
+      ],
+      [
+        "BUSINESS_ID",
+        // Exchange stock / securities code, label-bound. HKEX forms write
+        // "(Stock Code: 1193)" or "Stock code (if listed) 01919"; the code
+        // identifies the listed issuer and is sensitive. The label anchor is
+        // required because a bare 4-5 digit number is usually a figure.
+        /\bStock\s+Code(?:\s*\(if listed\))?\s*[:#]?\s*(\d{3,6})\b/gi,
+        1,
+        "stock/securities code",
+      ],
+      [
+        "BUSINESS_ID",
+        // ISIN (International Securities Identification Number): 2-letter
+        // country code + 9 alphanumeric + 1 check digit, e.g. GB00B63HMG49.
+        // The fixed length and leading 2 letters make the format distinctive.
+        /\b([A-Z]{2}[A-Z0-9]{9}\d)\b/g,
+        1,
+        "ISIN securities identifier",
+      ],
+      [
+        "BUSINESS_ID",
+        // SEDOL (UK/LSE security identifier), 7 alphanumeric characters, only
+        // matched after the "SEDOL" label because a bare 7-char token is too
+        // ambiguous (matches many words/codes).
+        /\bSEDOL(?:\s*(?:code|number|no\.?))?\s*[:#]?\s*([A-Z0-9]{7})\b/gi,
+        1,
+        "SEDOL securities identifier",
+      ],
+      [
+        "BUSINESS_ID",
+        // LEI (Legal Entity Identifier): 20 characters, first 4 are the LOU
+        // code, then 12 alphanumeric, ending in 2 check digits. Only matched
+        // after an "LEI"/"Legal Entity Identifier" label to avoid catching
+        // arbitrary 20-char alphanumeric runs (hashes, base64, etc.).
+        /\b(?:LEI|Legal\s+Entity\s+Identifier)(?:\s*(?:code|number|no\.?))?\s*[:#]?\s*([A-Z0-9]{18}[0-9]{2})\b/gi,
+        1,
+        "LEI legal entity identifier",
+      ],
+      [
+        "BUSINESS_ID",
+        // Australian Business Number (ABN): 11 digits, conventionally written
+        // grouped as "XX XXX XXX XXX". The ABN label is required so ordinary
+        // 11-digit runs (e.g. spaced share counts) are not caught.
+        /\bABN\s*[:#]?\s*(\d{2}\s\d{3}\s\d{3}\s\d{3})\b/gi,
+        1,
+        "Australian Business Number",
+      ],
+      [
+        "BUSINESS_ID",
+        // Australian Company Number (ACN) / Registered Body Number (ARBN):
+        // 9 digits, conventionally grouped "XXX XXX XXX". Label-bound.
+        /\b(?:ACN|ARBN)\s*[:#]?\s*(\d{3}\s\d{3}\s\d{3})\b/gi,
+        1,
+        "Australian company/body number",
+      ],
+      [
+        "BUSINESS_ID",
+        // Procurement document reference numbers, label-bound. Solicitation,
+        // RFP/RFQ, Purchase Order, PO, Contract, Requisition, Vendor, Invoice,
+        // Bid, Tender, and Quote numbers all identify a specific transaction or
+        // supplier and are sensitive. The label + qualifier anchor is required
+        // so bare figures, table quantities, and version numbers stay readable.
+        // The full labeled phrase is the candidate value (consistent with SEC
+        // file/registration numbers), so only the labeled occurrence is
+        // redacted — a bare number elsewhere remains readable. The value must
+        // contain at least one digit so prose words after a label are ignored.
+        /\b(?:Solicitation|RFP|RFQ|RFI|IFB|Purchase\s+Order|PO|Contract|Requisition|Vendor|Invoice|Bid|Tender|Quote|Quotation)\s+(?:Nos?|Numbers?|IDs?|Reference|Code)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "procurement document reference",
+      ],
+      [
+        "BUSINESS_ID",
+        // Same procurement labels used as bare field headers followed directly
+        // by a colon/hash and a value, e.g. "Purchase Order: PO-CCS-009876",
+        // "Reference: PAY-2026-0042", "Vendor: V12345". The colon/hash is
+        // required to distinguish this from prose ("issue a purchase order for
+        // the goods"); the digit lookahead rejects values that are plain prose.
+        /\b(?:Solicitation|RFP|RFQ|RFI|IFB|Purchase\s+Order|PO|Contract|Requisition|Vendor|Invoice|Bid|Tender|Quote|Quotation|Reference)\s*[:#]\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "procurement reference label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Compound payment/procurement reference labels, e.g. "Reference
+        // Number for Payment: PAY-2026-0042". The extra "for ..." phrase is
+        // common on remittance/bid forms. Keep this label-bound and require a
+        // digit-containing value so ordinary "reference number for the table"
+        // prose stays readable.
+        /\bReference\s+(?:Nos?|Numbers?|IDs?|Code)\s+for\s+(?:Payment|Remittance|Bid|Tender|Quote|Quotation|Invoice|Purchase\s+Order|PO)\s*[:#]\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "compound procurement reference label",
+      ],
+      [
+        "CASE_REF",
+        // Regulator enforcement/compliance matter references, label-bound.
+        // These cross-regulator labels identify a specific agency matter and
+        // appear on FDA/FTC/EPA/EEOC/state AG/ICO enforcement letters and
+        // orders: "Docket No.", "Complaint No.", "Charge No." (EEOC),
+        // "Reference No." (ICO/FDA/Dear Healthcare Provider), "Matter No."
+        // (inline form), and "CMS Case #" / "EEOC No." style agency-prefixed
+        // codes. The label + qualifier anchor is required so bare figures and
+        // prose stay readable; the value must contain a digit. The full labeled
+        // phrase is the candidate value (consistent with SEC file numbers).
+        /\b(?:Docket|Complaint|Charge|Reference|Matter)\s+(?:Nos?|Numbers?|IDs?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
+        1,
+        "regulator matter reference",
+      ],
+      [
+        "CASE_REF",
+        // Agency-prefixed case/charge codes where the prefix itself is part of
+        // the label, e.g. "CMS Case # 1-0429876-2026", "EEOC No. 35A-2026-1192",
+        // "Document Control No. CMS-2026-088342". Label-bound; digit required so
+        // a stray "Control No" prose fragment is not matched.
+        /\b(?:CMS\s+Case|EEOC\s+Nos?|Document\s+Control\s+Nos?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
+        1,
+        "agency case/charge reference",
+      ],
+      [
+        "BUSINESS_ID",
+        // Regulator establishment/registration identifiers, label-bound. These
+        // identify the regulated entity rather than a matter and appear on
+        // FDA/CMS/EPA/ICO notices: "FEI No." (FDA Firm Establishment
+        // Identifier), "Establishment Identifier", "Provider No." (CMS),
+        // "ICO Registration", "Registry No." / "EPA Registry No.". The label
+        // anchor is required because a bare number is usually a figure.
+        /\b(?:FEI|Establishment\s+Identifier|Provider\s+Nos?|ICO\s+Registration|(?:EPA\s+)?Registry\s+Nos?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
+        1,
+        "regulator establishment/registration identifier",
       ],
       ["BUNDLE_REF", /\b[A-Z]\/\d{2,5}\/\d{2,6}\b/g, 2, "bundle reference"],
       ["EXHIBIT_REF", /\b[RCDEF]-\d{1,4}\b/g, 2, "exhibit reference"],
@@ -751,6 +1010,39 @@ export class Detector {
         1,
         "prepared-for label",
       ],
+      // HKEX/SGX regulatory returns (e.g. FF301) carry a "Submitted by:"
+      // field naming the company secretary / authorised officer who filed
+      // the return. That is a personal name and must be redacted.
+      [
+        /^\s*Submitted by\s*[:：]\s*(.+)$/i,
+        "PERSON_OR_ORG",
+        1,
+        "submitted-by label",
+      ],
+      // ASX/HKEX forms label the director/entity whose interests are reported.
+      // "Name of Director" carries a person; "Name of entity" carries an org.
+      [
+        /^\s*Name of Director\s*[:：]?\s*(.+)$/i,
+        "PERSON",
+        1,
+        "director-name label",
+      ],
+      // Procurement documents (SAM.gov solicitations, public bids, RFP/RFQ
+      // responses) label the buying/bidding contact with "Contact Person" or
+      // "Procurement Officer". That value is a personal name and must redact.
+      // "Authorized Representative" and "Buyer" are also common person labels.
+      [
+        /^\s*(?:Contact\s+Person|Procurement\s+Officer|Procurement\s+Contact)\s*[:：]\s*(.+)$/i,
+        "PERSON",
+        1,
+        "procurement contact label",
+      ],
+      [
+        /^\s*(?:Buyer\s+Name|Bidder\s+Name)\s*[:：]\s*(.+)$/i,
+        "PERSON_OR_ORG",
+        1,
+        "procurement party-name label",
+      ],
       // Correspondence header labels. From/To/Cc/Bcc/Attn carry person or org
       // names; Re/Subject/Via carry matter text; Date carries a date. These are
       // the bread-and-butter fields of SEC correspondence and counsel letters.
@@ -775,7 +1067,7 @@ export class Detector {
         "re/subject label",
       ],
       [/^\s*Via\s*[:：]\s*(.+)$/i, "PROJECT_OR_ISSUE", 1, "via label"],
-      [/^\s*Date\s*[:：]?\s*(.+)$/i, "DATE", 2, "date label"],
+      [/^\s*Date\s*[:：]\s*(.+)$/i, "DATE", 2, "date label"],
       [/^\s*Address\s*[:：]\s*(.+)$/i, "ADDRESS", 1, "address label"],
       [
         /^\s*(?:Phone|Telephone|Tel\.?|Mobile|Cell)\s*[:：]\s*(.+)$/i,
@@ -805,6 +1097,41 @@ export class Detector {
       ],
       [/^\s*Account No\.?\s*[:：]\s*(.+)$/i, "CASE_REF", 1, "account label"],
       [/^\s*Matter No\.?\s*[:：]\s*(.+)$/i, "CASE_REF", 1, "matter label"],
+      // Regulator enforcement/compliance reference labels that name a specific
+      // agency matter. These appear on FDA/FTC/EPA/EEOC/state AG/ICO letters and
+      // orders and are kept label-bound so bare figures stay readable.
+      [
+        /^\s*(?:Docket|Complaint|Charge|Reference)\s*Nos?\.?\s*[:：]?\s*(.+)$/i,
+        "CASE_REF",
+        1,
+        "regulator matter label",
+      ],
+      [
+        /^\s*(?:CMS\s+Case|EEOC\s+Nos?|Document\s+Control\s+Nos?)\b\.?\s*[:：]?\s*(.+)$/i,
+        "CASE_REF",
+        1,
+        "agency case/charge label",
+      ],
+      // Regulator establishment/registration identifiers that name the
+      // regulated entity itself (not a matter). Label-bound.
+      [
+        /^\s*(?:FEI|Establishment\s+Identifier|Provider\s+Nos?|ICO\s+Registration|(?:EPA\s+)?Registry\s*Nos?)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "regulator establishment/registration label",
+      ],
+      // FDA/regulated-industry notices label the inspected firm's name with
+      // "Firm Name:". That value is a company (PERSON_OR_ORG), not a person.
+      [/^\s*Firm Name\s*[:：]\s*(.+)$/i, "PERSON_OR_ORG", 1, "firm-name label"],
+      // State AG / corporate filings register a named agent for service of
+      // process with "Registered Agent:". The value may be a person or a
+      // corporate agent service, so treat it as PERSON_OR_ORG.
+      [
+        /^\s*Registered Agent\s*[:：]\s*(.+)$/i,
+        "PERSON_OR_ORG",
+        1,
+        "registered-agent label",
+      ],
       [/^\s*Ref\.?\s*[:：]\s*(.+)$/i, "CASE_REF", 1, "reference label"],
     ];
 
@@ -819,6 +1146,27 @@ export class Detector {
         const match = stripped.match(regex);
         if (!match) continue;
         for (const part of this.splitLabelValue(match[1], kind)) {
+          // Attention/Attn labels occasionally point at a department or role
+          // rather than a person (e.g. "Attention: Legal Department",
+          // "Attn: Human Resources"). Skip values that are contract/role
+          // boilerplate so those lines stay readable, matching the body-text
+          // person validators.
+          if (
+            kind === "PERSON" &&
+            (looksLikeContractDefinedTermCandidate(part) ||
+              this.looksLikeDepartmentOrRole(part))
+          )
+            continue;
+          // From/To/Cc labels in stock-exchange forms often address the
+          // listing venue itself (e.g. "To: Hong Kong Exchanges and Clearing
+          // Limited"). That is regulatory boilerplate, not a redactable party;
+          // skip fragments that are part of a regulated exchange-entity name so
+          // the venue stays readable.
+          if (
+            (kind === "PERSON" || kind === "PERSON_OR_ORG") &&
+            this.isExchangeEntityFragment(part)
+          )
+            continue;
           this.add(part, kind, level, reason, doc.name, pos);
         }
       }
@@ -846,6 +1194,72 @@ export class Detector {
       .split(/\s*\/\s*|；|;|,|\s+and\s+/i)
       .map(cleanValue)
       .filter(Boolean);
+  }
+
+  private detectLabelContinuationValues(doc: RedactionInput): void {
+    const lines = doc.text.split(/\r?\n/);
+    const offsets: number[] = [];
+    let searchPos = 0;
+    for (const line of lines) {
+      const pos = doc.text.indexOf(line, searchPos);
+      offsets.push(pos);
+      searchPos = pos + line.length + 1;
+    }
+
+    const personOrOrgLabelRe =
+      /^\s*(?:To|From|Cc|CC|Bcc|BCC|Client|Prepared for|Firm Name|Registered Agent)\s*[:：]\s*$/i;
+    const personLabelRe =
+      /^\s*(?:Attention|Attn|Contact Person|Procurement Officer|Procurement Contact)\.?\s*[:：]\s*$/i;
+
+    for (let index = 0; index < lines.length - 1; index += 1) {
+      const line = lines[index];
+      const kind: CandidateKind | null = personLabelRe.test(line)
+        ? "PERSON"
+        : personOrOrgLabelRe.test(line)
+          ? "PERSON_OR_ORG"
+          : null;
+      if (!kind) continue;
+
+      const nextIndex = index + 1;
+      const candidate = cleanValue(lines[nextIndex]);
+      if (!candidate || /[:：]$/.test(candidate)) continue;
+      if (!this.looksLikeContinuationLabelValue(candidate, kind)) continue;
+      this.add(
+        candidate,
+        kind,
+        1,
+        "label continuation value",
+        doc.name,
+        offsets[nextIndex],
+      );
+    }
+  }
+
+  private looksLikeContinuationLabelValue(
+    value: string,
+    kind: CandidateKind,
+  ): boolean {
+    if (/^(?:Whom It May Concern|Dear Sir(?:s)?|Dear Madam|Dear Sir or Madam)$/i.test(value))
+      return false;
+    if (this.looksLikeDepartmentOrRole(value)) return false;
+    if (looksLikeContractDefinedTermCandidate(value)) return false;
+    if (ORG_SUFFIX_NAME_TOKENS.has(value.split(/\s+/).at(-1) ?? "")) return true;
+    if (kind === "PERSON_OR_ORG" && /(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|PLC|GmbH)$/i.test(value))
+      return true;
+
+    const nameLike =
+      /^(?:(?:Mr|Mrs|Ms|Miss|Dr|Prof|Professor|Sir|Dame)\.?\s+)?[A-Z][A-Za-z'’-]+(?:\s+(?:[A-Z]\.?|[A-Z][A-Za-z'’-]+)){1,4}$/.test(
+        value,
+      );
+    if (!nameLike) return false;
+    const withoutTitle = value.replace(LEADING_PERSON_TITLE_RE, "");
+    const substantialTokens = withoutTitle
+      .split(/\s+/)
+      .filter((token) => /^[A-Z][A-Za-z'’-]{2,}$/.test(token));
+    if (substantialTokens.length < 2) return false;
+    return !withoutTitle
+      .split(/\s+/)
+      .some((token) => GOV_AGENCY_TOKENS.has(token.replace(/\.$/, "")));
   }
 
   private detectAddressContinuations(doc: RedactionInput): void {
@@ -1011,6 +1425,26 @@ export class Detector {
     for (const [regex, reason] of contextPatterns) {
       for (const match of doc.text.matchAll(regex)) {
         const name = cleanValue(match[1]);
+        // The communication-context pattern (from/to/between/and/by ...) can
+        // catch a company/agency fragment when a conjunction sits inside an
+        // entity name (e.g. "and Clearing Limited" from "Hong Kong Exchanges and
+        // Clearing Limited", or "Human Services Food" stitched across "Health
+        // and Human Services / Food and Drug Administration"). Skip a capture
+        // that ends in a legal-form suffix, OR that contains any org-tail /
+        // government-agency token, because those identify an organization, not a
+        // person. The litigation-role pattern is excluded from this guard because
+        // "Respondent Northwind Inc" must still be captured (as a company) so its
+        // standalone form remains redactable.
+        const lastTok = name.split(/\s+/).at(-1)?.replace(/\.$/, "") ?? "";
+        const ctxTokens = name.split(/\s+/).map((t) => t.replace(/\.$/, ""));
+        if (
+          reason === "communication context" &&
+          (ORG_SUFFIX_NAME_TOKENS.has(lastTok) ||
+            ctxTokens.some(
+              (t) => GOV_AGENCY_TOKENS.has(t) || ORG_NAME_TAIL_TOKENS.has(t),
+            ))
+        )
+          continue;
         if (this.looksLikePersonName(name))
           this.add(
             name,
@@ -1069,15 +1503,28 @@ export class Detector {
       /^[^\S\r\n]*([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})\s+and\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})[^\S\r\n]*$/gm,
     )) {
       for (const name of [match[1], match[2]]) {
-        if (this.looksLikePersonName(name))
-          this.add(
-            name,
-            "PERSON",
-            2,
-            "standalone agreement party line",
-            doc.name,
-            (match.index ?? 0) + match[0].indexOf(name),
-          );
+        if (!this.looksLikePersonName(name)) continue;
+        // A "X and Y" standalone line can stitch across a conjunction inside
+        // an entity name (e.g. "Hong Kong Exchanges and Clearing Limited" ->
+        // "Clearing Limited") or across adjacent agency lines. Organization and
+        // agency fragments are not people; skip them, mirroring detectPersonLists.
+        const lastTok = name.split(/\s+/).at(-1)?.replace(/\.$/, "") ?? "";
+        const tokens = name.split(/\s+/).map((t) => t.replace(/\.$/, ""));
+        if (
+          ORG_SUFFIX_NAME_TOKENS.has(lastTok) ||
+          tokens.some(
+            (t) => GOV_AGENCY_TOKENS.has(t) || ORG_NAME_TAIL_TOKENS.has(t),
+          )
+        )
+          continue;
+        this.add(
+          name,
+          "PERSON",
+          2,
+          "standalone agreement party line",
+          doc.name,
+          (match.index ?? 0) + match[0].indexOf(name),
+        );
       }
     }
 
@@ -1135,6 +1582,23 @@ export class Detector {
       for (const nameMatch of match[0].matchAll(PERSON_NAME_RE)) {
         const name = cleanValue(nameMatch[0]);
         if (!this.looksLikePersonName(name)) continue;
+        // A list pattern can stitch across a conjunction inside an entity
+        // name ("Hong Kong Exchanges and Clearing Limited" -> "Clearing
+        // Limited") or across adjacent agency lines ("Human Services / Food").
+        // Organization and agency fragments are not people; skip them here.
+        const lastTok = name.split(/\s+/).at(-1)?.replace(/\.$/, "") ?? "";
+        const tokens = name
+          .split(/\s+/)
+          .map((token) => token.replace(/\.$/, ""));
+        if (
+          this.isExchangeEntityFragment(name) ||
+          ORG_SUFFIX_NAME_TOKENS.has(lastTok) ||
+          tokens.some(
+            (token) =>
+              GOV_AGENCY_TOKENS.has(token) || ORG_NAME_TAIL_TOKENS.has(token),
+          )
+        )
+          continue;
         this.add(
           name,
           "PERSON",
@@ -1154,17 +1618,24 @@ export class Detector {
       const pos = doc.text.indexOf(line, searchPos);
       searchPos = pos + line.length + 1;
       const visible = visibleLineText(line);
-      const candidate = visible.replace(/^[*-]\s+/, "").replace(/:$/, "");
+      // Strip a leading "Dear" salutation ("Dear Darcy Bomford,") so the
+      // captured name is the person, not the greeting word. The remainder is
+      // still validated as a standalone person line below.
+      const candidate = visible
+        .replace(/^[*-]\s+/, "")
+        .replace(/^Dear\s+/, "")
+        .replace(/:$/, "");
       if (!new RegExp(String.raw`^${PERSON_NAME_PATTERN}$`).test(candidate))
         continue;
       if (!this.looksLikePersonName(candidate)) continue;
+      const nameStart = pos + line.indexOf(candidate);
       this.add(
         candidate,
         "PERSON",
         2,
         "standalone title-case person line",
         doc.name,
-        pos + line.indexOf(visible),
+        nameStart >= pos ? nameStart : pos + line.indexOf(visible),
       );
     }
   }
@@ -1398,10 +1869,32 @@ export class Detector {
     const text = doc.text;
     for (const marker of text.matchAll(markerRe)) {
       let start = (marker.index ?? 0) + marker[0].length;
+      const isSignatureSlash = /^\/s\//i.test(marker[0]);
       // Skip separators (spaces, table pipes, underscores, slashes) that often
       // sit between a marker and the name, e.g. "| By: | /s/ Kirk Blosch |".
       if (/^[^\S\r\n]*\/s\//i.test(text.slice(start))) {
         start += text.slice(start).match(/^[^\S\r\n]*\/s\//i)?.[0].length ?? 0;
+      }
+      // For a "/s/" marker, regulator letter signature blocks frequently put
+      // the printed name on the line immediately below the marker:
+      //   /s/
+      //   Judith A. Whitfield
+      //   District Director
+      // Allow crossing a single newline boundary (and surrounding horizontal
+      // whitespace) in that case so the name is captured. Other markers
+      // (Name:, By:, Printed Name:) keep the same-line behaviour.
+      if (isSignatureSlash) {
+        const nlMatch = text.slice(start).match(/^[^\S\r\n]*\r?\n[^\S\r\n]*/);
+        if (nlMatch) {
+          const nlEnd = start + nlMatch[0].length;
+          // Only cross the newline if nothing but a name begins there; stop at a
+          // second newline so we never stitch two unrelated lines.
+          nameRe.lastIndex = nlEnd;
+          const probe = nameRe.exec(text);
+          if (probe && (probe.index ?? 0) === nlEnd) {
+            start = nlEnd;
+          }
+        }
       }
       while (start < text.length && /[^\S\r\n]|[|_/]/.test(text[start]))
         start += 1;
@@ -1468,26 +1961,36 @@ export class Detector {
 
   private detectOrganizations(doc: RedactionInput): void {
     // Organization names live on a single line; use same-line whitespace
-    // (\\s in the compiled regex, written here as \\s) so the suffix pattern
+    // (\s in the compiled regex, written here as \s) so the suffix pattern
     // cannot stitch together several all-caps heading lines that happen to end
     // in a suffix word (e.g. "... TABLE OF CONTENTS MANAGEMENT").
+    //
+    // Tokens are joined only by same-line whitespace. Because the token itself
+    // excludes periods, headings such as "Due Diligence. The Company" cannot be
+    // stitched across a sentence boundary. Generic tail suffixes (Group,
+    // Capital, ...) may only follow a plain space; legal-form suffixes (Inc,
+    // LLC, ...) may also follow ", " so "Name, Inc" survives.
+    const orgToken = String.raw`[A-Z][A-Za-z'&()-]*`;
     const orgPattern = new RegExp(
-      `(?<![A-Za-z0-9])[A-Z][A-Za-z'&.(),-]+(?:[^\\S\\r\\n]+[A-Z][A-Za-z'&.(),-]+){0,6}[^\\S\\r\\n]+(?:${ORGANIZATION_SUFFIX_ALT})(?![A-Za-z0-9])`,
+      String.raw`(?<![A-Za-z0-9])${orgToken}(?:[^\S\r\n]+${orgToken}){0,6}(?:[^\S\r\n]+(?:${GENERIC_TAIL_ORG_SUFFIX_ALT})|(?:[^\S\r\n]+|,\s+)(?:${LEGAL_FORM_ORG_SUFFIX_ALT}))(?![A-Za-z0-9])`,
       "g",
     );
     for (const match of doc.text.matchAll(orgPattern)) {
+      const surface = this.normalizeOrgSurface(match[0]);
+      if (!surface) continue;
       if (
-        match[0].toLocaleLowerCase() !== "working group" &&
-        !LEADING_PERSON_TITLE_RE.test(match[0]) &&
-        !looksLikeGenericOrganizationPhrase(match[0])
+        surface.toLocaleLowerCase() !== "working group" &&
+        !LEADING_PERSON_TITLE_RE.test(surface) &&
+        !looksLikeGenericOrganizationPhrase(surface) &&
+        !this.isGenericOrgBoilerplate(surface)
       )
         this.add(
-          match[0],
+          surface,
           "ORG",
           2,
           "organization suffix",
           doc.name,
-          match.index ?? 0,
+          (match.index ?? 0) + match[0].indexOf(surface),
         );
     }
 
@@ -1556,6 +2059,131 @@ export class Detector {
     }
   }
 
+  // Strip leading sentence-leading conjunctions/adverbs that the suffix
+  // pattern may prepend when an organization name starts a sentence
+  // (e.g. "Although DG Capital", "Moreover Goldman Sachs"). Returns the
+  // trimmed surface, or null if nothing usable remains.
+  private normalizeOrgSurface(raw: string): string | null {
+    const LEADING = new Set([
+      "Although",
+      "Moreover",
+      "Furthermore",
+      "Additionally",
+      "However",
+      "While",
+      "Whereas",
+      "Because",
+      "Since",
+      "Once",
+      "If",
+      "When",
+    ]);
+    let surface = raw;
+    const first = surface.split(/\s+/)[0];
+    if (LEADING.has(first)) surface = surface.slice(first.length).trim();
+    return surface || null;
+  }
+
+  // Detect department / role / function phrases that appear after an
+  // "Attention:" label instead of a person name, e.g. "Legal Department",
+  // "Human Resources", "Investor Relations", "Corporate Secretary". These
+  // are not people and should remain readable. Returns true when the phrase
+  // is built only from role/department tokens.
+  private looksLikeDepartmentOrRole(value: string): boolean {
+    const DEPARTMENT_ROLE_TOKENS = new Set([
+      "Department",
+      "Dept",
+      "Resources",
+      "Relations",
+      "Office",
+      "Division",
+      "Services",
+      "Legal",
+      "Human",
+      "Investor",
+      "Corporate",
+      "Secretary",
+      "Treasury",
+      "Finance",
+      "Accounting",
+      "Compliance",
+      "Tax",
+      "Risk",
+      "Audit",
+      "Operations",
+      "Administration",
+      "Marketing",
+      "Sales",
+      "Security",
+      "Procurement",
+      "Purchasing",
+      "Facilities",
+      "Technology",
+      "Information",
+    ]);
+    const tokens = value.split(/\s+/).filter(Boolean);
+    if (tokens.length < 2) return false;
+    return tokens.every((token) => DEPARTMENT_ROLE_TOKENS.has(token));
+  }
+
+  // Reject generic org boilerplate that the suffix pattern turns into an ORG:
+  // "The Company", "The Bank", "The Partnership", "The Firm", "The Fund",
+  // "The Employer", "The Issuer". These are defined-term references, not
+  // organization names, and redacting them destroys readability of contracts.
+  // Also includes exchange/regulator fragments that the suffix detector carves
+  // out of mandatory listing-venue disclaimers (e.g. "Clearing Limited" from
+  // "Hong Kong Exchanges and Clearing Limited"), and section/role headings
+  // that end in a legal-form suffix word ("CHANGE OF COMPANY").
+  private isGenericOrgBoilerplate(surface: string): boolean {
+    const GENERIC_ORG_BOILERPLATE = new Set([
+      "The Company",
+      "the Company",
+      "The Bank",
+      "the Bank",
+      "The Partnership",
+      "the Partnership",
+      "The Firm",
+      "the Firm",
+      "The Fund",
+      "the Fund",
+      "The Employer",
+      "the Employer",
+      "The Issuer",
+      "the Issuer",
+      "The Corporation",
+      "the Corporation",
+      "The LLC",
+      "The Committee",
+      "the Committee",
+      // Exchange / listing-venue disclaimer fragments.
+      "Clearing Limited",
+      "Stock Exchange",
+      "The Stock Exchange",
+      "Hong Kong Exchanges and Clearing",
+      "London Stock Exchange",
+      // Section / role headings ending in a legal-form suffix word.
+      "CHANGE OF COMPANY",
+    ]);
+    return GENERIC_ORG_BOILERPLATE.has(surface);
+  }
+
+  // Detect fragments of regulated exchange-entity names that label-value
+  // patterns carve out of "To:/From:/Cc:" lines in stock-exchange forms
+  // (e.g. "Hong Kong Exchanges", "Clearing Limited" from "To: Hong Kong
+  // Exchanges and Clearing Limited"). These are listing-venue boilerplate and
+  // must stay readable rather than being redacted as a party.
+  private isExchangeEntityFragment(value: string): boolean {
+    const EXCHANGE_FRAGMENTS = new Set([
+      "Hong Kong Exchanges",
+      "Clearing Limited",
+      "Stock Exchange",
+      "The Stock Exchange",
+      "London Stock Exchange",
+      "Singapore Exchange",
+    ]);
+    return EXCHANGE_FRAGMENTS.has(value.trim());
+  }
+
   private detectMatterTerms(doc: RedactionInput): void {
     for (const match of doc.text.matchAll(
       /\bProject\s+[A-Z][A-Za-z0-9_-]+\b/g,
@@ -1590,13 +2218,31 @@ export class Detector {
       for (const match of doc.text.matchAll(
         new RegExp(escapeRegExp(value), "gi"),
       )) {
+        // Do not redact a location token that sits inside a regulated
+        // exchange-entity name (e.g. "Hong Kong" in "Hong Kong Exchanges and
+        // Clearing Limited" or "The Stock Exchange of Hong Kong Limited",
+        // "London" in "London Stock Exchange", "Singapore" in "Singapore
+        // Exchange"). These are listing-venue boilerplate and must stay
+        // readable; the exchange name is preserved as a unit.
+        const start = match.index ?? 0;
+        const end = start + match[0].length;
+        const window = doc.text
+          .slice(Math.max(0, start - 24), end + 32)
+          .replace(/\s+/g, " ");
+        if (
+          /Exchanges and Clearing/i.test(window) ||
+          /Stock Exchange of Hong Kong/i.test(window) ||
+          /London Stock Exchange/i.test(window) ||
+          /Singapore Exchange/i.test(window)
+        )
+          continue;
         this.add(
           match[0],
           "LOCATION",
           2,
           "location dictionary",
           doc.name,
-          match.index ?? 0,
+          start,
         );
       }
     }
@@ -1922,8 +2568,10 @@ export class Detector {
       "Related-Party Transactions",
       "Deputy Chief Financial Officer",
       "Chief Operating Officer",
+      "Proxy Form",
     ];
     if (badTerms.some((term) => name.includes(term))) return false;
+    if (this.isExchangeEntityFragment(name)) return false;
     const tokens = name.split(/\s+/);
     if (tokens.length < 2 || tokens.length > 4) return false;
     if (
@@ -1965,6 +2613,36 @@ export class Detector {
     // surnames are deliberately excluded from ORG_NAME_TAIL_TOKENS.
     const lastToken = tokens.at(-1)?.replace(/\.$/, "") ?? "";
     if (tokens.length >= 2 && ORG_NAME_TAIL_TOKENS.has(lastToken)) return false;
+    // Reject corporate-governance role / officer phrases that the contextual
+    // detectors catch in listed-issuer filings ("Independent Non-executive
+    // Directors", "Authorised Representative", "Chief Executive Officer",
+    // "Non-Executive Director", "Company Secretary"). These are roles, not
+    // people; the named officer is captured separately by the titled-name and
+    // signature detectors.
+    const ROLE_ENDINGS = new Set([
+      "Directors",
+      "Director",
+      "Representative",
+      "Secretary",
+      "Chairman",
+      "Chairperson",
+      "Chair",
+      "President",
+      "Officer",
+      "Treasurer",
+      "Auditor",
+      "Registrar",
+      "Proxy",
+    ]);
+    if (tokens.length >= 2 && ROLE_ENDINGS.has(lastToken)) return false;
+    // Reject government / regulator agency fragments caught by the
+    // communication-context, list, or standalone-line detectors (e.g. "Drug
+    // Administration", "Trade Commission", "Drug Administration Silver
+    // Spring"). A personal name never contains an agency tail word
+    // (Administration, Commission, Department, Bureau, Authority, ...) as any
+    // token; these identify the regulator itself in enforcement/compliance
+    // notices and must stay readable. See the module-level GOV_AGENCY_TOKENS.
+    if (tokens.some((token) => GOV_AGENCY_TOKENS.has(token))) return false;
     // Reject defined-term phrases (e.g. "Administrative Agent", "Common Stock",
     // "Base Rent") without suppressing people whose surname is also a contract
     // word, such as "Jordan Price".

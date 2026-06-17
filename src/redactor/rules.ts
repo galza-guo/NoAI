@@ -97,6 +97,29 @@ export const SINGLE_PERSON_STOPWORDS = new Set([
   "Chief",
   "Financial",
   "Officer",
+  // Procurement role labels. These are never plausible standalone person-name
+  // components but can appear in title-case lists/labels ("Purchaser,",
+  // "Supplier Name:", "The Vendor shall ..."). Adding them keeps these role
+  // words readable instead of redacting them as people.
+  "Purchaser",
+  "Supplier",
+  "Vendor",
+  "Bidder",
+  "Contractor",
+  "Subcontractor",
+  "Procurement",
+  "Buyer",
+  // Boilerplate tokens that are never plausible standalone person-name
+  // components but that the contextual/parenthetical/standalone detectors
+  // sometimes bundle into a "name": "Not Applicable", "Central European
+  //  Time", "European Union", "Time Zone". Adding them here keeps these
+  // phrases readable instead of redacting them as people.
+  "Not",
+  "Applicable",
+  "Central",
+  "European",
+  "Time",
+  "Zone",
   "January",
   "February",
   "March",
@@ -190,6 +213,19 @@ export const ORG_NAME_TAIL_TOKENS = new Set([
   "Holdings",
   "Group",
   "Groups",
+  // Government / regulator agency tail words. A capitalized phrase ending in
+  // one of these is an agency name (e.g. "Drug Administration", "Trade
+  // Commission", "Protection Authority"), never a person surname. They appear
+  // in regulatory enforcement and compliance notices and must stay readable
+  // instead of being redacted as people.
+  "Administration",
+  "Commission",
+  "Department",
+  "Agency",
+  "Bureau",
+  "Authority",
+  "Directorate",
+  "Inspectorate",
 ]);
 
 // Recognizable global organizations commonly seen in English business/legal documents.
@@ -225,7 +261,6 @@ export const KNOWN_ORGS = [
   "Plainvim",
   "Mountain Road",
   "O'Melveny & Myers",
-  "Stock Exchange of Hong Kong",
   "Hong Kong International Arbitration Centre",
   "OMM",
   "Hogan Lovells",
@@ -251,7 +286,6 @@ export const KNOWN_ORGS = [
   "Cocoa Partners",
   "Tanner De Witt",
   "Clifford Chance",
-  "Forum",
   "MoFo",
   "Kempinski Hotel",
   "Four Seasons",
@@ -425,6 +459,60 @@ export const PROPER_NOUN_STOP_TERMS = new Set([
   "Deputy Chief Financial Officer",
   "Chief Operating Officer",
   "Hearing Bundle",
+  // Stock-exchange / listed-issuer regulatory boilerplate. These phrases are
+  // standard across HKEX, SGX, ASX, and LSE/AIM filings and identify neither
+  // the issuer nor an individual; redacting them at Strict only harms
+  // readability of mandatory disclosure language.
+  "Stock Exchange",
+  "The Stock Exchange",
+  "Hong Kong Exchanges and Clearing",
+  "London Stock Exchange",
+  "Singapore Exchange",
+  "Annual General Meeting",
+  "Extraordinary General Meeting",
+  "Company Secretary",
+  "Proxy Form",
+  "Results Announcement",
+  "Registration Statement",
+  "Listing Rule",
+  "Listing Manual",
+  "Main Board Rule",
+  "GEM Rule",
+  "AIM Rules",
+  "AIM rules for companies",
+  "Annual Report",
+  "Directors’ Report",
+  "Auditor’s Report",
+  "Remuneration Report",
+  "Financial Report",
+  "Sustainability Report",
+  "Explanatory Statement",
+  "Notice of Meeting",
+  "Notice of Annual General Meeting",
+  "Ordinary Resolution",
+  "Ordinary Resolution No",
+  "Ordinary Shares",
+  "Performance Rights",
+  "For personal use only",
+  "Non-Executive Director",
+  "Independent Director",
+  "Executive Director",
+  "Group Chief Executive Officer",
+  "Chief Executive Officer",
+  // Procurement document boilerplate. These phrases identify neither a
+  // vendor nor an individual; redacting them at Strict only harms
+  // readability of standard solicitation/PO/contract language.
+  "Scope of Work",
+  "Statement of Work",
+  "Terms and Conditions",
+  "Contract Award Notice",
+  "Accounts Payable",
+  "Request for Proposal",
+  "Request for Quotation",
+  "Invitation for Bid",
+  "Procurement Officer",
+  "Procurement Manager",
+  "Purchase Order",
 ]);
 
 // Common title-case words that should not, by themselves, turn a capitalized
@@ -563,6 +651,17 @@ export const CONTRACT_DEFINED_TERM_TOKENS = new Set([
   "Share",
   "Securities",
   "Registrable",
+  // Securities-class defined terms used in prospectuses and opinion letters
+  // ("Debt Securities", "Preferred Stock", "Depositary Shares", "Common
+  //  Stock", "Preferred Securities"). These qualifiers are never plausible
+  //  standalone person-name components; adding them stops the list/person
+  //  detectors from redacting defined terms as people.
+  "Debt",
+  "Preferred",
+  "Depositary",
+  "Depository",
+  "Warrants",
+  "Units",
   "Equity",
   "Equities",
   "Dividend",
@@ -591,6 +690,12 @@ export const CONTRACT_DEFINED_TERM_TOKENS = new Set([
   "Pension",
   "Benefit",
   "Benefits",
+  // HR / employment defined terms ("Severance Payment", "Stay Bonus",
+  // "Occupational Safety", "Sign-On Bonus"). Not plausible name components.
+  "Severance",
+  "Occupational",
+  "Sign-On",
+  "Bonus",
   // Property / IP / assets
   "Property",
   "Properties",
