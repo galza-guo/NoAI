@@ -1,0 +1,310 @@
+[
+  {
+    "id": "pocket-senryu",
+    "name": {
+      "zh-Hans": "口袋三行",
+      "zh-Hant": "口袋三行",
+      "en": "Pocket Three Lines",
+      "ko": "포켓 삼행",
+      "ja": "ポケット三行"
+    },
+    "tagline": {
+      "zh-Hans": "一句话生成一首中文三行诗",
+      "zh-Hant": "一句話生成一首中文三行詩",
+      "en": "Turn one line into a compact Chinese three-line poem.",
+      "ko": "한 줄로 중국어 3행시를 만듭니다.",
+      "ja": "一行から中国語の三行詩を生成します。"
+    },
+    "platforms": ["web"],
+    "links": {
+      "website": "https://senryu.gallantguo.com/"
+    },
+    "icon": {
+      "light": "/works/senryu-mark.png",
+      "alt": {
+        "zh-Hans": "口袋三行叶形标志",
+        "zh-Hant": "口袋三行葉形標誌",
+        "en": "Pocket Three Lines leaf mark",
+        "ko": "포켓 삼행 잎 모양 로고",
+        "ja": "ポケット三行の葉のマーク"
+      }
+    },
+    "showOnSite": true,
+    "showInApps": true,
+    "order": 10
+  },
+  {
+    "id": "panorama",
+    "name": {
+      "zh-Hans": "Panorama",
+      "zh-Hant": "Panorama",
+      "en": "Panorama",
+      "ko": "Panorama",
+      "ja": "Panorama"
+    },
+    "tagline": {
+      "zh-Hans": "面向全球市场的全面投资追踪器",
+      "zh-Hant": "面向全球市場的全面投資追蹤器",
+      "en": "A comprehensive investment tracker for global markets.",
+      "ko": "글로벌 시장을 위한 종합 투자 추적기.",
+      "ja": "グローバル市場向けの総合投資トラッカー。"
+    },
+    "platforms": ["macos", "windows", "linux"],
+    "links": {
+      "website": "https://panorama.gallantguo.com/"
+    },
+    "icon": {
+      "light": "/works/panorama-logo-transparent.png",
+      "alt": {
+        "zh-Hans": "Panorama 标志",
+        "zh-Hant": "Panorama 標誌",
+        "en": "Panorama logo",
+        "ko": "Panorama 로고",
+        "ja": "Panoramaロゴ"
+      }
+    },
+    "showOnSite": true,
+    "showInApps": true,
+    "order": 20
+  },
+  {
+    "id": "readani",
+    "name": {
+      "zh-Hans": "readani",
+      "zh-Hant": "readani",
+      "en": "readani",
+      "ko": "readani",
+      "ja": "readani"
+    },
+    "tagline": {
+      "zh-Hans": "沉浸式阅读任何语言的 PDF 和 EPUB，包括扫描版",
+      "zh-Hant": "沉浸式閱讀任何語言的 PDF 和 EPUB，包括掃描版",
+      "en": "Immersive reading for PDFs and EPUBs in any language, including scans.",
+      "ko": "스캔본까지 포함해 모든 언어의 PDF와 EPUB을 몰입해 읽습니다.",
+      "ja": "スキャン版を含む、あらゆる言語のPDFとEPUBを没入して読めます。"
+    },
+    "platforms": ["web", "macos", "windows"],
+    "links": {
+      "website": "https://readani.gallantguo.com/"
+    },
+    "icon": {
+      "light": "/works/readani-light.png",
+      "dark": "/works/readani-dark.png",
+      "alt": {
+        "zh-Hans": "readani 标志",
+        "zh-Hant": "readani 標誌",
+        "en": "readani logo",
+        "ko": "readani 로고",
+        "ja": "readaniロゴ"
+      }
+    },
+    "showOnSite": true,
+    "showInApps": true,
+    "order": 30
+  },
+  {
+    "id": "quik-pro-chro",
+    "name": {
+      "zh-Hans": "Quick Pro Chro",
+      "zh-Hant": "Quick Pro Chro",
+      "en": "Quick Pro Chro",
+      "ko": "Quick Pro Chro",
+      "ja": "Quick Pro Chro"
+    },
+    "tagline": {
+      "zh-Hans": "为按小时计费人士量身打造的计时器",
+      "zh-Hant": "為按小時計費人士量身打造的計時器",
+      "en": "A timer built for people who bill by the hour.",
+      "ko": "시간 단위로 청구하는 사람을 위한 타이머.",
+      "ja": "時間単位で請求する人のためのタイマー。"
+    },
+    "platforms": ["ios"],
+    "links": {
+      "appStore": "https://apps.apple.com/us/app/quick-pro-chro/id6758745453"
+    },
+    "icon": {
+      "light": "/works/qpc-mark.png",
+      "alt": {
+        "zh-Hans": "Quick Pro Chro 标志",
+        "zh-Hant": "Quick Pro Chro 標誌",
+        "en": "Quick Pro Chro logo",
+        "ko": "Quick Pro Chro 로고",
+        "ja": "Quick Pro Chroロゴ"
+      }
+    },
+    "showOnSite": true,
+    "showInApps": true,
+    "order": 40
+  },
+  {
+    "id": "allcheck",
+    "name": {
+      "zh-Hans": "AllCheck",
+      "zh-Hant": "AllCheck",
+      "en": "AllCheck",
+      "ko": "AllCheck",
+      "ja": "AllCheck"
+    },
+    "tagline": {
+      "zh-Hans": "把重复流程变成可复用清单",
+      "zh-Hant": "把重複流程變成可重用清單",
+      "en": "Turn repeated routines into reusable checklists.",
+      "ko": "반복되는 루틴을 재사용 가능한 체크리스트로 바꿉니다.",
+      "ja": "繰り返す手順を再利用できるチェックリストにします。"
+    },
+    "platforms": ["ios"],
+    "links": {
+      "appStore": "https://apps.apple.com/us/app/allcheck/id6760888298"
+    },
+    "icon": {
+      "light": "/works/allcheck-wordmark.png",
+      "alt": {
+        "zh-Hans": "AllCheck 字标",
+        "zh-Hant": "AllCheck 字標",
+        "en": "AllCheck wordmark",
+        "ko": "AllCheck 워드마크",
+        "ja": "AllCheckワードマーク"
+      }
+    },
+    "showOnSite": true,
+    "showInApps": true,
+    "order": 50
+  },
+  {
+    "id": "duacam",
+    "name": {
+      "zh-Hans": "DuaCam",
+      "zh-Hant": "DuaCam",
+      "en": "DuaCam",
+      "ko": "DuaCam",
+      "ja": "DuaCam"
+    },
+    "tagline": {
+      "zh-Hans": "即拍即看的双色调相机",
+      "zh-Hant": "即拍即看的雙色調相機",
+      "en": "A duotone camera for seeing the world in two colors.",
+      "ko": "세상을 두 가지 색으로 보는 듀오톤 카메라.",
+      "ja": "世界を二色で見るデュオトーンカメラ。"
+    },
+    "platforms": ["ios"],
+    "links": {
+      "appStore": "https://apps.apple.com/us/app/duacam/id6760931256"
+    },
+    "icon": {
+      "light": "/works/duacam-mark.png",
+      "alt": {
+        "zh-Hans": "DuaCam 标志",
+        "zh-Hant": "DuaCam 標誌",
+        "en": "DuaCam logo",
+        "ko": "DuaCam 로고",
+        "ja": "DuaCamロゴ"
+      }
+    },
+    "showOnSite": true,
+    "showInApps": true,
+    "order": 60
+  },
+  {
+    "id": "morsemorse",
+    "name": {
+      "zh-Hans": "MorseMorse",
+      "zh-Hant": "MorseMorse",
+      "en": "MorseMorse",
+      "ko": "MorseMorse",
+      "ja": "MorseMorse"
+    },
+    "tagline": {
+      "zh-Hans": "离线学习、发送和解码摩尔斯电码",
+      "zh-Hant": "離線學習、發送和解碼摩斯電碼",
+      "en": "Learn, send, and decode Morse code offline.",
+      "ko": "오프라인에서 모스 부호를 배우고 보내고 해독합니다.",
+      "ja": "オフラインでモールス信号を学び、送信し、解読します。"
+    },
+    "platforms": ["ios"],
+    "links": {
+      "appStore": "https://apps.apple.com/us/app/morsemorse/id6754429677"
+    },
+    "icon": {
+      "light": "/works/morsemorse-icon.png",
+      "alt": {
+        "zh-Hans": "MorseMorse 应用图标",
+        "zh-Hant": "MorseMorse 應用圖示",
+        "en": "MorseMorse app icon",
+        "ko": "MorseMorse 앱 아이콘",
+        "ja": "MorseMorseアプリアイコン"
+      }
+    },
+    "showOnSite": true,
+    "showInApps": true,
+    "order": 70
+  },
+  {
+    "id": "chessnut",
+    "name": {
+      "zh-Hans": "ChessNut",
+      "zh-Hant": "ChessNut",
+      "en": "ChessNut",
+      "ko": "ChessNut",
+      "ja": "ChessNut"
+    },
+    "tagline": {
+      "zh-Hans": "无需登录的浏览器 P2P 国际象棋",
+      "zh-Hant": "無需登入的瀏覽器 P2P 國際象棋",
+      "en": "Play peer-to-peer chess in the browser, no login required.",
+      "ko": "로그인 없이 브라우저에서 P2P 체스를 즐깁니다.",
+      "ja": "ログイン不要でブラウザからP2Pチェスを楽しめます。"
+    },
+    "platforms": ["web"],
+    "links": {
+      "website": "https://chessnut.gallantguo.com"
+    },
+    "icon": {
+      "light": "/works/chessnut-logo.png",
+      "alt": {
+        "zh-Hans": "ChessNut 标志",
+        "zh-Hant": "ChessNut 標誌",
+        "en": "ChessNut logo",
+        "ko": "ChessNut 로고",
+        "ja": "ChessNutロゴ"
+      }
+    },
+    "showOnSite": true,
+    "showInApps": true,
+    "order": 80
+  },
+  {
+    "id": "regular",
+    "name": {
+      "zh-Hans": "Regular",
+      "zh-Hant": "Regular",
+      "en": "Regular",
+      "ko": "Regular",
+      "ja": "Regular"
+    },
+    "tagline": {
+      "zh-Hans": "更私密地记录和优化如厕时间",
+      "zh-Hant": "更私密地記錄和優化如廁時間",
+      "en": "A private timer for healthier restroom routines.",
+      "ko": "더 건강한 화장실 루틴을 위한 프라이빗 타이머.",
+      "ja": "より健やかなトイレ習慣のためのプライベートタイマー。"
+    },
+    "platforms": ["ios"],
+    "links": {
+      "website": "https://gallantguo.com/regular"
+    },
+    "icon": {
+      "light": "/works/regular-logo-black.png",
+      "dark": "/works/regular-logo-white.png",
+      "alt": {
+        "zh-Hans": "Regular 标志",
+        "zh-Hant": "Regular 標誌",
+        "en": "Regular logo",
+        "ko": "Regular 로고",
+        "ja": "Regularロゴ"
+      }
+    },
+    "showOnSite": true,
+    "showInApps": true,
+    "order": 90
+  }
+]

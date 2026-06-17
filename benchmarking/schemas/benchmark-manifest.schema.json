@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://noai.local/schemas/benchmark-manifest.schema.json",
+  "title": "NoAI benchmark suite manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "suiteId", "version", "documents"],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "suiteId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+(?:\\.\\d+)?$"
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "frozenAt": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "documents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/document"
+      }
+    }
+  },
+  "$defs": {
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "docId",
+        "title",
+        "category",
+        "status",
+        "paths",
+        "sourceTextSha256"
+      ],
+      "properties": {
+        "docId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "contract",
+            "correspondence",
+            "litigation",
+            "regulatory",
+            "stock-exchange",
+            "procurement",
+            "finance-operations",
+            "employment-hr",
+            "governance",
+            "mixed-business",
+            "other"
+          ]
+        },
+        "status": {
+          "enum": ["candidate", "frozen", "contaminated", "retired"]
+        },
+        "sourceUrl": {
+          "type": "string"
+        },
+        "sourceNotes": {
+          "type": "string"
+        },
+        "licenseNotes": {
+          "type": "string"
+        },
+        "extractionMethod": {
+          "type": "string"
+        },
+        "sourceTextSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "original": { "type": "string" },
+            "pdf": { "type": "string" },
+            "extractedText": { "type": "string" },
+            "gold": { "type": "string" },
+            "modelProposals": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "contaminationNotes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

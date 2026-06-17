@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://noai.local/schemas/annotation.schema.json",
+  "title": "NoAI benchmark annotation file",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "suiteId",
+    "docId",
+    "sourceTextSha256",
+    "annotations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "suiteId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "docId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceTextSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "annotator": {
+      "type": "string",
+      "description": "Model/vendor name or 'adjudicated-gold'."
+    },
+    "createdAt": {
+      "type": "string",
+      "description": "ISO-8601 timestamp or date."
+    },
+    "notes": {
+      "type": "string"
+    },
+    "annotations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/annotation"
+      }
+    }
+  },
+  "$defs": {
+    "annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "action",
+        "label",
+        "start",
+        "end",
+        "text",
+        "severity",
+        "reason"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "enum": ["redact", "keep"]
+        },
+        "label": {
+          "enum": [
+            "EMAIL",
+            "PHONE",
+            "URL",
+            "INTERNAL_LINK",
+            "ADDRESS",
+            "POSTCODE",
+            "NATIONAL_ID",
+            "BANK_ACCOUNT",
+            "BUSINESS_ID",
+            "CASE_REF",
+            "BUNDLE_REF",
+            "EXHIBIT_REF",
+            "TRANSCRIPT_REF",
+            "PROCEDURAL_REF",
+            "DATE",
+            "AMOUNT",
+            "PERSON",
+            "ORG",
+            "PERSON_OR_ORG",
+            "PROJECT",
+            "PROJECT_OR_ISSUE",
+            "LOCATION",
+            "BRAND",
+            "CHANNEL",
+            "NON_LATIN_TEXT",
+            "MUST_KEEP",
+            "OTHER"
+          ]
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "enum": ["critical", "high", "medium", "low", "none"]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
