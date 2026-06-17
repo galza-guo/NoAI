@@ -22,7 +22,7 @@ The goal is not perfect anonymization. The goal is a fast, understandable pre-pr
 - Levels:
   - Light: direct identifiers (emails, phone numbers, URLs, addresses, postcodes, national/business IDs, bank details, and case/registry references).
   - Balanced (default): Light plus people, organizations, matter names, dates, amounts, and locations.
-  - Strict: Balanced plus aggressive repeated proper-noun capture and heavier table/contact quarantining.
+  - Heavy: Balanced plus aggressive repeated proper-noun capture and heavier table/contact quarantining.
 - Custom terms are supported and replaced deterministically.
 
 ## Trust Model
@@ -43,7 +43,7 @@ The redaction engine is rule-based:
 
 - Direct patterns: emails, phone numbers, URLs, addresses, postcodes, national IDs (SSN, NI, passport), employer IDs, bank details (IBAN, SWIFT/BIC, sort code), case references (including UK neutral citations and US dockets), bundle/exhibit references, transcript references, procedural references, dates, amounts, and percentages.
 - Context patterns: legal contact labels, addresses, titled names, witness-style aliases, all-caps party names, organization suffixes, known legal/finance organizations, locations, and matter-specific deal terms.
-- Levels: Light keeps the output most readable, Balanced is the default for external AI use, and Strict adds aggressive repeated proper-noun capture and heavier table/contact quarantining. Dates are handled at Balanced because they are useful identifiers.
+- Levels: Light keeps the output most readable, Balanced is the default for external AI use, and Heavy adds aggressive repeated proper-noun capture and heavier table/contact quarantining. Dates are handled at Balanced because they are useful identifiers.
 
 ## What It Is Not
 

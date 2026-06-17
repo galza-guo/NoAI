@@ -82,7 +82,7 @@ Optional email source: [CMU Enron Email Dataset](https://www.cs.cmu.edu/~enron/)
 For each document:
 
 1. Convert it to plain text or Markdown using the same browser path NoAI supports when practical.
-2. Run Light, Balanced, and Strict.
+2. Run Light, Balanced, and Heavy.
 3. Record missed sensitive values and damaging over-redactions in a scratch note outside the repo.
 4. Convert each generalizable miss into a small synthetic test.
 5. Tune rules only after at least two examples show the same pattern, unless the miss is obvious and high-risk.

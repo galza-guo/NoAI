@@ -53,7 +53,7 @@ Support multiple redaction levels:
 
 - Light: fewer false positives, more readable.
 - Balanced: default for using external AI tools.
-- Strict: more aggressive, accepts lower readability for stronger privacy.
+- Heavy: more aggressive, accepts lower readability for stronger privacy.
 
 ## Handover Notes
 
