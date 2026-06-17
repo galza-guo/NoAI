@@ -132,16 +132,13 @@ if (!app) throw new Error("App root was not found.");
 
 app.innerHTML = `
   <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <img src="/logo.png" alt="NoAI Logo" style="display: block; height: 26px; margin-bottom: 4px;" />
+      </div>
+    </header>
+
     <section class="workspace">
-      <header class="topbar">
-        <div>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 130 40" width="90" height="28" style="display: block; margin-bottom: 10px;">
-            <text x="0" y="33" font-family="Inter, system-ui, sans-serif" font-weight="900" font-size="36" letter-spacing="-2" fill="currentColor">No</text>
-            <rect x="50" y="0" width="66" height="40" fill="currentColor" />
-            <text x="83" y="33" font-family="Inter, system-ui, sans-serif" font-weight="900" font-size="36" letter-spacing="-1" fill="#ffffff" text-anchor="middle">AI</text>
-          </svg>
-        </div>
-      </header>
 
       <!-- Empty state: large dropzone shown before any document is loaded -->
       <section class="panel empty-state" id="empty-state">
@@ -158,7 +155,9 @@ app.innerHTML = `
         <section class="panel files-panel">
           <div class="panel-head">
             <h2>Documents</h2>
-            <button id="documents-toggle" type="button" class="icon-button" aria-expanded="true" aria-label="Collapse documents sidebar">${icon.sidebar}</button>
+            <div class="panel-actions">
+              <button id="documents-toggle" type="button" class="icon-button" aria-expanded="true" aria-label="Collapse documents sidebar">${icon.sidebar}</button>
+            </div>
           </div>
           <div class="files-content" id="files-content">
             <div class="files-scroll-area">
@@ -218,6 +217,8 @@ app.innerHTML = `
         </section>
 
         <section class="panel preview-panel">
+          <div class="resizer resizer-left" id="resizer-left" aria-hidden="true"></div>
+          <div class="resizer resizer-right" id="resizer-right" aria-hidden="true"></div>
           <div class="panel-head">
             <h2 id="preview-title">Preview</h2>
             <div class="panel-actions">
@@ -249,13 +250,6 @@ app.innerHTML = `
           <div class="replacements-body" id="replacements-body"></div>
         </section>
 
-      </section>
-
-      <section class="status-area" aria-live="polite">
-        <p class="session-note">
-          Edits stay in this browser session. Originals are shown here only for local review
-          and are not included in redacted Markdown exports.
-        </p>
       </section>
     </section>
   </main>
@@ -318,6 +312,11 @@ const downloadDocButton = document.querySelector<HTMLButtonElement>(
 const downloadButton =
   document.querySelector<HTMLButtonElement>("#download-button")!;
 const toastRegion = document.querySelector<HTMLElement>("#toast-region")!;
+
+const filesPanel = document.querySelector<HTMLElement>(".files-panel")!;
+const replacementsPanel = document.querySelector<HTMLElement>(".replacements-panel")!;
+const resizerLeft = document.querySelector<HTMLElement>("#resizer-left")!;
+const resizerRight = document.querySelector<HTMLElement>("#resizer-right")!;
 
 const popover = document.querySelector<HTMLElement>("#entry-popover")!;
 const popoverClose =
@@ -470,6 +469,56 @@ downloadDocButton.addEventListener("click", () => {
 documentsToggle.addEventListener("click", () => {
   state.documentsCollapsed = !state.documentsCollapsed;
   renderFiles();
+});
+
+/* --------------------------- Resizing ------------------------------ */
+
+let isResizing = false;
+let currentResizer: "left" | "right" | null = null;
+let startX = 0;
+let startWidth1 = 0;
+let startWidth3 = 0;
+
+resizerLeft.addEventListener("mousedown", (e) => {
+  if (state.documentsCollapsed) return;
+  isResizing = true;
+  currentResizer = "left";
+  resizerLeft.classList.add("active");
+  startX = e.clientX;
+  startWidth1 = filesPanel.getBoundingClientRect().width;
+  document.body.classList.add("resizing-col");
+});
+
+resizerRight.addEventListener("mousedown", (e) => {
+  isResizing = true;
+  currentResizer = "right";
+  resizerRight.classList.add("active");
+  startX = e.clientX;
+  startWidth3 = replacementsPanel.getBoundingClientRect().width;
+  document.body.classList.add("resizing-col");
+});
+
+window.addEventListener("mousemove", (e) => {
+  if (!isResizing || !currentResizer) return;
+  const dx = e.clientX - startX;
+  if (currentResizer === "left") {
+    const newWidth = Math.max(200, Math.min(startWidth1 + dx, 800));
+    workspaceGrid.style.setProperty("--col-1-width", `${newWidth}px`);
+  } else {
+    // For right resizer, moving left (negative dx) increases right panel width
+    const newWidth = Math.max(250, Math.min(startWidth3 - dx, 800));
+    workspaceGrid.style.setProperty("--col-3-width", `${newWidth}px`);
+  }
+});
+
+window.addEventListener("mouseup", () => {
+  if (isResizing) {
+    isResizing = false;
+    currentResizer = null;
+    resizerLeft.classList.remove("active");
+    resizerRight.classList.remove("active");
+    document.body.classList.remove("resizing-col");
+  }
 });
 
 /* ----- Replacement edits (keep focus, only refresh preview) ----- */
@@ -697,9 +746,11 @@ function renderReplacements(): void {
           <button type="button" class="cat-head${collapsed ? " collapsed" : ""}" data-toggle-kind="${escapeHtml(kind)}">
             <span class="cat-name" style="${style.labelCss}">${escapeHtml(kindLabel(kind))}</span>
             <span class="cat-count">${items.length}</span>
-            <span class="cat-chevron">${collapsed ? icon.chevronRight : icon.chevronDown}</span>
+            <span class="cat-chevron">${icon.chevronDown}</span>
           </button>
-          ${collapsed ? "" : `<div class="cat-items">${items.map(renderEntryRow).join("")}</div>`}
+          <div class="cat-items-grid${collapsed ? " collapsed" : ""}">
+            <div class="cat-items">${items.map((entry, i) => renderEntryRow(entry, i)).join("")}</div>
+          </div>
         </section>
       `;
     })
@@ -710,9 +761,17 @@ function renderReplacements(): void {
     .forEach((button) => {
       button.addEventListener("click", () => {
         const kind = button.dataset.toggleKind!;
-        if (state.collapsedKinds.has(kind)) state.collapsedKinds.delete(kind);
-        else state.collapsedKinds.add(kind);
-        renderReplacements();
+        const section = button.closest(".cat-group")!;
+        const grid = section.querySelector(".cat-items-grid")!;
+        if (state.collapsedKinds.has(kind)) {
+          state.collapsedKinds.delete(kind);
+          button.classList.remove("collapsed");
+          grid.classList.remove("collapsed");
+        } else {
+          state.collapsedKinds.add(kind);
+          button.classList.add("collapsed");
+          grid.classList.add("collapsed");
+        }
       });
     });
 
@@ -741,12 +800,12 @@ function renderReplacements(): void {
     });
 }
 
-function renderEntryRow(entry: ReplacementEntry): string {
+function renderEntryRow(entry: ReplacementEntry, index: number = 0): string {
   const style = kindStyle(entry.kind);
   const hitTitle = `${entry.count} ${entry.count === 1 ? "hit" : "hits"}`;
   return `
-    <div class="entry-row" data-jump-entry="${escapeHtml(entry.id)}">
-      <s class="entry-value" style="${style.strikeCss}" title="${escapeHtml(hitTitle)}">${escapeHtml(entry.value)}</s>
+    <div class="entry-row" data-jump-entry="${escapeHtml(entry.id)}" style="--anim-index: ${index}">
+      <s class="entry-value" style="--strike-color: ${style.color}" title="${escapeHtml(hitTitle)}">${escapeHtml(entry.value)}</s>
       <div class="entry-controls">
         <input
           type="text"
