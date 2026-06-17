@@ -69,7 +69,6 @@ interface AppState {
 }
 
 const APP_VERSION = packageMeta.version;
-const FIRST_VISIT_COVER_KEY = "noai_visited";
 
 const state: AppState = {
   route: routeFromHash(),
@@ -236,16 +235,16 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
             type: "qa-html",
             question: "How do I know what you say is true?",
             answerHtml: [
-              "NoAI is open-source software, and its full source code is available on <a href=\"https://github.com/guolite/NoAI\" target=\"_blank\" rel=\"noopener\">GitHub</a>. You can review the code yourself, or ask your AI assistant to verify it using a prompt like this:",
+              "NoAI is open-source software, and its full source code is available on <a href=\"https://github.com/galza-guo/NoAI\" target=\"_blank\" rel=\"noopener\">GitHub</a>. You can review the code yourself, or ask your AI assistant to verify it using a prompt like this:",
               `<div class="sample-prompt-container">
                 <div class="sample-prompt-header">
                   <span class="sample-prompt-title">Sample Prompt</span>
-                  <button type="button" class="copy-prompt-btn" data-copy-text="Here is the source code for NoAI: https://github.com/guolite/NoAI. Please review the redaction engine and confirm whether it uploads my documents to any external server or uses an AI model." aria-label="Copy prompt" title="Copy prompt">
+                  <button type="button" class="copy-prompt-btn" data-copy-text="Here is the source code for NoAI: https://github.com/galza-guo/NoAI. Please review the redaction engine and confirm whether it uploads my documents to any external server or uses an AI model." aria-label="Copy prompt" title="Copy prompt">
                     <i class="ph ph-copy" aria-hidden="true"></i>
                   </button>
                 </div>
                 <div class="sample-prompt-body">
-                  <pre><code id="verification-prompt-code">Here is the source code for NoAI: https://github.com/guolite/NoAI. Please review the redaction engine and confirm whether it uploads my documents to any external server or uses an AI model.</code></pre>
+                  <pre><code id="verification-prompt-code">Here is the source code for NoAI: https://github.com/galza-guo/NoAI. Please review the redaction engine and confirm whether it uploads my documents to any external server or uses an AI model.</code></pre>
                 </div>
               </div>`,
             ],
@@ -358,22 +357,22 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
     route: "about",
     title: "About",
     summary:
-      `NoAI is a browser-only redaction tool for people who want to review and reduce sensitive details before sharing documents with external AI tools. Version ${APP_VERSION}.`,
+      "Local-only redaction tool built for AI age.",
     sections: [
       {
         heading: "What NoAI is",
         blocks: [
           {
             type: "text",
-            text: "Redact documents before sharing them with external AI tools.",
+            text: "A local tool for preparing documents before using AI.",
           },
           {
             type: "text",
-            text: "Everything runs in your browser: no AI calls, no document uploads, no backend conversion service.",
+            text: "No AI calls. No document uploads. No backend conversion.",
           },
           {
             type: "text",
-            text: "It is a first pass, not a guarantee. Always review the output before sharing.",
+            text: "Review the output before sharing.",
           },
         ],
       },
@@ -387,19 +386,19 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         ],
       },
       {
-        heading: "License and source",
+        heading: "Source",
         blocks: [
           {
             type: "html",
             html: `
               <div class="info-link-list">
-                <a href="https://github.com/guolite/NoAI" target="_blank" rel="noopener">
+                <a href="https://github.com/galza-guo/NoAI" target="_blank" rel="noopener">
                   <i class="ph ph-github-logo" aria-hidden="true"></i>
-                  <span>Open source</span>
+                  <span>Open source · GitHub</span>
                 </a>
-                <a href="https://github.com/guolite/NoAI/blob/main/LICENSE" target="_blank" rel="noopener">
+                <a href="https://github.com/galza-guo/NoAI/blob/main/LICENSE" target="_blank" rel="noopener">
                   <i class="ph ph-scroll" aria-hidden="true"></i>
-                  <span>AGPL v3.0</span>
+                  <span>AGPL v3.0 · License</span>
                 </a>
               </div>
             `,
@@ -418,28 +417,20 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         heading: "Information NoAI processes",
         blocks: [
           {
-            type: "qa",
-            question: "What information does NoAI read?",
-            answer: [
-              "NoAI reads the files you choose to add to the app, such as Markdown, plain text, Word documents, and text-based PDFs. It uses that text to find likely sensitive items and produce redacted Markdown.",
-              "The document text is handled in your browser session. NoAI does not intentionally collect, store, or upload the contents of your documents.",
-            ],
+            type: "text",
+            text: "NoAI reads the files you choose to add to the app, such as Markdown, plain text, Word documents, and text-based PDFs. It uses that text to find likely sensitive items and produce redacted Markdown.",
           },
           {
-            type: "qa",
-            question: "Does NoAI collect account information?",
-            answer: [
-              "NoAI does not currently have user accounts, sign-in, subscriptions, or a payment flow in this app.",
-              "Because there is no account system, NoAI does not ask for names, passwords, billing details, or profile information before you use the redaction workspace.",
-            ],
+            type: "text",
+            text: "The document text is handled in your browser session. NoAI does not intentionally collect, store, or upload the contents of your documents.",
           },
           {
-            type: "qa-html",
-            question: "Does NoAI collect analytics?",
-            answerHtml: [
-              "NoAI does not include analytics, telemetry, crash reporting, advertising pixels, or product-tracking scripts that inspect document contents.",
-              'If this changes in a future release, this policy should be updated before release. You can also inspect the source code on <a href="https://github.com/guolite/NoAI" target="_blank" rel="noopener">GitHub</a>.',
-            ],
+            type: "text",
+            text: "NoAI does not currently have user accounts, sign-in, subscriptions, or a payment flow in this app. Because there is no account system, NoAI does not ask for names, passwords, billing details, or profile information before you use the redaction workspace.",
+          },
+          {
+            type: "text",
+            text: "NoAI does not include analytics, telemetry, crash reporting, advertising pixels, or product-tracking scripts that inspect document contents.",
           },
         ],
       },
@@ -447,28 +438,20 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         heading: "Local browser processing",
         blocks: [
           {
-            type: "qa",
-            question: "Where does redaction happen?",
-            answer: [
-              "Redaction happens locally in your browser. The website loads the app code, then your browser reads the selected files and applies deterministic redaction rules on your device.",
-              "NoAI does not send your document text to a backend server, conversion service, or AI model as part of the redaction process.",
-            ],
+            type: "text",
+            text: "Redaction happens locally in your browser. The website loads the app code, then your browser reads the selected files and applies deterministic redaction rules on your device.",
           },
           {
-            type: "qa",
-            question: "Does NoAI use AI or large language models?",
-            answer: [
-              "No. NoAI's redaction path is rule-based. It uses fixed patterns and deterministic checks, not an AI model.",
-              "This makes the behavior easier to inspect, but it also means NoAI can miss sensitive details that a person would notice. Review the redacted output before sharing it.",
-            ],
+            type: "text",
+            text: "NoAI does not send your document text to a backend server, conversion service, or AI model as part of the redaction process. NoAI's redaction path is rule-based: it uses fixed patterns and deterministic checks, not an AI model.",
           },
           {
-            type: "qa",
-            question: "What happens when I export Markdown?",
-            answer: [
-              "The export is generated in your browser from the redacted text. Downloading or copying the output does not upload the original document to NoAI.",
-              "After export, you control where the Markdown goes. If you paste it into an external AI tool, that separate tool's privacy policy and terms apply.",
-            ],
+            type: "text",
+            text: "The export is generated in your browser from the redacted text. Downloading or copying the output does not upload the original document to NoAI.",
+          },
+          {
+            type: "text",
+            text: "After export, you control where the Markdown goes. If you paste it into an external AI tool, that separate tool's privacy policy and terms apply.",
           },
         ],
       },
@@ -476,28 +459,20 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         heading: "Network requests and third parties",
         blocks: [
           {
-            type: "qa",
-            question: "What network requests can happen when I open NoAI?",
-            answer: [
-              "Your browser has to request the NoAI website files from the site host, such as HTML, JavaScript, styles, icons, and the logo. The current app may also request web fonts from Google Fonts, depending on how the site is deployed.",
-              "Those requests are for loading the app interface. They are not document uploads by NoAI.",
-            ],
+            type: "text",
+            text: "Your browser has to request the NoAI website files from the site host, such as HTML, JavaScript, styles, icons, and the logo. The current app may also request web fonts from Google Fonts, depending on how the site is deployed.",
           },
           {
-            type: "qa",
-            question: "Do third parties receive my document text?",
-            answer: [
-              "NoAI's redaction code does not intentionally send document text to third parties.",
-              "Be careful with what you do after export. If you upload the original file or paste redacted Markdown into another service, that action is outside NoAI and is governed by that service's rules.",
-            ],
+            type: "text",
+            text: "Those requests are for loading the app interface. They are not document uploads by NoAI. NoAI's redaction code does not intentionally send document text to third parties.",
           },
           {
-            type: "qa",
-            question: "Does NoAI use remote OCR or file conversion?",
-            answer: [
-              "No. NoAI does not send files to a remote OCR or conversion provider.",
-              "Text-based PDFs can be read in the browser. Scanned-image PDFs may not contain readable text, so NoAI may not be able to redact them unless you convert them to text before using NoAI.",
-            ],
+            type: "text",
+            text: "NoAI does not send files to a remote OCR or conversion provider. Text-based PDFs can be read in the browser. Scanned-image PDFs may not contain readable text, so NoAI may not be able to redact them unless you convert them to text before using NoAI.",
+          },
+          {
+            type: "text",
+            text: "Be careful with what you do after export. If you upload the original file or paste redacted Markdown into another service, that action is outside NoAI and is governed by that service's rules.",
           },
         ],
       },
@@ -505,28 +480,20 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         heading: "Storage and retention",
         blocks: [
           {
-            type: "qa",
-            question: "Does NoAI keep my documents?",
-            answer: [
-              "NoAI does not intentionally save your document contents to its servers.",
-              "During a browser session, your selected document text is kept in memory so the workspace can preview, edit, and export redactions. If you refresh or close the page, the session state is normally cleared by the browser.",
-            ],
+            type: "text",
+            text: "NoAI does not intentionally save your document contents to its servers. During a browser session, your selected document text is kept in memory so the workspace can preview, edit, and export redactions.",
           },
           {
-            type: "qa",
-            question: "Does NoAI use browser storage?",
-            answer: [
-              "NoAI may store small interface preferences in your browser, such as whether you have already seen the first-use notice. These preferences are not document contents.",
-              "Your browser, operating system, or downloaded files folder may keep copies of files you choose to save. Manage those copies through your own device and browser settings.",
-            ],
+            type: "text",
+            text: "If you refresh or close the page, the session state is normally cleared by the browser. NoAI may store small interface preferences in your browser, such as whether you have already seen the first-use notice. These preferences are not document contents.",
           },
           {
-            type: "qa",
-            question: "Can NoAI delete documents from my device?",
-            answer: [
-              "No. NoAI can remove a document from the current workspace view, but it cannot delete the original file from your computer.",
-              "If you download redacted Markdown, that downloaded file is stored wherever your browser saves downloads.",
-            ],
+            type: "text",
+            text: "NoAI can remove a document from the current workspace view, but it cannot delete the original file from your computer. If you download redacted Markdown, that downloaded file is stored wherever your browser saves downloads.",
+          },
+          {
+            type: "text",
+            text: "Your browser, operating system, or downloaded files folder may keep copies of files you choose to save. Manage those copies through your own device and browser settings.",
           },
         ],
       },
@@ -534,20 +501,16 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         heading: "User choices and contact",
         blocks: [
           {
-            type: "qa",
-            question: "How can I reduce privacy risk while using NoAI?",
-            answer: [
-              "Use NoAI on a device and browser you trust. Review the redacted preview and the redaction list before exporting. Search the output for names, emails, phone numbers, case numbers, and any terms you know are sensitive.",
-              "For high-risk documents, treat NoAI as a first pass. Have a human review the final output before sharing it with an AI tool or anyone else.",
-            ],
+            type: "text",
+            text: "Use NoAI on a device and browser you trust. Review the redacted preview and the redaction list before exporting. Search the output for names, emails, phone numbers, case numbers, and any terms you know are sensitive.",
           },
           {
-            type: "qa-html",
-            question: "How do I ask privacy questions or report a concern?",
-            answerHtml: [
-              'Use the contact details on the <a href="#/about">About</a> page once they are added. If you are reviewing the source code, you can also use the project repository to raise implementation questions.',
-              "Please do not send private client, legal, personal, or proprietary documents when reporting a bug. Use a synthetic example that shows the pattern without exposing real information.",
-            ],
+            type: "text",
+            text: "For high-risk documents, treat NoAI as a first pass. Have a human review the final output before sharing it with an AI tool or anyone else.",
+          },
+          {
+            type: "html",
+            html: '<p>Use the contact details on the <a href="#/about">About</a> page once they are added. Please do not send private client, legal, personal, or proprietary documents when reporting a bug. Use a synthetic example that shows the pattern without exposing real information.</p>',
           },
         ],
       },
@@ -563,28 +526,24 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         heading: "Using NoAI",
         blocks: [
           {
-            type: "qa",
-            question: "What is NoAI for?",
-            answer: [
-              "NoAI helps you prepare documents before using external AI tools. It reads supported files in your browser, applies deterministic redaction rules, and exports redacted Markdown.",
-              "It is designed for practical review workflows, especially for people and small teams who want a local first-pass privacy check before pasting material into another tool.",
-            ],
+            type: "text",
+            text: "NoAI helps you prepare documents before using external AI tools. It reads supported files in your browser, applies deterministic redaction rules, and exports redacted Markdown.",
           },
           {
-            type: "qa",
-            question: "What do I agree to by using it?",
-            answer: [
-              "By using NoAI, you agree to use it responsibly and to review the output before sharing it.",
-              "You also agree not to use NoAI to break the law, violate someone else's rights, or create a false impression that a document has been fully anonymized or legally redacted when it has not been reviewed.",
-            ],
+            type: "text",
+            text: "It is designed for practical review workflows, especially for people and small teams who want a local first-pass privacy check before pasting material into another tool.",
           },
           {
-            type: "qa",
-            question: "Can these terms change?",
-            answer: [
-              "Yes. NoAI may update these terms as the app changes. The current version shown in the app is the version that applies when you use it.",
-              "If a change matters to privacy, redaction behavior, or user responsibility, it should be reflected clearly in the release-facing pages before release.",
-            ],
+            type: "html",
+            html: '<p>NoAI handles information as described in the <a href="#/privacy">Privacy Policy</a>. Read it together with this User Agreement before using the app.</p>',
+          },
+          {
+            type: "text",
+            text: "By using NoAI, you agree to use it responsibly and to review the output before sharing it. You also agree not to use NoAI to break the law, violate someone else's rights, or create a false impression that a document has been fully anonymized or legally redacted when it has not been reviewed.",
+          },
+          {
+            type: "text",
+            text: "NoAI may update these terms as the app changes. The current version shown in the app is the version that applies when you use it.",
           },
         ],
       },
@@ -592,28 +551,20 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         heading: "User responsibility",
         blocks: [
           {
-            type: "qa",
-            question: "Who is responsible for the final document?",
-            answer: [
-              "You are. NoAI can help find and replace likely sensitive text, but it cannot know every fact, relationship, code name, unusual identifier, or context-specific detail that matters in your document.",
-              "Before sharing anything, review the redacted Markdown yourself. For important or high-risk material, ask a qualified human reviewer to check it too.",
-            ],
+            type: "text",
+            text: "You are responsible for the final document. NoAI can help find and replace likely sensitive text, but it cannot know every fact, relationship, code name, unusual identifier, or context-specific detail that matters in your document.",
           },
           {
-            type: "qa",
-            question: "What should I check before sharing output?",
-            answer: [
-              "Check for visible names, email addresses, phone numbers, URLs, addresses, account numbers, case references, project names, client names, and other details that would identify a person, company, matter, or transaction.",
-              "Also check context. A document can reveal sensitive information even after obvious identifiers are removed.",
-            ],
+            type: "text",
+            text: "Before sharing anything, review the redacted Markdown yourself. For important or high-risk material, ask a qualified human reviewer to check it too.",
           },
           {
-            type: "qa",
-            question: "What happens after I paste output into another AI tool?",
-            answer: [
-              "That is outside NoAI. Once you paste or upload anything to another service, that service's privacy policy, terms, retention settings, and account controls apply.",
-              "NoAI cannot control what external AI tools do with text you choose to send them.",
-            ],
+            type: "text",
+            text: "Check for visible names, email addresses, phone numbers, URLs, addresses, account numbers, case references, project names, client names, and other details that would identify a person, company, matter, or transaction. Also check context: a document can reveal sensitive information even after obvious identifiers are removed.",
+          },
+          {
+            type: "text",
+            text: "Once you paste or upload anything to another service, that service's privacy policy, terms, retention settings, and account controls apply. NoAI cannot control what external AI tools do with text you choose to send them.",
           },
         ],
       },
@@ -621,20 +572,20 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         heading: "No legal or professional advice",
         blocks: [
           {
-            type: "qa",
-            question: "Is NoAI legal advice?",
-            answer: [
-              "No. NoAI is software, not a lawyer, compliance advisor, privacy officer, or professional reviewer.",
-              "It does not tell you whether a document is safe to disclose, whether a redaction is legally sufficient, or whether using an external AI tool is allowed for your situation.",
-            ],
+            type: "text",
+            text: "NoAI is software, not a lawyer, compliance advisor, privacy officer, or professional reviewer.",
           },
           {
-            type: "qa",
-            question: "When should I get professional help?",
-            answer: [
-              "Get professional advice before using NoAI as part of a legal production, regulatory response, client disclosure, employment matter, medical or financial workflow, or any situation where disclosure could harm someone or breach a duty.",
-              "NoAI can support preparation, but it should not be the only safeguard for high-risk documents.",
-            ],
+            type: "text",
+            text: "NoAI does not tell you whether a document is safe to disclose, whether a redaction is legally sufficient, or whether using an external AI tool is allowed for your situation.",
+          },
+          {
+            type: "text",
+            text: "Get professional advice before using NoAI as part of a legal production, regulatory response, client disclosure, employment matter, medical or financial workflow, or any situation where disclosure could harm someone or breach a duty.",
+          },
+          {
+            type: "text",
+            text: "NoAI can support preparation, but it should not be the only safeguard for high-risk documents.",
           },
         ],
       },
@@ -642,28 +593,20 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         heading: "No perfect-redaction guarantee",
         blocks: [
           {
-            type: "qa",
-            question: "Does NoAI guarantee complete redaction?",
-            answer: [
-              "No. NoAI does not guarantee perfect redaction, anonymization, de-identification, or confidentiality.",
-              "The redaction engine is deterministic and rule-based. That makes it inspectable, but it can still miss unusual names, rare formats, implied identifiers, handwritten or scanned text, and sensitive context that only a person would understand.",
-            ],
+            type: "text",
+            text: "NoAI does not guarantee perfect redaction, anonymization, de-identification, or confidentiality.",
           },
           {
-            type: "qa",
-            question: "Can NoAI over-redact?",
-            answer: [
-              "Yes. NoAI may redact text that is not actually sensitive, especially in the Heavy review setting.",
-              "Use the review list to adjust replacements, remove incorrect redactions, and add custom terms that matter for your document.",
-            ],
+            type: "text",
+            text: "The redaction engine is deterministic and rule-based. That makes it inspectable, but it can still miss unusual names, rare formats, implied identifiers, handwritten or scanned text, and sensitive context that only a person would understand.",
           },
           {
-            type: "qa-html",
-            question: "How should I treat the output?",
-            answerHtml: [
-              'Treat NoAI output as a draft for review. The <a href="#/faq">FAQ</a> explains how the tool works and why human review still matters.',
-              "Do not publish, disclose, or send documents solely because NoAI produced a redacted version.",
-            ],
+            type: "text",
+            text: "NoAI may also redact text that is not actually sensitive, especially in the Heavy review setting. Use the review list to adjust replacements, remove incorrect redactions, and add custom terms that matter for your document.",
+          },
+          {
+            type: "text",
+            text: "Treat NoAI output as a draft for review. Do not publish, disclose, or send documents solely because NoAI produced a redacted version.",
           },
         ],
       },
@@ -671,28 +614,24 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         heading: "License, warranty, and liability",
         blocks: [
           {
-            type: "qa-html",
-            question: "What license applies to NoAI?",
-            answerHtml: [
-              'NoAI is open-source software licensed under the GNU Affero General Public License v3.0 only. You can inspect the source code on <a href="https://github.com/guolite/NoAI" target="_blank" rel="noopener">GitHub</a>.',
-              "If you modify NoAI and offer the modified version to users over a network, the AGPL may require you to make your modified source code available under the same license.",
-            ],
+            type: "html",
+            html: '<p>NoAI is open-source software licensed under the GNU Affero General Public License v3.0 only. You can inspect the source code on <a href="https://github.com/galza-guo/NoAI" target="_blank" rel="noopener">GitHub</a>.</p>',
           },
           {
-            type: "qa",
-            question: "Is NoAI provided with a warranty?",
-            answer: [
-              "NoAI is provided as-is, without a promise that it will be error-free, fit for a particular purpose, or sufficient for your specific legal, business, compliance, or privacy needs.",
-              "To the extent allowed by applicable law, the maintainers are not responsible for losses that result from your use of NoAI, your review decisions, or your sharing of documents with third-party services.",
-            ],
+            type: "text",
+            text: "If you modify NoAI and offer the modified version to users over a network, the AGPL may require you to make your modified source code available under the same license.",
           },
           {
-            type: "qa",
-            question: "What if the law gives me rights these terms cannot limit?",
-            answer: [
-              "Nothing in these terms is intended to remove rights or protections that cannot legally be waived.",
-              "If any part of these terms is not enforceable, the rest should still apply as far as the law allows.",
-            ],
+            type: "text",
+            text: "NoAI is provided as-is, without a promise that it will be error-free, fit for a particular purpose, or sufficient for your specific legal, business, compliance, or privacy needs.",
+          },
+          {
+            type: "text",
+            text: "To the extent allowed by applicable law, the maintainers are not responsible for losses that result from your use of NoAI, your review decisions, or your sharing of documents with third-party services.",
+          },
+          {
+            type: "text",
+            text: "Nothing in these terms is intended to remove rights or protections that cannot legally be waived. If any part of these terms is not enforceable, the rest should still apply as far as the law allows.",
           },
         ],
       },
@@ -800,30 +739,6 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
           },
         ],
       },
-      {
-        heading: "App release notes",
-        blocks: [
-          {
-            type: "qa",
-            question: "0.1.0 - release-candidate interface",
-            answer: [
-              "Browser-only static app for dropping Markdown, text, Word, and text-based PDF files.",
-              "Three review levels: Light, Balanced, and Heavy.",
-              "Document preview, editable redaction list, manual redaction terms, per-document export, and combined Markdown export.",
-              "Release-facing help pages, privacy and terms scaffolds, version history, and a first-use notice.",
-              "The app does not add AI calls, backend document uploads, analytics over document contents, or remote conversion services.",
-            ],
-          },
-          {
-            type: "qa",
-            question: "What should I do after an update?",
-            answer: [
-              "If you are preparing sensitive material, run the document again and review the new output. Redaction improvements can change what gets caught or left readable.",
-              "NoAI is designed to reduce obvious privacy risk before using external AI tools, not to replace human review.",
-            ],
-          },
-        ],
-      },
     ],
   },
 };
@@ -866,6 +781,7 @@ const icon = {
     '<i class="button-icon ph ph-caret-right" aria-hidden="true"></i>',
   chevronDown: '<i class="ph ph-caret-down" aria-hidden="true"></i>',
   x: '<i class="button-icon ph ph-x" aria-hidden="true"></i>',
+  trash: '<i class="button-icon ph ph-trash-simple" aria-hidden="true"></i>',
   sidebar: '<i class="ph ph-sidebar-simple" aria-hidden="true"></i>',
 };
 
@@ -928,61 +844,12 @@ app.innerHTML = `
           ${renderSiteMenuLinks()}
         </nav>
       </div>
+      <div class="reading-progress" id="reading-progress" aria-hidden="true" hidden></div>
     </header>
-
-    <section class="first-visit-cover" id="first-visit-cover">
-      <div class="cover-content">
-        <h1 class="cover-title">You don't trust AI.<br/>Neither do we.</h1>
-        <p class="cover-subtitle">Sanitize your documents locally.<br/>Nothing leaves your device.</p>
-        <div class="cover-guarantees">
-          <p class="guarantee-item">
-            <span class="guarantee-icon" aria-hidden="true">
-              <i class="ph ph-brain"></i>
-              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
-                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
-              </svg>
-            </span>
-            <span>No AI</span>
-          </p>
-          <p class="guarantee-item">
-            <span class="guarantee-icon" aria-hidden="true">
-              <i class="ph ph-hard-drives"></i>
-              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
-                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
-              </svg>
-            </span>
-            <span>No servers</span>
-          </p>
-          <p class="guarantee-item">
-            <span class="guarantee-icon" aria-hidden="true">
-              <i class="ph ph-cloud-arrow-up"></i>
-              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
-                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
-              </svg>
-            </span>
-            <span>No uploads</span>
-          </p>
-        </div>
-        <button type="button" id="start-redacting-btn" class="start-redacting-btn">
-          Start Redacting
-        </button>
-      </div>
-      <a href="#/faq" class="cover-learn-more-link">How this works</a>
-    </section>
 
     <section class="workspace" id="workspace-view">
 
-      <!-- Empty state: large dropzone shown before any document is loaded -->
-      <section class="panel empty-state" id="empty-state">
-        <label class="dropzone" data-dropzone>
-          <input type="file" multiple accept=".md,.markdown,.txt,.docx,.pdf" data-file-input />
-          <span class="drop-title">Drop documents or choose files</span>
-          <span class="drop-meta">Markdown, text, Word, and text-based PDF — read locally, never uploaded</span>
-        </label>
-      </section>
-
-      <!-- Loaded state: three-panel review workspace -->
-      <section class="workspace-grid" id="workspace-grid" hidden aria-live="polite">
+      <section class="workspace-grid" id="workspace-grid" aria-live="polite">
 
         <section class="panel files-panel">
           <div class="panel-head">
@@ -990,12 +857,18 @@ app.innerHTML = `
             <button id="documents-toggle" type="button" class="icon-button" aria-expanded="true" aria-label="Collapse documents sidebar">${icon.sidebar}</button>
           </div>
           <div class="files-content" id="files-content">
-            <div class="files-scroll-area">
+            <div class="files-scroll-area" data-dropzone>
               <div class="files-body" id="files-body"></div>
-              <label class="dropzone dropzone-small" data-dropzone>
+              <label class="dropzone documents-dropzone dropzone-small" id="documents-dropzone" data-dropzone>
                 <input type="file" multiple accept=".md,.markdown,.txt,.docx,.pdf" data-file-input />
-                <span class="drop-title">Add more documents</span>
-                <span class="drop-meta">Drop or click — added to the same session</span>
+                <span class="supported-file-icons" data-empty-only aria-hidden="true">
+                  <i class="ph ph-file-md"></i>
+                  <i class="ph ph-file-txt"></i>
+                  <i class="ph ph-file-doc"></i>
+                  <i class="ph ph-file-pdf"></i>
+                </span>
+                <span class="drop-title" data-documents-drop-title>Add more documents</span>
+                <span class="drop-meta" data-empty-only>Drop files here or click to open.</span>
               </label>
             </div>
             <div class="document-controls">
@@ -1138,15 +1011,21 @@ app.innerHTML = `
 const appShell = document.querySelector<HTMLElement>(".app-shell")!;
 const workspaceView = document.querySelector<HTMLElement>("#workspace-view")!;
 const infoView = document.querySelector<HTMLElement>("#info-view")!;
+const readingProgress =
+  document.querySelector<HTMLElement>("#reading-progress")!;
 const siteMenuToggle =
   document.querySelector<HTMLButtonElement>("#site-menu-toggle")!;
 const siteMenu = document.querySelector<HTMLElement>("#site-menu")!;
-const emptyState = document.querySelector<HTMLElement>("#empty-state")!;
 const workspaceGrid = document.querySelector<HTMLElement>("#workspace-grid")!;
 const documentsToggle =
   document.querySelector<HTMLButtonElement>("#documents-toggle")!;
 const filesContent = document.querySelector<HTMLElement>("#files-content")!;
 const filesBody = document.querySelector<HTMLElement>("#files-body")!;
+const documentsDropzone =
+  document.querySelector<HTMLElement>("#documents-dropzone")!;
+const documentsDropTitle = document.querySelector<HTMLElement>(
+  "[data-documents-drop-title]",
+)!;
 const replacementsBody =
   document.querySelector<HTMLElement>("#replacements-body")!;
 const replacementsCount = document.querySelector<HTMLElement>(
@@ -1155,12 +1034,6 @@ const replacementsCount = document.querySelector<HTMLElement>(
 const searchInput = document.querySelector<HTMLInputElement>("#search-input")!;
 const omniboxAddAction = document.querySelector<HTMLElement>(
   "#omnibox-add-action",
-)!;
-
-const firstVisitCover =
-  document.querySelector<HTMLElement>("#first-visit-cover")!;
-const startRedactingBtn = document.querySelector<HTMLButtonElement>(
-  "#start-redacting-btn",
 )!;
 
 const levelButtons =
@@ -1220,66 +1093,6 @@ const redactSelectionBtn =
 let pendingRedactionText = "";
 let originalPreviewTimer: number | undefined;
 
-/* ----------------------------- Init Cover -------------------------- */
-
-const isLocalDev = import.meta.env.DEV;
-const isVisited = safeReadStorage(FIRST_VISIT_COVER_KEY) === "true";
-
-if (isVisited && !isLocalDev) {
-  firstVisitCover.classList.add("hidden-up");
-  // Remove from DOM to ensure it does not take up resources or block focus
-  firstVisitCover.remove();
-}
-
-startRedactingBtn.addEventListener("click", () => {
-  dismissFirstVisitCover();
-});
-
-function dismissFirstVisitCover(): void {
-  firstVisitCover.classList.add("hidden-up");
-  safeWriteStorage(FIRST_VISIT_COVER_KEY, "true");
-  syncCoverAccessibility();
-  window.setTimeout(() => {
-    firstVisitCover.remove();
-    syncCoverAccessibility();
-  }, 600); // Matches transition duration
-}
-
-function firstVisitCoverIsActive(): boolean {
-  return Boolean(
-    firstVisitCover.parentElement &&
-      state.route === "workspace" &&
-      !firstVisitCover.hidden &&
-      !firstVisitCover.classList.contains("hidden-up"),
-  );
-}
-
-function syncCoverAccessibility(): void {
-  const coverActive = firstVisitCoverIsActive();
-  workspaceView.toggleAttribute("inert", coverActive);
-  if (coverActive) {
-    workspaceView.setAttribute("aria-hidden", "true");
-  } else {
-    workspaceView.removeAttribute("aria-hidden");
-  }
-}
-
-function safeReadStorage(key: string): string | null {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function safeWriteStorage(key: string, value: string): void {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // Storage can be blocked in private or hardened browser contexts.
-  }
-}
-
 /* ----------------------------- Routing ----------------------------- */
 
 siteMenuToggle.addEventListener("click", (event) => {
@@ -1331,18 +1144,17 @@ function renderRoute(): void {
   infoView.hidden = showingWorkspace;
   appShell.classList.toggle("info-page-active", !showingWorkspace);
 
-  if (firstVisitCover.parentElement) {
-    firstVisitCover.hidden = !showingWorkspace;
-  }
-  syncCoverAccessibility();
-
   document.title =
     state.route === "workspace"
       ? "NoAI"
       : `${INFO_PAGE_SCAFFOLDS[state.route].title} - NoAI`;
 
   renderSiteMenuState();
-  if (state.route !== "workspace") renderInfoPage(state.route);
+  if (state.route !== "workspace") {
+    renderInfoPage(state.route);
+  } else {
+    teardownReadingProgress();
+  }
 }
 
 function renderInfoBlocks(blocks: InfoBlock[]): string {
@@ -1407,14 +1219,17 @@ function renderInfoSection(route: InfoRoute, section: InfoSection): string {
   return `
     <section id="${id}" class="info-section">
       <h2>${escapeHtml(section.heading)}</h2>
-      ${renderInfoBlocks(visibleBlocks)}
-      ${toggle}
+      <div class="info-section-body">
+        ${renderInfoBlocks(visibleBlocks)}
+        ${toggle}
+      </div>
     </section>
   `;
 }
 
 function renderInfoPage(route: InfoRoute): void {
   const page = INFO_PAGE_SCAFFOLDS[route];
+  const plainPage = route === "about";
   const versionMeta =
     route === "changelog"
       ? `
@@ -1435,28 +1250,9 @@ function renderInfoPage(route: InfoRoute): void {
       `
       : "";
 
-  let sidebarHtml = "";
-  if (page.sections.length > 0) {
-    const tocLinks = page.sections
-      .map((section) => {
-        const id = section.heading.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-        return `<a href="${routeHref(route)}#${id}" class="toc-link" data-target="${id}">${escapeHtml(section.heading)}</a>`;
-      })
-      .join("");
-
-    sidebarHtml = `
-      <aside class="info-sidebar" aria-label="Table of contents">
-        <nav class="info-toc">
-          ${tocLinks}
-        </nav>
-      </aside>
-    `;
-  }
-
   infoView.innerHTML = `
-    <article class="info-page" aria-labelledby="info-title">
+    <article class="info-page info-page-${route}${plainPage ? " info-page--plain" : ""}" aria-labelledby="info-title">
       <div class="info-page-layout">
-        ${sidebarHtml}
         <div class="info-content-wrap">
           <header class="info-hero">
             <a class="info-back-link" href="#/">
@@ -1489,90 +1285,51 @@ function renderInfoPage(route: InfoRoute): void {
       renderInfoPage(route);
     });
 
-  if (page.sections.length > 0) {
-    setupScrollSpy();
-  }
+  setupReadingProgress();
 }
 
-let scrollSpyAbortController: AbortController | null = null;
+let readingProgressAbortController: AbortController | null = null;
+const READING_PROGRESS_MIN_SCROLL_RANGE = 480;
 
-function setupScrollSpy(): void {
-  const sections = infoView.querySelectorAll<HTMLElement>(".info-section");
-  const tocLinks = infoView.querySelectorAll<HTMLAnchorElement>(".toc-link");
-  if (sections.length === 0 || tocLinks.length === 0) return;
+function teardownReadingProgress(): void {
+  readingProgressAbortController?.abort();
+  readingProgressAbortController = null;
+  readingProgress.hidden = true;
+  readingProgress.style.setProperty("--reading-progress", "0");
+}
 
-  if (scrollSpyAbortController) scrollSpyAbortController.abort();
-  scrollSpyAbortController = new AbortController();
+function setupReadingProgress(): void {
+  teardownReadingProgress();
+  readingProgressAbortController = new AbortController();
 
-  const observerOptions = {
-    root: null,
-    rootMargin: "-20% 0px -60% 0px",
-    threshold: 0
-  };
+  const updateProgress = () => {
+    const scrollRange = Math.max(
+      0,
+      document.documentElement.scrollHeight - window.innerHeight,
+    );
+    const shouldShow =
+      state.route !== "workspace" &&
+      scrollRange >= READING_PROGRESS_MIN_SCROLL_RANGE;
 
-  const activeSections = new Set<string>();
-
-  const updateHighlight = () => {
-    let highlightedId: string | null = null;
-    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-    const isAtBottom = maxScroll > 100 && Math.ceil(window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 10;
-    
-    if (isAtBottom && sections.length > 0) {
-      highlightedId = sections[sections.length - 1].id;
-    } else {
-      for (const section of Array.from(sections)) {
-        if (activeSections.has(section.id)) {
-          highlightedId = section.id;
-          break;
-        }
-      }
-    }
-
-    if (!highlightedId && activeSections.size === 0 && !isAtBottom) {
+    readingProgress.hidden = !shouldShow;
+    if (!shouldShow) {
+      readingProgress.style.setProperty("--reading-progress", "0");
       return;
     }
 
-    tocLinks.forEach(link => {
-      if (link.dataset.target === highlightedId) {
-        if (!link.classList.contains("active")) {
-          link.classList.add("active");
-          link.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-        }
-      } else {
-        link.classList.remove("active");
-      }
-    });
+    const progress = Math.min(1, Math.max(0, window.scrollY / scrollRange));
+    readingProgress.style.setProperty("--reading-progress", String(progress));
   };
 
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        activeSections.add(entry.target.id);
-      } else {
-        activeSections.delete(entry.target.id);
-      }
-    });
-    updateHighlight();
-  }, observerOptions);
-
-  window.addEventListener("scroll", updateHighlight, { signal: scrollSpyAbortController.signal, passive: true });
-  sections.forEach(sec => observer.observe(sec));
-
-  tocLinks.forEach(link => {
-    link.addEventListener("click", (e) => {
-      const targetId = link.dataset.target;
-      const targetSection = document.getElementById(targetId || "");
-      if (targetSection) {
-        e.preventDefault();
-        window.history.pushState(null, "", link.href);
-        targetSection.scrollIntoView({ behavior: "smooth" });
-      }
-    });
+  window.addEventListener("scroll", updateProgress, {
+    signal: readingProgressAbortController.signal,
+    passive: true,
   });
-
-  if (tocLinks.length > 0) {
-    tocLinks[0].classList.add("active");
-  }
+  window.addEventListener("resize", updateProgress, {
+    signal: readingProgressAbortController.signal,
+    passive: true,
+  });
+  updateProgress();
 }
 
 function setInfoMenuOpen(open: boolean): void {
@@ -1629,7 +1386,9 @@ function routeHref(route: AppRoute): string {
 /* ----------------------- Dropzone / file input --------------------- */
 
 document.querySelectorAll<HTMLElement>("[data-dropzone]").forEach((zone) => {
-  const input = zone.querySelector<HTMLInputElement>("[data-file-input]");
+  const input = zone.querySelector<HTMLInputElement>(
+    ":scope > [data-file-input]",
+  );
   zone.addEventListener("dragover", (event) => {
     event.preventDefault();
     zone.classList.add("dragging");
@@ -1637,6 +1396,7 @@ document.querySelectorAll<HTMLElement>("[data-dropzone]").forEach((zone) => {
   zone.addEventListener("dragleave", () => zone.classList.remove("dragging"));
   zone.addEventListener("drop", (event) => {
     event.preventDefault();
+    event.stopPropagation();
     zone.classList.remove("dragging");
     const files = Array.from(event.dataTransfer?.files ?? []);
     void handleFiles(files);
@@ -1667,9 +1427,7 @@ async function handleFiles(fileList: File[]): Promise<void> {
         warnings: result.warnings,
       });
     }
-    if (!state.selectedDocumentId && state.documents.length > 0) {
-      state.selectedDocumentId = state.documents[0].id;
-    }
+    ensureSelectedDocument();
     setStatus(`Read ${pluralize(readResults.length, "file")} locally.`);
     recompute();
     renderAll();
@@ -1689,6 +1447,7 @@ async function handleFiles(fileList: File[]): Promise<void> {
 /** Re-run detection across all loaded documents, merging current user entries.
  *  Updates `state.review` and `state.entries` but does not touch the DOM. */
 function recompute(): void {
+  ensureSelectedDocument();
   if (state.documents.length === 0) {
     state.review = null;
     state.entries = [];
@@ -1963,6 +1722,7 @@ function removeDocument(id: string): void {
     const next = state.documents[index] ?? state.documents[index - 1] ?? null;
     state.selectedDocumentId = next ? next.id : null;
   }
+  ensureSelectedDocument();
   hideOriginalPreview({ silent: true });
   hidePopover();
   recompute();
@@ -1972,21 +1732,46 @@ function removeDocument(id: string): void {
 /* ---------------------------- Rendering ---------------------------- */
 
 function renderAll(): void {
-  renderEmptyState();
+  ensureSelectedDocument();
+  renderWorkspaceState();
   renderFiles();
   renderLevelControl();
   renderReplacements();
   renderPreview();
 }
 
-function renderEmptyState(): void {
+function ensureSelectedDocument(): void {
+  if (state.documents.length === 0) {
+    state.selectedDocumentId = null;
+    return;
+  }
+  const selectedDocExists = state.documents.some(
+    (doc) => doc.id === state.selectedDocumentId,
+  );
+  if (!selectedDocExists) {
+    state.selectedDocumentId = state.documents[0].id;
+  }
+}
+
+function renderWorkspaceState(): void {
   const hasDocs = state.documents.length > 0;
-  emptyState.hidden = hasDocs;
-  workspaceGrid.hidden = !hasDocs;
+  workspaceGrid.hidden = false;
   workspaceGrid.classList.toggle(
     "documents-collapsed",
     state.documentsCollapsed,
   );
+  documentsDropzone.classList.toggle("dropzone-empty", !hasDocs);
+  documentsDropzone.classList.toggle("dropzone-small", hasDocs);
+  documentsDropTitle.classList.toggle("drop-title", !hasDocs);
+  documentsDropTitle.classList.toggle("drop-meta", hasDocs);
+  documentsDropTitle.textContent = hasDocs
+    ? "Add more documents"
+    : "Add Documents to Start";
+  documentsDropzone
+    .querySelectorAll<HTMLElement>("[data-empty-only]")
+    .forEach((element) => {
+      element.hidden = hasDocs;
+    });
   downloadButton.disabled = !hasDocs || !state.review;
 
   const downloadText = downloadButton.querySelector("span");
@@ -2024,23 +1809,27 @@ function renderFiles(): void {
       : "Collapse documents sidebar",
   );
   if (state.documents.length === 0) {
-    filesBody.innerHTML = `<p class="placeholder">No documents yet.</p>`;
+    filesBody.innerHTML = "";
     return;
   }
   filesBody.innerHTML = state.documents
     .map((doc) => {
-      const selected = doc.id === state.selectedDocumentId ? " selected" : "";
+      const isSelected = doc.id === state.selectedDocumentId;
+      const selected = isSelected ? " selected" : "";
+      const disabled = isSelected ? " disabled" : "";
+      const current = isSelected ? ` aria-current="true"` : "";
       const warningLine =
         doc.warnings.length > 0
           ? `<span class="file-warning" title="${escapeHtml(doc.warnings.join("; "))}">${icon.alert}<span>${escapeHtml(String(doc.warnings.length))}</span></span>`
           : "";
       return `
         <div class="file-row${selected}" data-doc-id="${escapeHtml(doc.id)}">
-          <button type="button" class="file-select" data-doc-id="${escapeHtml(doc.id)}">
+          <button type="button" class="file-select" data-doc-id="${escapeHtml(doc.id)}"${disabled}${current}>
+            ${fileFormatIcon(doc.fileName)}
             <span class="file-name">${escapeHtml(doc.fileName)}</span>
             ${warningLine}
           </button>
-          <button type="button" class="file-remove" data-doc-id="${escapeHtml(doc.id)}" aria-label="Remove ${escapeHtml(doc.fileName)}">${icon.x}</button>
+          <button type="button" class="file-remove" data-doc-id="${escapeHtml(doc.id)}" aria-label="Remove ${escapeHtml(doc.fileName)}">${icon.trash}</button>
         </div>
       `;
     })
@@ -2049,6 +1838,7 @@ function renderFiles(): void {
   filesBody
     .querySelectorAll<HTMLButtonElement>(".file-select")
     .forEach((button) => {
+      if (button.disabled) return;
       button.addEventListener("click", () =>
         selectDocument(button.dataset.docId!),
       );
@@ -2063,6 +1853,21 @@ function renderFiles(): void {
     });
 }
 
+function fileFormatIcon(fileName: string): string {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  const iconClass =
+    extension === "md" || extension === "markdown"
+      ? "ph-file-md"
+      : extension === "txt"
+        ? "ph-file-txt"
+        : extension === "docx"
+          ? "ph-file-doc"
+          : extension === "pdf"
+            ? "ph-file-pdf"
+            : "ph-file";
+  return `<i class="file-format-icon ph ${iconClass}" aria-hidden="true"></i>`;
+}
+
 function renderReplacements(): void {
   const entries = state.review
     ? state.review.entries.filter((entry) => entry.count > 0)
@@ -2071,7 +1876,10 @@ function renderReplacements(): void {
   replacementsCount.textContent = "";
 
   if (entries.length === 0) {
-    replacementsBody.innerHTML = `<p class="placeholder">No replacements yet. Add documents or a manual term.</p>`;
+    replacementsBody.innerHTML =
+      state.documents.length === 0
+        ? `<p class="placeholder empty-panel-placeholder">Add a document to start.</p>`
+        : `<p class="placeholder">No sensitive terms detected.</p>`;
     return;
   }
   if (filtered.length === 0) {
@@ -2197,12 +2005,10 @@ function renderEntryRow(entry: ReplacementEntry, index: number = 0): string {
 }
 
 function renderInfoHeroSummary(route: InfoRoute, summary: string): string {
-  if (route !== "about") return `<p>${escapeHtml(summary)}</p>`;
+  void summary;
+  if (route !== "about") return "";
   return `
-    <p>
-      ${escapeHtml(summary)}
-      <a href="#/changelog">History</a>
-    </p>
+    <p>App ${escapeHtml(APP_VERSION)} · Engine ${escapeHtml(ENGINE_VERSION)} · <a href="#/changelog">History</a></p>
   `;
 }
 
@@ -2248,7 +2054,7 @@ function renderPreview(): void {
   previewSearch.hidden = !reviewDoc || !state.showPreviewSearch;
 
   if (!reviewDoc) {
-    previewBody.innerHTML = `<p class="placeholder">Select a document to review it.</p>`;
+    previewBody.innerHTML = `<p class="placeholder empty-panel-placeholder">Add a document to start.</p>`;
     renderPreviewSearch();
     return;
   }
@@ -3282,9 +3088,7 @@ async function loadSampleDocument(replace: boolean): Promise<void> {
       text,
       warnings: [],
     });
-    if (!state.selectedDocumentId && state.documents.length > 0) {
-      state.selectedDocumentId = state.documents[0].id;
-    }
+    ensureSelectedDocument();
     recompute();
     renderAll();
     setStatus(
