@@ -4,3 +4,7 @@ coverage/
 .DS_Store
 *.log
 
+# Local env files (keep .env.example committed)
+.env
+.env.local
+.env.*.local

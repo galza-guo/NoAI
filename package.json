@@ -7,9 +7,12 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:engine-version": "node scripts/check-engine-version.mjs",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {
+    "@phosphor-icons/web": "^2.1.2",
     "mammoth": "^1.11.0",
     "pdfjs-dist": "^5.4.394",
     "vite": "^8.0.16"

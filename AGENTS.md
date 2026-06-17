@@ -60,3 +60,7 @@ Support multiple redaction levels:
 The current prototype was developed against real-world English legal/business documents, but those source documents must not be committed. Tests should use synthetic examples that capture the same patterns without preserving private facts.
 
 The strongest next work is to improve the detector systematically: add failing synthetic cases, tune rules, and keep a human-readable explanation of what each rule is intended to catch. Frontend polish can come later.
+
+## Frontend Development Guidelines
+
+- **Icons**: Always use Phosphor Icons as the default icon library. Only use alternative icons if subject to an explicit override. The `@phosphor-icons/web` package is installed and `regular` font weight is available. Use `<i class="ph ph-[icon-name]"></i>`.

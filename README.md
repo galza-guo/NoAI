@@ -20,9 +20,9 @@ The goal is not perfect anonymization. The goal is a fast, understandable pre-pr
 - Output: combined Markdown and per-document sanitized previews.
 - Batch processing is supported: drop multiple files and export one combined Markdown pack.
 - Levels:
-  - Light: direct identifiers.
-  - Balanced: people, organizations, matter names, refs, amounts, and locations.
-  - Strict: Balanced plus dates and heavier table/contact handling.
+  - Light: direct identifiers (emails, phone numbers, URLs, addresses, postcodes, national/business IDs, bank details, and case/registry references).
+  - Balanced (default): Light plus people, organizations, matter names, dates, amounts, and locations.
+  - Strict: Balanced plus aggressive repeated proper-noun capture and heavier table/contact quarantining.
 - Custom terms are supported and replaced deterministically.
 
 ## Trust Model
@@ -41,9 +41,9 @@ The source code should stay small and auditable so non-expert users can reasonab
 
 The redaction engine is rule-based:
 
-- Direct patterns: emails, phone numbers, URLs, case references, bundle/exhibit references, transcript references, procedural references, amounts, and percentages.
+- Direct patterns: emails, phone numbers, URLs, addresses, postcodes, national IDs (SSN, NI, passport), employer IDs, bank details (IBAN, SWIFT/BIC, sort code), case references (including UK neutral citations and US dockets), bundle/exhibit references, transcript references, procedural references, dates, amounts, and percentages.
 - Context patterns: legal contact labels, addresses, titled names, witness-style aliases, all-caps party names, organization suffixes, known legal/finance organizations, locations, and matter-specific deal terms.
-- Levels: Light keeps the output most readable, Balanced is the default for external AI use, and Strict adds heavier date/table/contact treatment.
+- Levels: Light keeps the output most readable, Balanced is the default for external AI use, and Strict adds aggressive repeated proper-noun capture and heavier table/contact quarantining. Dates are handled at Balanced because they are useful identifiers.
 
 ## What It Is Not
 
@@ -58,6 +58,24 @@ For high-risk use, review the output before sharing it.
 - Dependency audit: `npm audit --audit-level=moderate`
 
 During early development the detector was also tested against private English legal/business documents. Those documents are not part of this repository. Public regression tests should use synthetic examples that preserve the pattern without preserving private facts.
+
+## Engine Versioning
+
+The redaction engine is versioned separately from the app package. The current engine version lives in `src/redactor/version.ts`, and changes are summarized in `docs/engine-changelog.md`.
+
+Use semantic versioning:
+
+- Patch: narrow false-positive/false-negative fixes or small rule tuning.
+- Minor: new document family coverage, new detector category, or compatible review metadata.
+- Major: incompatible output, API, replacement-token, or redaction-level semantics changes.
+
+To enable the local commit guard:
+
+```bash
+npm run hooks:install
+```
+
+After that, commits that change `src/redactor/engine.ts`, `src/redactor/rules.ts`, or `src/redactor/types.ts` must also stage an engine version bump and changelog entry.
 
 ## Development
 

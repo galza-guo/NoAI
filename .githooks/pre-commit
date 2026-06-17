@@ -1,0 +1,2 @@
+#!/bin/sh
+node scripts/check-engine-version.mjs || exit 1
