@@ -2,6 +2,53 @@
 
 The redaction engine uses semantic versioning independently from the app package.
 
+## 1.1.0 - 2026-06-18
+
+First deterministic Chinese redaction layer (beta). Added a separate Chinese
+detector module wired into the shared browser-only pipeline through a narrow
+candidate callback. No AI, LLM, OCR service, backend, analytics, telemetry, or
+document upload was added.
+
+New Chinese coverage:
+
+- Unified Social Credit Codes after `统一社会信用代码` / `社会信用代码`
+  labels (`BUSINESS_ID`, Light).
+- PRC resident identity numbers after `身份证号`, `身份证件号码`,
+  `居民身份证号`, or `身份证号码` labels (`NATIONAL_ID`, Light).
+- Chinese phone/mobile/fax values after `联系电话`, `联系方式`, `电话`,
+  `手机`, `手机号码`, or `传真` labels (`PHONE`, Light). Bare Chinese phone
+  shapes were already mostly covered by the generic phone detector; this adds
+  label scoping.
+- Chinese dates such as `2026年6月18日`, `2026 年 6 月`, and
+  `2026年06月01日15时30分` (`DATE`, Balanced).
+- RMB amounts in `万元`, `亿元`, `元`, and fullwidth-yen `￥` forms (`AMOUNT`,
+  Balanced), while keeping tiny unit prices such as `单价1元/件` readable.
+- Labeled Chinese addresses, people, organizations, procurement/contract
+  references, regulatory document numbers, and court case numbers.
+- Chinese bank-account values after `账号`, `开户账号`, `银行账号`, `对公账号`,
+  or `收款账号` labels (`BANK_ACCOUNT`, Heavy, label-bound only).
+- Narrow Chinese agreement-heading party detection for structures like
+  `由 <person> 与 <person> 就...`, without adding broad free-form Chinese name
+  detection.
+
+Behavior change:
+
+- The broad CJK `NON_LATIN_TEXT` fallback moved from Balanced to Heavy and its
+  reason changed to `heavy non-Latin fallback quarantine`. Balanced output now
+  keeps ordinary Chinese prose, headings, statute names, and procurement
+  boilerplate readable unless a specific deterministic Chinese rule matches.
+- Generic phone detection now skips digit runs longer than 15 digits, matching
+  the E.164 maximum and avoiding mislabeling long account/identifier numbers as
+  phones.
+
+Known limitations:
+
+- Free-form Chinese person names in prose, suffix-only organization detection,
+  Traditional Chinese/Hong Kong-specific patterns, Chinese numeral dates, and
+  bare USCC/PRC-ID checksum matching are deferred.
+- Bare Chinese bank-account numbers are not redacted; only labeled account
+  values at Heavy are covered.
+
 ## 1.0.15 - 2026-06-18
 
 HR, employment, board/shareholder, and governance documents pass. Audited synthetic samples covering an employment agreement, an offer letter, a separation/severance agreement, board minutes, a shareholder/AGM notice, a stock-option award notice, a cap-table excerpt, and an internal approval memo, so the engine stays useful for documents that name individual employees, directors, equity grants, and corporate records without being legal pleadings or SEC correspondence, with no new AI/backend dependencies.

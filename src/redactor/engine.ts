@@ -1,3 +1,4 @@
+import { detectChinese } from "./chinese";
 import {
   AMBIGUOUS_PERSON_TOKENS,
   BUILDING_KEYWORDS,
@@ -444,6 +445,7 @@ export class Detector {
   detect(): Candidate[] {
     for (const doc of this.docs) {
       this.detectDirectPatterns(doc);
+      detectChinese(doc, this.add.bind(this));
       this.detectLabelValues(doc);
       this.detectLabelContinuationValues(doc);
       this.detectAddressContinuations(doc);
@@ -486,6 +488,10 @@ export class Detector {
     if (kind === "PHONE") {
       const digits = cleaned.replace(/\D/g, "");
       if (digits.length < 7) return;
+      // E.164 caps phone numbers at 15 digits. Longer bare digit strings are
+      // more likely to be account numbers or identifiers; label-bound account
+      // detectors should classify them instead.
+      if (digits.length > 15) return;
       if (/^\d{4}\.\d{2}\.\d{2}$/.test(cleaned)) return;
       if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) return;
       if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(cleaned)) return;
@@ -1159,9 +1165,12 @@ export class Detector {
       ],
       [
         "NON_LATIN_TEXT",
-        /[\u3400-\u9fff][\u3400-\u9fff·]{1,}/g,
-        2,
-        "non-Latin duplicate text",
+        // Heavy-only fallback. At Balanced, Chinese support now relies on the
+        // specific deterministic rules in ./chinese.ts; keeping this broad CJK
+        // run matcher at Balanced would redact ordinary Chinese prose.
+        /[\u3400-\u9fff][\u3400-\u9fff·]{1,}(?!\s*[：:])/g,
+        3,
+        "heavy non-Latin fallback quarantine",
       ],
     ];
 

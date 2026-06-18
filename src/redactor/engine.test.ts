@@ -93,7 +93,7 @@ Each share is 1HKD/share.
     }
   });
 
-  it("redacts product brands, sales channel names, and non-Latin duplicate text while preserving generic business words", () => {
+  it("redacts product brands, sales channel names, and structured Chinese party names while preserving generic business words", () => {
     const output = redact(`
 Current channel = MarketPilot.
 Scope of Products (RAVENMOTO brand products only?)
@@ -110,10 +110,11 @@ All other off-road motorcycle products remain readable.
       "RAVENMOTO",
       "李小明",
       "卢卡斯",
-      "所订立",
     ]) {
       expect(output).not.toContain(leaked);
     }
+    expect(output).toContain("所订立");
+    expect(output).toContain("在中国以外地区运营");
     expect(output).toContain(
       "Products, Territory, and Net Profit remain useful defined terms.",
     );
@@ -2631,5 +2632,202 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("The Bank");
     expect(output).toContain("BUSINESS_ID_");
     expect(output).toContain("BANK_ACCOUNT_");
+  });
+
+  it("keeps ordinary Chinese prose readable at balanced level", () => {
+    const output = redact(`
+本合同自双方签字盖章之日起生效。
+第一章 总则
+重要提示
+目录
+风险因素
+依据《中华人民共和国公司法》及《中华人民共和国证券法》之规定。
+供应商参加政府采购活动应当具备下列条件。
+`);
+
+    for (const kept of [
+      "本合同自双方签字盖章之日起生效",
+      "第一章 总则",
+      "重要提示",
+      "目录",
+      "风险因素",
+      "《中华人民共和国公司法》",
+      "《中华人民共和国证券法》",
+      "供应商参加政府采购活动应当具备下列条件",
+    ]) {
+      expect(output).toContain(kept);
+    }
+  });
+
+  it("still quarantines broad unknown Chinese spans at heavy level", () => {
+    const output = redact("未经标记的内部项目代号青山计划反复出现。", "heavy");
+
+    expect(output).not.toContain("青山计划");
+    expect(output).toContain("NON_LATIN_TEXT_");
+  });
+
+  it("redacts labeled Chinese direct identifiers and contact fields", () => {
+    const output = redact(`
+统一社会信用代码：91320116MA1FAKE01R
+身份证号：99999920991231999X
+联系电话：19900000000
+传真：010-00000000
+邮箱：contact@example.com
+`);
+
+    for (const leaked of [
+      "91320116MA1FAKE01R",
+      "99999920991231999X",
+      "19900000000",
+      "010-00000000",
+      "contact@example.com",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    for (const keptLabel of [
+      "统一社会信用代码：",
+      "身份证号：",
+      "联系电话：",
+      "传真：",
+      "邮箱：",
+    ]) {
+      expect(output).toContain(keptLabel);
+    }
+    expect(output).toContain("BUSINESS_ID_");
+    expect(output).toContain("NATIONAL_ID_");
+    expect(output).toContain("PHONE_");
+    expect(output).toContain("EMAIL_");
+  });
+
+  it("redacts labeled Chinese people, organizations, and addresses", () => {
+    const output = redact(`
+法定代表人：张三
+经办律师：李四、王五
+供应商：虚构市示例科技有限公司
+采购人：某大学附属医院
+住所：江苏省南京市玄武区虚构路1号
+`);
+
+    for (const leaked of [
+      "张三",
+      "李四",
+      "王五",
+      "虚构市示例科技有限公司",
+      "某大学附属医院",
+      "江苏省南京市玄武区虚构路1号",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("法定代表人：");
+    expect(output).toContain("供应商：");
+    expect(output).toContain("住所：");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("ORG_");
+    expect(output).toContain("ADDRESS_");
+  });
+
+  it("keeps Chinese placeholder and generic label prose readable", () => {
+    const output = redact(`
+地址：见附件
+姓名不详
+公司名称：见附件
+授权代表应当签字
+电话会议另行通知
+联系电话发生变更时应及时通知
+`);
+
+    for (const kept of [
+      "地址：见附件",
+      "姓名不详",
+      "公司名称：见附件",
+      "授权代表应当签字",
+      "电话会议另行通知",
+      "联系电话发生变更时应及时通知",
+    ]) {
+      expect(output).toContain(kept);
+    }
+  });
+
+  it("redacts Chinese dates and RMB amounts while preserving common counterexamples", () => {
+    const output = redact(`
+签订日期：2026年6月18日
+报告期：2026 年 6 月
+开标时间：2026年06月01日15时30分
+合同总金额：人民币12.5万元
+总对价：3.5亿元
+合计：2379322.61元
+已支付￥50,000
+单价1元/件
+公司成立于元年阶段
+元旦放假安排
+化学元素周期表
+近20年发展迅速
+每月25日召开例会
+3月份开始执行
+`);
+
+    for (const leaked of [
+      "2026年6月18日",
+      "2026 年 6 月",
+      "2026年06月01日15时30分",
+      "人民币12.5万元",
+      "3.5亿元",
+      "2379322.61元",
+      "￥50,000",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    for (const kept of [
+      "单价1元/件",
+      "元年",
+      "元旦",
+      "元素",
+      "近20年",
+      "每月25日",
+      "3月份",
+    ]) {
+      expect(output).toContain(kept);
+    }
+    expect(output).toContain("DATE_");
+    expect(output).toContain("AMOUNT_");
+  });
+
+  it("redacts Chinese regulatory, court, procurement, and contract references", () => {
+    const output = redact(`
+沪〔2026〕001号
+案号：（2026）沪01民初001号
+项目编号：FAKE-2026-0001
+合同编号：HT-2026-0001
+采购编号：CG-2026-0002
+版本号：v2026-0001
+`);
+
+    for (const leaked of [
+      "沪〔2026〕001号",
+      "（2026）沪01民初001号",
+      "FAKE-2026-0001",
+      "HT-2026-0001",
+      "CG-2026-0002",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("案号：");
+    expect(output).toContain("项目编号：");
+    expect(output).toContain("合同编号：");
+    expect(output).toContain("版本号：v2026-0001");
+    expect(output).toContain("CASE_REF_");
+  });
+
+  it("redacts Chinese bank account labels only at heavy level", () => {
+    const balancedOutput = redact("账号：9999999999999999999", "balanced");
+
+    expect(balancedOutput).toContain("账号：9999999999999999999");
+    expect(balancedOutput).not.toContain("BANK_ACCOUNT_");
+
+    const heavyOutput = redact("账号：9999999999999999999", "heavy");
+
+    expect(heavyOutput).not.toContain("9999999999999999999");
+    expect(heavyOutput).toContain("账号：");
+    expect(heavyOutput).toContain("BANK_ACCOUNT_");
   });
 });

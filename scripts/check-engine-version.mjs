@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 
-const ENGINE_SOURCE_RE = /^src\/redactor\/(engine|rules|types|version)\.ts$/;
+const ENGINE_SOURCE_RE = /^src\/redactor\/(chinese|engine|rules|types|version)\.ts$/;
 const VERSION_FILE = "src/redactor/version.ts";
 const CHANGELOG_FILE = "docs/engine-changelog.md";
 
