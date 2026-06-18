@@ -2,6 +2,21 @@
 
 The redaction engine uses semantic versioning independently from the app package.
 
+## 1.4.1 - 2026-06-18
+
+Patch: extended Chinese person/role and opening-bank label coverage. All
+label-bound and shape-validated; no behavior change to existing detectors.
+
+- Extended person / role labels (`PERSON`, Balanced): `申请人`, `上诉人`,
+  `被申请人`, `原告`, `被告`, `代表`, `代表人`, `项目经理`, `总工程师`,
+  `工程师`, `见证人`, `记录人`, `审判长`, `审判员` (plus Traditional
+  `見證人`, `項目經理`).
+- Opening-bank labels (`ORG`, Balanced): `开户行`, `开户银行`, `收款行`
+  (plus Traditional `開戶行`, `開戶銀行`).
+
+Prose such as `申请人资格条件` and `项目经理负责制` stays readable because the
+label values must still pass the Han-name / org shape validators.
+
 ## 1.4.0 - 2026-06-18
 
 Chinese redaction batches four and five: procurement/logistics reference

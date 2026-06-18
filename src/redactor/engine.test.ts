@@ -3453,6 +3453,39 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("就设立合资公司");
   });
 
+  it("redacts extended person / role and opening-bank labels", () => {
+    const output = redact(
+      [
+        "申请人：张三",
+        "代表：李四",
+        "项目经理：赵六",
+        "总工程师：孙七",
+        "见证人：周八",
+        "原告：吴九",
+        "被告：郑十",
+        "开户行：虚构银行虚构支行",
+      ].join("\n"),
+      "balanced",
+    );
+    for (const leaked of [
+      "张三",
+      "李四",
+      "赵六",
+      "孙七",
+      "周八",
+      "吴九",
+      "郑十",
+      "虚构银行虚构支行",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("ORG_");
+    // Labels and common-noun prose stay readable.
+    expect(output).toContain("申请人：");
+    expect(output).toContain("开户行：");
+  });
+
   // --------------------------------------------------------------------
   // Batch 5 — fullwidth-digit amounts (U+FF10-FF19) and fullwidth comma.
   // --------------------------------------------------------------------

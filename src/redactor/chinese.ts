@@ -68,11 +68,28 @@ const PERSON_LABELS = [
   "负责人",
   "经办人",
   "姓名",
+  // Additional common signature / role labels:
+  "申请人",
+  "上诉人",
+  "被申请人",
+  "原告",
+  "被告",
+  "代表",
+  "代表人",
+  "项目经理",
+  "总工程师",
+  "工程师",
+  "见证人",
+  "记录人",
+  "审判长",
+  "审判员",
   // Traditional / HK / TW aliases:
   "法定代理人",
   "負責人",
   "聯絡人",
   "經辦人",
+  "見證人",
+  "項目經理",
 ];
 const ORG_LABELS = [
   "代理机构",
@@ -86,6 +103,9 @@ const ORG_LABELS = [
   "投标人",
   "甲方",
   "乙方",
+  "开户行",
+  "开户银行",
+  "收款行",
   // Traditional / HK / TW aliases:
   "供應商",
   "採購人",
@@ -94,6 +114,9 @@ const ORG_LABELS = [
   "公司名稱",
   "機構全稱",
   "單位名稱",
+  "開戶行",
+  "開戶銀行",
+  "收款行",
 ];
 const PROJECT_REF_LABELS = [
   "项目编号",
