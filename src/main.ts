@@ -4,6 +4,12 @@ import {
   formatHitMultiplier,
   formatReplacementTotals,
 } from "./replacementStats";
+import {
+  FieldNote,
+  parseFieldNoteMdx,
+  renderFieldNoteArticle,
+} from "./fieldNotes";
+import templateFieldNoteSource from "./field-notes/template.mdx?raw";
 import { redactDocuments } from "./redactor/engine";
 import {
   CandidateKind,
@@ -38,6 +44,7 @@ interface LoadedDocument {
 type AppRoute =
   | "workspace"
   | "field-notes"
+  | "field-note-template"
   | "faq"
   | "about"
   | "privacy"
@@ -61,6 +68,7 @@ interface AppState {
   previewQuery: string;
   expandedKinds: Set<string>;
   documentsCollapsed: boolean;
+  redactionsCollapsed: boolean;
   busy: boolean;
   /** Entry id currently shown in the preview popover. */
   selectedEntryId: string | null;
@@ -85,6 +93,7 @@ const state: AppState = {
   previewQuery: "",
   expandedKinds: new Set(),
   documentsCollapsed: false,
+  redactionsCollapsed: false,
   busy: false,
   selectedEntryId: null,
   showOriginalPreview: false,
@@ -112,13 +121,6 @@ interface InfoPageScaffold {
   sections: InfoSection[];
 }
 
-interface FieldNoteEntry {
-  title: string;
-  date: string;
-  summary: string;
-  href: string;
-}
-
 type CatalogLocale = "zh-Hans" | "zh-Hant" | "en" | "ko" | "ja";
 
 interface PublicProject {
@@ -139,29 +141,8 @@ interface PublicProject {
 const CURRENT_PROJECT_ID = "noai";
 const PUBLIC_PROJECTS = projectCatalog as PublicProject[];
 
-const FIELD_NOTES: FieldNoteEntry[] = [
-  {
-    title: "Why NoAI stays browser-only",
-    date: "2026-06-17",
-    summary:
-      "A short note on the product boundary that matters most: documents should be read and redacted on the user's device, without AI calls or backend uploads.",
-    href: "#/faq",
-  },
-  {
-    title: "Engine changes in plain English",
-    date: "2026-06-17",
-    summary:
-      "A running record of deterministic redaction improvements, repair passes, and the kinds of synthetic cases covered by each release.",
-    href: "#/changelog",
-  },
-  {
-    title: "Markdown as the handoff format",
-    date: "2026-06-17",
-    summary:
-      "Notes on why NoAI exports readable Markdown for external AI tools instead of inventing a heavier document package.",
-    href: "#/faq",
-  },
-];
+const FIELD_NOTES: FieldNote[] = [parseFieldNoteMdx(templateFieldNoteSource)];
+const FIELD_NOTE_TEMPLATE = FIELD_NOTES[0];
 
 const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
   "field-notes": {
@@ -180,6 +161,12 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
         ],
       },
     ],
+  },
+  "field-note-template": {
+    route: "field-note-template",
+    title: FIELD_NOTE_TEMPLATE.title,
+    summary: FIELD_NOTE_TEMPLATE.summary,
+    sections: [],
   },
   faq: {
     route: "faq",
@@ -1047,7 +1034,10 @@ app.innerHTML = `
 
         <section class="panel replacements-panel">
           <div class="panel-head">
-            <h2>Redactions</h2>
+            <div class="panel-title-actions">
+              <button id="redactions-toggle" type="button" class="icon-button redactions-toggle" aria-expanded="true" aria-label="Collapse redactions sidebar">${icon.sidebar}</button>
+              <h2>Redactions</h2>
+            </div>
             <span class="panel-count" id="replacements-count"></span>
           </div>
           <div class="replacements-controls">
@@ -1106,6 +1096,8 @@ const siteMenuClose =
 const workspaceGrid = document.querySelector<HTMLElement>("#workspace-grid")!;
 const documentsToggle =
   document.querySelector<HTMLButtonElement>("#documents-toggle")!;
+const redactionsToggle =
+  document.querySelector<HTMLButtonElement>("#redactions-toggle")!;
 const filesContent = document.querySelector<HTMLElement>("#files-content")!;
 const filesBody = document.querySelector<HTMLElement>("#files-body")!;
 const documentsDropzone =
@@ -1294,7 +1286,9 @@ function renderMoreByMeProjects(): string {
 }
 
 function renderFieldNotesGrid(): string {
-  const notes = [...FIELD_NOTES].sort((a, b) => b.date.localeCompare(a.date));
+  const notes = [...FIELD_NOTES].sort((a, b) =>
+    (b.dateTime || "").localeCompare(a.dateTime || ""),
+  );
   return `
     <div class="field-notes-list">
       ${notes.map(renderFieldNoteRow).join("")}
@@ -1302,10 +1296,14 @@ function renderFieldNotesGrid(): string {
   `;
 }
 
-function renderFieldNoteRow(note: FieldNoteEntry): string {
+function renderFieldNoteRow(note: FieldNote): string {
+  const dateMarkup = note.dateTime
+    ? `<time class="field-note-date" datetime="${escapeHtml(note.dateTime)}">${escapeHtml(note.dateLabel)}</time>`
+    : `<span class="field-note-date">${escapeHtml(note.dateLabel)}</span>`;
+
   return `
-    <a class="field-note-row" href="${escapeHtml(note.href)}">
-      <time class="field-note-date" datetime="${escapeHtml(note.date)}">${formatNoteDate(note.date)}</time>
+    <a class="field-note-row" href="${routeHrefForFieldNote(note)}">
+      ${dateMarkup}
       <span class="field-note-copy">
         <span class="field-note-title">${escapeHtml(note.title)}</span>
         <span class="field-note-summary">${escapeHtml(note.summary)}</span>
@@ -1314,12 +1312,8 @@ function renderFieldNoteRow(note: FieldNoteEntry): string {
   `;
 }
 
-function formatNoteDate(date: string): string {
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(`${date}T00:00:00`));
+function routeHrefForFieldNote(note: FieldNote): string {
+  return `#/field-notes/${encodeURIComponent(note.slug)}`;
 }
 
 function renderProjectLink(project: PublicProject, locale: CatalogLocale): string {
@@ -1437,6 +1431,19 @@ function renderInfoSection(route: InfoRoute, section: InfoSection): string {
 function renderInfoPage(route: InfoRoute): void {
   const page = INFO_PAGE_SCAFFOLDS[route];
   const plainPage = route === "about";
+  const backHref = route === "field-note-template" ? "#/field-notes" : "#/";
+  const backLabel =
+    route === "field-note-template" ? "Back to Field Notes" : "Back to workspace";
+  const sectionContent =
+    route === "field-note-template"
+      ? renderFieldNoteArticle(FIELD_NOTE_TEMPLATE)
+      : `
+          <div class="info-section-list">
+            ${page.sections
+              .map((section) => renderInfoSection(route, section))
+              .join("")}
+          </div>
+        `;
   const versionMeta =
     route === "changelog"
       ? `
@@ -1462,19 +1469,15 @@ function renderInfoPage(route: InfoRoute): void {
       <div class="info-page-layout">
         <div class="info-content-wrap">
           <header class="info-hero">
-            <a class="info-back-link" href="#/">
+            <a class="info-back-link" href="${backHref}">
               <i class="ph ph-arrow-left" aria-hidden="true"></i>
-              <span>Back to workspace</span>
+              <span>${backLabel}</span>
             </a>
             <h1 id="info-title">${escapeHtml(page.title)}</h1>
             ${renderInfoHeroSummary(route, page.summary)}
             ${versionMeta}
           </header>
-          <div class="info-section-list">
-            ${page.sections
-              .map((section) => renderInfoSection(route, section))
-              .join("")}
-          </div>
+          ${sectionContent}
           <footer class="info-footer">
             ${SITE_LINKS.map(
               (link) =>
@@ -1561,7 +1564,10 @@ function renderSiteMenuState(): void {
   siteMenu
     .querySelectorAll<HTMLAnchorElement>("[data-route-link]")
     .forEach((link) => {
-      const active = link.dataset.routeLink === state.route;
+      const active =
+        link.dataset.routeLink === state.route ||
+        (state.route === "field-note-template" &&
+          link.dataset.routeLink === "field-notes");
       link.classList.toggle("active", active);
       if (active) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
@@ -1580,6 +1586,7 @@ function renderSiteMenuLinks(): string {
 
 function routeFromHash(): AppRoute {
   const route = window.location.hash.replace(/^#\/?/, "").split("#")[0];
+  if (route === "field-notes/template") return "field-note-template";
   if (route === "field-notes") return "field-notes";
   if (route === "faq") return "faq";
   if (route === "about") return "about";
@@ -1590,6 +1597,7 @@ function routeFromHash(): AppRoute {
 }
 
 function routeHref(route: AppRoute): string {
+  if (route === "field-note-template") return "#/field-notes/template";
   return route === "workspace" ? "#/" : `#/${route}`;
 }
 
@@ -1622,10 +1630,14 @@ document.querySelectorAll<HTMLElement>("[data-dropzone]").forEach((zone) => {
 
 async function handleFiles(fileList: File[]): Promise<void> {
   const supported = fileList.filter(isSupportedFile);
+  const unsupported = fileList.filter((file) => !isSupportedFile(file));
+  const unsupportedMessage = unsupportedFileMessage(unsupported);
+
   if (supported.length === 0) {
-    if (fileList.length > 0) setStatus("Those file types are not supported.");
+    if (fileList.length > 0) setStatus(unsupportedMessage);
     return;
   }
+
   setBusy(true, "Reading files locally…");
   try {
     const readResults = await readFiles(supported);
@@ -1638,7 +1650,11 @@ async function handleFiles(fileList: File[]): Promise<void> {
       });
     }
     ensureSelectedDocument();
-    setStatus(`Read ${pluralize(readResults.length, "file")} locally.`);
+    setStatus(
+      unsupportedMessage
+        ? `Read ${pluralize(readResults.length, "file")} locally. ${unsupportedMessage}`
+        : `Read ${pluralize(readResults.length, "file")} locally.`,
+    );
     recompute();
     renderAll();
   } catch (error) {
@@ -1784,6 +1800,11 @@ documentsToggle.addEventListener("click", () => {
   renderFiles();
 });
 
+redactionsToggle.addEventListener("click", () => {
+  state.redactionsCollapsed = !state.redactionsCollapsed;
+  renderReplacements();
+});
+
 /* --------------------------- Resizing ------------------------------ */
 
 let isResizing = false;
@@ -1803,6 +1824,7 @@ resizerLeft.addEventListener("mousedown", (e) => {
 });
 
 resizerRight.addEventListener("mousedown", (e) => {
+  if (state.redactionsCollapsed) return;
   isResizing = true;
   currentResizer = "right";
   resizerRight.classList.add("active");
@@ -1986,6 +2008,10 @@ function renderWorkspaceState(): void {
     "documents-collapsed",
     state.documentsCollapsed,
   );
+  workspaceGrid.classList.toggle(
+    "redactions-collapsed",
+    state.redactionsCollapsed,
+  );
   documentsDropzone.classList.toggle("dropzone-empty", !hasDocs);
   documentsDropzone.classList.toggle("dropzone-small", hasDocs);
   documentsDropTitle.classList.toggle("drop-title", !hasDocs);
@@ -2095,6 +2121,20 @@ function fileFormatIcon(fileName: string): string {
 }
 
 function renderReplacements(): void {
+  workspaceGrid.classList.toggle(
+    "redactions-collapsed",
+    state.redactionsCollapsed,
+  );
+  redactionsToggle.setAttribute(
+    "aria-expanded",
+    String(!state.redactionsCollapsed),
+  );
+  redactionsToggle.setAttribute(
+    "aria-label",
+    state.redactionsCollapsed
+      ? "Expand redactions sidebar"
+      : "Collapse redactions sidebar",
+  );
   const entries = state.review
     ? state.review.entries.filter((entry) => entry.count > 0)
     : [];
@@ -2270,6 +2310,12 @@ function renderEntryRow(entry: ReplacementEntry, index: number = 0): string {
 }
 
 function renderInfoHeroSummary(route: InfoRoute, summary: string): string {
+  if (route === "field-note-template") {
+    return `
+      <p class="field-note-detail-meta">${escapeHtml(FIELD_NOTE_TEMPLATE.dateLabel)}</p>
+      <p>${escapeHtml(summary)}</p>
+    `;
+  }
   if (route === "field-notes") {
     return `<p>${escapeHtml(summary)}</p>`;
   }
@@ -3076,6 +3122,13 @@ function showToast(
 
 function isSupportedFile(file: File): boolean {
   return /\.(?:md|markdown|txt|docx|pdf)$/i.test(file.name);
+}
+
+function unsupportedFileMessage(files: File[]): string {
+  if (files.some((file) => /\.doc$/i.test(file.name))) {
+    return "Old Word .doc files are not supported yet. Please save as .docx, .txt, or .pdf first.";
+  }
+  return files.length > 0 ? "Those file types are not supported." : "";
 }
 
 function sanitizedFilename(name: string): string {

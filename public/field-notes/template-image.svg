@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Field note image placeholder</title>
+  <desc id="desc">A simple placeholder frame for a field note image.</desc>
+  <rect width="1200" height="720" fill="#f1f5f9"/>
+  <rect x="72" y="72" width="1056" height="576" rx="8" fill="#ffffff" stroke="#cfd8e3" stroke-width="2"/>
+  <path d="M250 500L465 300L620 430L735 330L950 500H250Z" fill="#e6eef7" stroke="#9eb2c8" stroke-width="2"/>
+  <circle cx="820" cy="230" r="58" fill="#fff3d6" stroke="#d7b45a" stroke-width="2"/>
+  <text x="600" y="596" text-anchor="middle" fill="#5a6472" font-family="Poppins, Arial, sans-serif" font-size="28" font-weight="600">Replace with a real field note image</text>
+</svg>
