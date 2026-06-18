@@ -3486,6 +3486,22 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("开户行：");
   });
 
+  it("redacts context orgs with fullwidth parentheses in the name", () => {
+    // The org body charset must include fullwidth （） so names like
+    // 虚构示例（北京）科技有限公司 are captured whole, not split.
+    const output = redact(
+      [
+        "由虚构示例（北京）科技有限公司承建。",
+        "虛構示例（北京）有限公司負責。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).not.toContain("虚构示例（北京）");
+    expect(output).not.toContain("虛構示例（北京）");
+    expect(output).toContain("ORG_");
+    expect(output).toContain("承建。");
+  });
+
   // --------------------------------------------------------------------
   // Batch 5 — fullwidth-digit amounts (U+FF10-FF19) and fullwidth comma.
   // --------------------------------------------------------------------

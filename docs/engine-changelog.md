@@ -2,6 +2,13 @@
 
 The redaction engine uses semantic versioning independently from the app package.
 
+## 1.4.2 - 2026-06-18
+
+Patch: context-organization regex now includes fullwidth parentheses （）
+(U+FF08/U+FF09) in the body charset, so org names like
+`虚构示例（北京）科技有限公司` are captured whole instead of splitting at the
+fullwidth paren. Common-noun-prefix guard (`我公司（北京）`) still applies.
+
 ## 1.4.1 - 2026-06-18
 
 Patch: extended Chinese person/role and opening-bank label coverage. All

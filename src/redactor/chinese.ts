@@ -366,7 +366,7 @@ const ORG_STRONG_SUFFIXES = [
 ];
 const ORG_STRONG_SUFFIX_RE = new RegExp(
   String.raw`(?<![\u3400-\u9fffA-Za-z0-9])` +
-    String.raw`([\u3400-\u9fffA-Za-z0-9()\u00b7.&'\-]{2,40}` +
+    String.raw`([\u3400-\u9fffA-Za-z0-9()（）\u00b7.&'\-]{2,40}` +
     String.raw`(?:${ORG_STRONG_SUFFIXES.join("|")}))`,
   "g",
 );
