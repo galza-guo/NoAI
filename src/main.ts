@@ -458,12 +458,12 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
           {
             type: "html",
             html: `
-              <div class="info-link-list">
-                <a href="https://github.com/galza-guo/NoAI" target="_blank" rel="noopener">
+              <div class="info-link-list focus-fade-group">
+                <a class="focus-fade-item" href="https://github.com/galza-guo/NoAI" target="_blank" rel="noopener">
                   <i class="ph ph-github-logo" aria-hidden="true"></i>
                   <span>Open source · GitHub</span>
                 </a>
-                <a href="https://github.com/galza-guo/NoAI/blob/main/LICENSE" target="_blank" rel="noopener">
+                <a class="focus-fade-item" href="https://github.com/galza-guo/NoAI/blob/main/LICENSE" target="_blank" rel="noopener">
                   <i class="ph ph-scroll" aria-hidden="true"></i>
                   <span>AGPL v3.0 · License</span>
                 </a>
@@ -812,8 +812,8 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
 
 const SITE_LINKS: Array<{ route: AppRoute; label: string; icon: string }> = [
   { route: "workspace", label: "NoAI", icon: "ph-file-lock" },
-  { route: "field-notes", label: "Field Notes", icon: "ph-notebook" },
   { route: "faq", label: "FAQ", icon: "ph-question" },
+  { route: "field-notes", label: "Field Notes", icon: "ph-notebook" },
   { route: "about", label: "About", icon: "ph-info" },
   { route: "privacy", label: "Privacy", icon: "ph-shield-check" },
   { route: "terms", label: "Terms", icon: "ph-scroll" },
@@ -823,8 +823,6 @@ const SITE_LINKS: Array<{ route: AppRoute; label: string; icon: string }> = [
     icon: "ph-clock-counter-clockwise",
   },
 ];
-
-const SITE_MENU_LINKS = SITE_LINKS.filter((link) => link.route !== "workspace");
 
 let docCounter = 0;
 function nextDocId(): string {
@@ -915,7 +913,7 @@ app.innerHTML = `
       <button id="site-menu-close" type="button" class="icon-button site-menu-close" aria-label="Close site menu">
         <i class="ph ph-x" aria-hidden="true"></i>
       </button>
-      <div class="site-menu-list">
+      <div class="site-menu-list focus-fade-group">
         ${renderSiteMenuLinks()}
       </div>
     </nav>
@@ -1259,6 +1257,12 @@ function firstVisitCoverIsActive(): boolean {
 
 function syncCoverAccessibility(): void {
   const coverActive = firstVisitCoverIsActive();
+  const coverMounted = Boolean(
+    firstVisitCover.parentElement &&
+      state.route === "workspace" &&
+      !firstVisitCover.hidden,
+  );
+  appShell.classList.toggle("first-cover-mounted", coverMounted);
   workspaceView.toggleAttribute("inert", coverActive);
   if (coverActive) {
     workspaceView.setAttribute("aria-hidden", "true");
@@ -1395,7 +1399,7 @@ function renderMoreByMeProjects(): string {
   if (projects.length === 0) return "<p>No other public projects are listed yet.</p>";
 
   return `
-    <div class="more-projects-list">
+    <div class="more-projects-list focus-fade-group">
       ${projects.map((project) => renderProjectLink(project, locale)).join("")}
     </div>
   `;
@@ -1406,7 +1410,7 @@ function renderFieldNotesGrid(): string {
     (b.dateTime || "").localeCompare(a.dateTime || ""),
   );
   return `
-    <div class="field-notes-list">
+    <div class="field-notes-list focus-fade-group">
       ${notes.map(renderFieldNoteRow).join("")}
     </div>
   `;
@@ -1418,7 +1422,7 @@ function renderFieldNoteRow(note: FieldNote): string {
     : `<span class="field-note-date">${escapeHtml(note.dateLabel)}</span>`;
 
   return `
-    <a class="field-note-row" href="${routeHrefForFieldNote(note)}">
+    <a class="field-note-row focus-fade-item" href="${routeHrefForFieldNote(note)}">
       ${dateMarkup}
       <span class="field-note-copy">
         <span class="field-note-title">${escapeHtml(note.title)}</span>
@@ -1439,7 +1443,7 @@ function renderProjectLink(project: PublicProject, locale: CatalogLocale): strin
   const alt = localizedValue(project.icon.alt, locale);
   const platforms = project.platforms.map(formatPlatform).join(", ");
   return `
-    <a class="more-project-link" href="${escapeHtml(href)}" target="_blank" rel="noopener" aria-label="${escapeHtml(`${name}: ${tagline}`)}">
+    <a class="more-project-link focus-fade-item" href="${escapeHtml(href)}" target="_blank" rel="noopener" aria-label="${escapeHtml(`${name}: ${tagline}`)}">
       <img src="${escapeHtml(project.icon.light)}" alt="${escapeHtml(alt)}" loading="lazy" />
       <span class="more-project-copy">
         <span class="more-project-name">${escapeHtml(name)}</span>
@@ -1594,10 +1598,10 @@ function renderInfoPage(route: InfoRoute): void {
             ${versionMeta}
           </header>
           ${sectionContent}
-          <footer class="info-footer">
+          <footer class="info-footer focus-fade-group">
             ${SITE_LINKS.map(
               (link) =>
-                `<a href="${routeHref(link.route)}">${escapeHtml(link.label)}</a>`,
+                `<a class="focus-fade-item" href="${routeHref(link.route)}">${escapeHtml(link.label)}</a>`,
             ).join("")}
           </footer>
         </div>
@@ -1660,6 +1664,16 @@ function setupReadingProgress(): void {
 
 function setInfoMenuOpen(open: boolean): void {
   state.infoMenuOpen = open;
+  if (open) {
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.setProperty(
+      "--scrollbar-lock-offset",
+      `${Math.max(0, scrollbarWidth)}px`,
+    );
+  } else {
+    document.body.style.removeProperty("--scrollbar-lock-offset");
+  }
   renderSiteMenuState();
 }
 
@@ -1691,13 +1705,30 @@ function renderSiteMenuState(): void {
 }
 
 function renderSiteMenuLinks(): string {
-  return SITE_MENU_LINKS.map(
-    (link) => `
-      <a href="${routeHref(link.route)}" data-route-link="${link.route}">
-        <span>${escapeHtml(link.label)}</span>
-      </a>
-    `,
-  ).join("");
+  const primaryRoutes: AppRoute[] = ["faq", "field-notes", "about"];
+  const secondaryRoutes: AppRoute[] = ["terms", "privacy"];
+  const primaryLinks = primaryRoutes
+    .map((route) => SITE_LINKS.find((link) => link.route === route))
+    .filter((link): link is (typeof SITE_LINKS)[number] => Boolean(link));
+  const secondaryLinks = secondaryRoutes
+    .map((route) => SITE_LINKS.find((link) => link.route === route))
+    .filter((link): link is (typeof SITE_LINKS)[number] => Boolean(link));
+  return `
+    <div class="site-menu-section site-menu-primary focus-fade-group">
+      ${primaryLinks.map(renderSiteMenuLink).join("")}
+    </div>
+    <div class="site-menu-section site-menu-secondary focus-fade-group">
+      ${secondaryLinks.map(renderSiteMenuLink).join("")}
+    </div>
+  `;
+}
+
+function renderSiteMenuLink(link: (typeof SITE_LINKS)[number]): string {
+  return `
+    <a class="focus-fade-item" href="${routeHref(link.route)}" data-route-link="${link.route}">
+      <span>${escapeHtml(link.label)}</span>
+    </a>
+  `;
 }
 
 function routeFromHash(): AppRoute {
