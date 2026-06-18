@@ -23,13 +23,22 @@ convert each entry into one Vitest `it(...)` block following the existing
 - **Test idea** — a one-line Vitest case description, ready to drop in.
 
 > Note on forward-looking cases: a few spans below are flagged `[aspirational]`
-> because the current simplified-Chinese detector is not expected to catch them
-> yet. The main ones are: Traditional-Chinese (繁體) people/orgs, `股份代號：NNNNN.HK`
-> stock codes, Chinese-numeral dates (`二零二四年...`), and bare Latin person
-> names embedded in Chinese documents (`Lin Xi`, `Su Mingyuan`). These document
-> the batch-two gaps. Until that work lands, encode each as an explicit
-> `expect(output).toContain(<span>)` counterexample with a `// TODO(batch-two)`
-> comment, or `it.skip(...)`, so the suite stays green.
+> because the detector may not catch them yet. As of engine v1.4.1, the
+> following previously-aspirational items are now COVERED and should be encoded
+> as positive assertions:
+> - `股份代號：NNNNN.HK` and `.SH` / `.SZ` stock codes (label-bound).
+> - Traditional-Chinese (繁體) strong-suffix orgs (大學/醫院/有限責任公司…).
+> - Chinese-numeral dates (`二零二四年十二月三十一日`).
+> - `发票号码` / `发票代码` and other finance/procurement reference labels.
+>
+> The items that REMAIN aspirational (encode as `expect(output).toContain(...)`
+> counterexamples, or `it.skip(...)`, so the suite stays green) are:
+> - Tabular-cell detection under headers (`姓名`, `证件号码`) — requires table
+>   structure parsing, out of scope for the regex engine.
+> - Bare Latin person names embedded in Chinese documents (`Lin Xi`, `Su
+>   Mingyuan`) — high false-positive risk without segmentation.
+> - Bare 8-char SWIFT/BIC codes — too ambiguous without a label.
+> - Chinese-numeral amounts (`人民币壹万元整`) — distinct from numeral dates.
 
 ---
 
@@ -96,7 +105,7 @@ convert each entry into one Vitest `it(...)` block following the existing
 ```
 甲方（采购人）：虚构市示例局
 乙方（供应商）：虚构云图科技有限公司
-统一社会信用代码：91110108FAKE000007X
+统一社会信用代码：91110108FAKE00007X
 合同编号：HT-FAKE-2026-0312
 合同总金额：人民币2379322.61元
 双方于2026年05月20日签订本合同，自双方签字盖章之日起生效。
@@ -2037,3 +2046,939 @@ New invented names this batch: 宋怀瑾, 叶清辞, 霍辞, 应渊, 苏问, 陆
 | BANK_ACCOUNT | 52, 55, 58 |
 
 New trap coverage this batch: tabular NATIONAL_ID/EMAIL/PHONE cells under headers (51), full 省-市-区-路-号-幢-室 address + `每月25日`/`单价1元/件`/《民法典》 (52), `股票代码：300530` + `每月25日`/`近20年` (53), government-form inline `身份证号：` + `籍贯不详`/`近20年`/`每月25日`/gender `女` (54), bank-org full-name vs bare `开户行` (55), `工业园区` address + `手机：`/`电话：` label variants + `不详` (56), `证券代码 NNNN` no-colon + `近三年` + `同注册地址` (57), columnar transaction lines + `不明款项`/`开户行` (58), percentage share ratios + `住同上` (59), Latin name + `+86 1xx` spaced mobile + `案号` ARB ref (60).
+
+---
+
+## Part Three — Extended Corpus (Batch 5, Docs 61–70)
+
+Batch 5 rotates back to the kinds Batch 4 touched lightly — **CASE_REF** and **BANK_ACCOUNT** — and adds a second **Traditional Chinese** sample (Part Two gap #2) plus an offshore/VIE structure (mixed Latin/Cayman/BVI). The standing trap set persists; new invented names this batch: 梁叙, 楚衡, 程予, 顾衍, 阮慈, 苏珩, 沈霁, 裴行, 林知微, 韩述之, 杜明軒, 溫時晏. New invented orgs: 虚构澜海储能科技股份有限公司, 虚构云图半导体股份有限公司, 虚构星河智能科技股份有限公司, 虚构星河数据技术有限公司, 虚构九州融资租赁有限公司, 虚构晨曦保理有限公司, 虚构瀚辰医药股份有限公司, 騫越控股有限公司, StarGalaxy Holdings Ltd.
+
+### Doc 61 — 招股说明书知识产权清单 (IPO/prospectus, IP portfolio)
+
+```
+虚构澜海储能科技股份有限公司 招股说明书（申报稿）— 知识产权
+公司及子公司拥有发明专利55项、软件著作权18项、注册商标9项。
+核心专利：发明专利ZL2018100000FAKE.7（全固态电池模组管理方法）。
+商标：第FAKE00061号商标（图形+文字），核定使用商品第9类。
+近三年研发投入累计人民币2.8亿元，研发人员占比28.6%。
+保荐机构：示例证券股份有限公司。经办律师：梁叙（虚构天衡联合律师事务所）。
+签署日期：2026年06月18日。详见附件专利清单，不详之处以登记簿为准。
+```
+
+- **Must redact:**
+  - `虚构澜海储能科技股份有限公司` — ORG (B)
+  - `人民币2.8亿元` — AMOUNT (B)
+  - `28.6%` — AMOUNT (B)
+  - `示例证券股份有限公司` — ORG (B)
+  - `梁叙` — PERSON (B)
+  - `虚构天衡联合律师事务所` — ORG (B)
+  - `2026年06月18日` — DATE (B)
+  - `ZL2018100000FAKE.7` — BUSINESS_ID (B) `[aspirational: bare patent/application number]`
+  - `第FAKE00061号商标` — BUSINESS_ID (B) `[aspirational: 商标注册号 label]`
+- **Must stay readable:** `招股说明书（申报稿）— 知识产权`, `公司及子公司拥有发明专利`, `55项`, `软件著作权`, `18项`, `注册商标`, `9项`, `核心专利`, `发明专利`, `商标`, `核定使用商品第9类`, `近三年`, `研发投入累计`, `研发人员占比`, `保荐机构`, `经办律师`, `签署日期`, `详见附件专利清单`, `不详之处以登记簿为准`.
+- **Why useful:** IP portfolio block — aspirational patent/trademark BUSINESS_ID forms (`ZL…` application number, `第…号商标`); `近三年` / `不详` / `见附件` traps; a percentage and a `亿元` amount; `第9类` goods-class ordinal must read like `第N条`.
+- **Gaps stressed:** bare patent number (`ZL…`) and `商标注册号` (Part Two gap #5 family); `55项`/`18项`/`9项` counts must not parse as amounts.
+- **Test idea:** `it("redacts prospectus IP 募投 percentage and 億元 amount; keeps 55项/18项 counts, 第9类 ordinal and 近三年/不详 readable")`.
+
+### Doc 62 — 行政处罚事先告知书 (CSRC-style, pre-penalty notice)
+
+```
+中国证券监督管理委员会行政处罚事先告知书
+当事人：虚构云图半导体股份有限公司（住所：上海市虚构区示例环路62号）
+统一社会信用代码：91310107FAKE00620C  法定代表人：楚衡
+经查，当事人2024年年度报告存在虚增收入行为，涉嫌违反《中华人民共和国证券法》。
+依据第一百九十七条，拟决定：对当事人罚款人民币300万元；
+对直接负责的主管人员楚衡警告并罚款人民币60万元。告知文号：证监罚字〔2026〕62号。
+当事人享有陈述、申辩及要求听证的权利，详见权利告知附件。每月25日为对账日。
+```
+
+- **Must redact:**
+  - `虚构云图半导体股份有限公司` — ORG (B)
+  - `上海市虚构区示例环路62号` — ADDRESS (B)
+  - `91310107FAKE00620C` — BUSINESS_ID (B)
+  - `楚衡` — PERSON (B)
+  - `人民币300万元` — AMOUNT (B)
+  - `人民币60万元` — AMOUNT (B)
+  - `证监罚字〔2026〕62号` — CASE_REF (B) `[aspirational: …〔YYYY〕N号 format — Part Two gap #6]`
+- **Must stay readable:** `中国证券监督管理委员会` (issuing regulator — kept readable per Part Two convention), `行政处罚事先告知书`, `当事人`, `住所`, `统一社会信用代码`, `法定代表人`, `经查`, `2024年年度报告` (year-only trap), `虚增收入`, `涉嫌违反《中华人民共和国证券法》`, `依据第一百九十七条`, `拟决定`, `罚款`, `警告`, `告知文号`, `陈述`, `申辩`, `要求听证`, `权利告知附件`, `每月25日`, `对账日`.
+- **Why useful:** Pre-penalty notice — `证监罚字〔2026〕62号` document number (Part Two gap #6 family); `2024年年度报告` is a year-only reference that must NOT parse as a full date; statute + article ordinal in `《》` / `第N条`; issuing regulator kept readable.
+- **Gaps stressed:** `…〔YYYY〕N号` regulatory number; `2024年年度` year-only trap; `第一百九十七条` article ordinal.
+- **Test idea:** `it("redacts CSRC pre-penalty parties, fines and 证监罚字〔2026〕62号; keeps 中国证监会, 2024年年度报告 and 第一百九十七条 readable")`.
+
+### Doc 63 — 资产支持证券说明书 (asset-management, ABS prospectus)
+
+```
+虚构星河应收账款资产支持证券说明书（节选）
+原始权益人：虚构星河智能科技股份有限公司（统一社会信用代码91440100FAKE00630K）
+基础资产：截至2025年06月30日，应收账款债权人民币580,000,000.00元。
+证券分层：优先A级占比80%，优先B级占比15%，次级占比5%。
+资产服务机构：虚构九州融资租赁有限公司。管理人：示例证券股份有限公司。
+信用评级：优先A级AAA。信托账户：6225880000000000630。
+发行规模人民币6.0亿元，期限3年。详见于登记服务附件。
+本说明书中"基础资产"定义详见第十二条，单价1元/件不适用。
+```
+
+- **Must redact:**
+  - `虚构星河智能科技股份有限公司` — ORG (B)
+  - `91440100FAKE00630K` — BUSINESS_ID (B)
+  - `2025年06月30日` — DATE (B)
+  - `人民币580,000,000.00元` — AMOUNT (B)
+  - `80%` / `15%` / `5%` — AMOUNT (B)
+  - `虚构九州融资租赁有限公司` — ORG (B)
+  - `示例证券股份有限公司` — ORG (B)
+  - `6225880000000000630` — BANK_ACCOUNT (H)
+  - `人民币6.0亿元` — AMOUNT (B)
+- **Must stay readable:** `虚构星河应收账款资产支持证券说明书（节选）`, `原始权益人`, `基础资产`, `截至`, `应收账款债权`, `证券分层`, `优先A级` / `优先B级` / `次级`, `占比`, `资产服务机构`, `管理人`, `信用评级`, `AAA`, `信托账户`, `发行规模`, `期限3年`, `详见于登记服务附件`, `"基础资产"定义详见第十二条`, `单价1元/件不适用`.
+- **Why useful:** ABS prospectus — layered tranching percentages, a 9-digit-yuan receivable amount, a `信托账户` bank account, and multiple party orgs. `第十二条` article ordinal and `期限3年` duration must read.
+- **Gaps stressed:** `信托账户：` label variant for BANK_ACCOUNT; `第十二条` ordinal; `期限3年` duration.
+- **Test idea:** `it("redacts ABS receivable amount, tranche percentages, 信托账户 and 发行规模; keeps AAA 评级, 第十二条 and 期限3年 readable")`.
+
+### Doc 64 — 资金划拨指令 (bank/payment, internal fund transfer)
+
+```
+资金划拨指令（内部）
+指令编号：FAKE-TRF-2026-064  日期：2026年06月18日
+付款账户：虚构星河智能科技股份有限公司，账号6225880000000000640，开户行虚构银行示例支行。
+收款账户：虚构九州融资租赁有限公司，账号6227000000000000640。
+划拨金额：人民币12,500,000.00元。用途：支付设备款，详见合同附件。
+经办：程予  复核：顾衍  审批：楚衡
+本指令经三级审批后生效，不明账户请立即停止划拨。每月25日不做大额划拨。
+```
+
+- **Must redact:**
+  - `FAKE-TRF-2026-064` — CASE_REF (B)
+  - `2026年06月18日` — DATE (B)
+  - `虚构星河智能科技股份有限公司` — ORG (B)
+  - `6225880000000000640` — BANK_ACCOUNT (H)
+  - `虚构九州融资租赁有限公司` — ORG (B)
+  - `6227000000000000640` — BANK_ACCOUNT (H)
+  - `人民币12,500,000.00元` — AMOUNT (B)
+  - `程予` — PERSON (B)
+  - `顾衍` — PERSON (B)
+  - `楚衡` — PERSON (B)
+- **Must stay readable:** `资金划拨指令（内部）`, `指令编号`, `日期`, `付款账户`, `账号`, `开户行`, `收款账户`, `划拨金额`, `用途`, `支付设备款`, `详见合同附件`, `经办`, `复核`, `审批`, `本指令经三级审批后生效`, `不明账户请立即停止划拨`, `每月25日`, `大额划拨`.
+- **Why useful:** Two bank accounts + a large amount + an `指令编号` case ref in one short form; three role-labelled people (`经办`/`复核`/`审批`); `开户行` bare generic vs `虚构银行示例支行` full branch.
+- **Gaps stressed:** `开户行` generic word must stay while the full branch redacts; `不明账户` `不详`-style trap.
+- **Test idea:** `it("redacts both fund-transfer account numbers, amount, 经办/复核/审批 people and 指令编号; keeps 开户行 and 不明账户 readable")`.
+
+### Doc 65 — 限制性股票授予协议 (cap table, equity incentive)
+
+```
+限制性股票授予协议
+授予方：虚构澜海储能科技股份有限公司（统一社会信用代码91310110FAKE006508）
+被授予人：程予，身份证号310110198511120001，职务：技术总监
+授予数量：200,000股（每股面值人民币1元），授予价格每股人民币12.50元，授予总对价人民币2,500,000元。
+授予日：2026年06月18日。限售期2年，解锁比例第一年50%、第二年50%。
+被授予人联系邮箱：cheng.yu@lanhai-fake.com，手机：13900000065。
+争议提交虚构仲裁委员会，案号见仲裁条款附件。本协议适用《公司法》。
+```
+
+- **Must redact:**
+  - `虚构澜海储能科技股份有限公司` — ORG (B)
+  - `91310110FAKE006508` — BUSINESS_ID (B)
+  - `程予` — PERSON (B)
+  - `310110198511120001` — NATIONAL_ID (B)
+  - `人民币1元` — AMOUNT (B)
+  - `人民币12.50元` — AMOUNT (B)
+  - `人民币2,500,000元` — AMOUNT (B)
+  - `2026年06月18日` — DATE (B)
+  - `50%` / `50%` — AMOUNT (B)
+  - `cheng.yu@lanhai-fake.com` — EMAIL (B)
+  - `13900000065` — PHONE (B)
+- **Must stay readable:** `限制性股票授予协议`, `授予方`, `被授予人`, `身份证号`, `职务`, `技术总监`, `授予数量`, `200,000股`, `每股面值`, `授予价格每股`, `授予总对价`, `授予日`, `限售期2年`, `解锁比例`, `第一年` / `第二年`, `被授予人联系邮箱`, `手机`, `争议提交虚构仲裁委员会`, `案号见仲裁条款附件`, `本协议适用《公司法》`.
+- **Why useful:** Equity grant — inline PRC ID + email + phone + par/price/total amount cascade + unlock percentages. `限售期2年` and `第一年/第二年` are durations/ordinals that must read; `《公司法》` short-form statute.
+- **Gaps stressed:** `200,000股` share count must not over-redact into the adjacent amount; `2年`/`第一年` duration/ordinal.
+- **Test idea:** `it("redacts equity-grant grantee PRC ID, par/price/total amounts, email and phone; keeps 200,000股 count, 限售期2年 and 《公司法》 readable")`.
+
+### Doc 66 — 开庭传票 (litigation/court, summons)
+
+```
+虚构市示例区人民法院 传票
+案号：（2026）示例民初字第0066号
+案由：买卖合同纠纷
+原告：虚构瀚辰医药股份有限公司，住所：北京市虚构区示例路66号。
+被告：顾衍，男，住所不详，电话：021-00006601。
+开庭时间：2026年07月15日09时00分，地点：第三审判庭。
+承办法官：苏珩，书记员：阮慈。
+当事人及诉讼代理人持本传票于开庭日期到庭，详见诉讼权利义务告知书附件。
+无正当理由拒不到庭的，依法按撤诉处理或缺席判决。
+```
+
+- **Must redact:**
+  - `（2026）示例民初字第0066号` — CASE_REF (B) `[aspirational: （YYYY）…字第N号 civil case format]`
+  - `虚构瀚辰医药股份有限公司` — ORG (B)
+  - `北京市虚构区示例路66号` — ADDRESS (B)
+  - `顾衍` — PERSON (B)
+  - `021-00006601` — PHONE (B)
+  - `2026年07月15日` — DATE (B)
+  - `苏珩` — PERSON (B)
+  - `阮慈` — PERSON (B)
+- **Must stay readable:** `虚构市示例区人民法院` (issuing court — kept readable like a regulator), `传票`, `案号`, `案由`, `买卖合同纠纷`, `原告`, `住所`, `被告`, `男`, `住所不详`, `电话`, `开庭时间`, `09时00分`, `地点`, `第三审判庭`, `承办法官`, `书记员`, `当事人及诉讼代理人持本传票于开庭日期到庭`, `详见诉讼权利义务告知书附件`, `无正当理由拒不到庭的`, `依法按撤诉处理或缺席判决`.
+- **Why useful:** Court summons — `（2026）示例民初字第0066号` civil-case-number format (aspirational variant of the 〔〕 family); issuing court kept readable while the litigant org redacts; `住所不详` trap; `09时00分` time-of-day and `第三审判庭` ordinal must read; role people `法官`/`书记员`.
+- **Gaps stressed:** `（YYYY）…字第N号` case format; `住所不详`; court-vs-litigant ORG distinction.
+- **Test idea:** `it("redacts summons civil case number, plaintiff org/address, defendant person+phone, judge/clerk; keeps issuing court, 住所不详 and 09时00分 readable")`.
+
+### Doc 67 — 投标函 (procurement, bid letter)
+
+```
+投标函
+致：虚构市示例局（采购人）
+投标人：虚构云图半导体股份有限公司，统一社会信用代码91320500FAKE006709。
+法定代表人：沈霁。投标报价：人民币3,280,000.00元（含税），单价1元/件仅作口径。
+交货期：合同签订后90日内。质保期：验收合格之日起24个月。
+投标保证金：人民币65,000元，从账户6228480000000000670汇出，开户行见附件。
+联系人：裴行，手机13800000067，邮箱 pei.xing@yuntu-fake.com。
+投标有效期：自2026年06月18日起60日。本投标依据《政府采购法》。
+```
+
+- **Must redact:**
+  - `虚构市示例局` — ORG (B)
+  - `虚构云图半导体股份有限公司` — ORG (B)
+  - `91320500FAKE006709` — BUSINESS_ID (B)
+  - `沈霁` — PERSON (B)
+  - `人民币3,280,000.00元` — AMOUNT (B)
+  - `人民币65,000元` — AMOUNT (B)
+  - `6228480000000000670` — BANK_ACCOUNT (H)
+  - `裴行` — PERSON (B)
+  - `13800000067` — PHONE (B)
+  - `pei.xing@yuntu-fake.com` — EMAIL (B)
+  - `2026年06月18日` — DATE (B)
+- **Must stay readable:** `投标函`, `致`, `采购人`, `投标人`, `统一社会信用代码`, `法定代表人`, `投标报价`, `含税`, `单价1元/件`, `口径`, `交货期`, `合同签订后90日内`, `质保期`, `验收合格之日起24个月`, `投标保证金`, `账户`, `开户行见附件`, `联系人`, `手机`, `邮箱`, `投标有效期`, `自…起60日`, `本投标依据《政府采购法》`.
+- **Why useful:** Bid letter — full org/USCC/amount/bank/contact set in procurement form; `90日内` / `24个月` / `60日` durations must not parse as amounts or dates; `开户行见附件` keeps `开户行` generic.
+- **Gaps stressed:** duration expressions (`90日内`/`24个月`/`60日`); `单价1元/件` next to a real `元` amount.
+- **Test idea:** `it("redacts bid orgs, USCC, bid/bond amounts, bond account, contact person+phone+email; keeps 90日内/24个月/60日 durations and 单价1元/件 readable")`.
+
+### Doc 68 — 红筹/VIE架构说明 (IPO/prospectus, offshore structure)
+
+```
+发行人：虚构星河智能科技股份有限公司（开曼）注册地：开曼群岛
+境内运营实体：虚构星河数据技术有限公司（WFOE），统一社会信用代码91310104FAKE00680L。
+VIE协议主体：林知微（中国籍，身份证号110105198209150002）持有牌照公司100%股权。
+境外控股股东：StarGalaxy Holdings Ltd.（注册地：Cayman Islands）。
+实际控制人：韩述之，通过BVI公司间接持股。详见架构图附件。
+近三年累计分红人民币1.2亿元。本说明适用《中华人民共和国外商投资法》。
+不明事项以登记信息为准。每月25日为例行关账日。
+```
+
+- **Must redact:**
+  - `虚构星河智能科技股份有限公司` — ORG (B)
+  - `虚构星河数据技术有限公司` — ORG (B)
+  - `91310104FAKE00680L` — BUSINESS_ID (B)
+  - `林知微` — PERSON (B)
+  - `110105198209150002` — NATIONAL_ID (B)
+  - `100%` — AMOUNT (B)
+  - `StarGalaxy Holdings Ltd.` — ORG (B) `[aspirational: bare English offshore org name in CN doc]`
+  - `韩述之` — PERSON (B)
+  - `人民币1.2亿元` — AMOUNT (B)
+- **Must stay readable:** `发行人`, `注册地：开曼群岛` (jurisdiction — aspirational), `境内运营实体`, `WFOE`, `统一社会信用代码`, `VIE协议主体`, `中国籍`, `持有牌照公司`, `股权`, `境外控股股东`, `注册地：Cayman Islands`, `实际控制人`, `通过BVI公司间接持股`, `详见架构图附件`, `近三年`, `累计分红`, `本说明适用《中华人民共和国外商投资法》`, `不明事项以登记信息为准`, `每月25日`, `例行关账日`.
+- **Why useful:** Offshore VIE structure — an English offshore parent (`StarGalaxy Holdings Ltd.`), two `注册地：…` jurisdictions (开曼群岛 / Cayman Islands), an inline PRC ID tied to the VIE nominal holder, `BVI公司` generic, and `100%` holding ratio.
+- **Gaps stressed:** bare English org name (Part Two gap #3 family); `注册地：<jurisdiction>` short value (Part Two doc 32 family); `BVI`/`WFOE` acronym generics.
+- **Test idea:** `it("redacts VIE onshore entities, nominal-holder PRC ID, offshore parent org and 100% holding; keeps 注册地：Cayman Islands / BVI公司 and 近三年 readable")`.
+
+### Doc 69 — 国内保理合同 (bank/payment, factoring)
+
+```
+国内有追索权保理合同
+保理商：虚构晨曦保理有限公司（统一社会信用代码91310113FAKE00690H）
+卖方：虚构瀚辰医药股份有限公司  买方：虚构九州融资租赁有限公司
+应收账款：人民币8,800,000.00元，到期日2026年09月30日。
+保理融资款：人民币8,000,000.00元，划入卖方账户6225880000000000690。
+保理费率：年化4.5%。指定联系人：阮慈，电话021-00006901。
+回购条款：详见第八条及回购通知附件。不明账款应在3个工作日内提出。
+本合同适用《中华人民共和国民法典》。每月25日为对账日。
+```
+
+- **Must redact:**
+  - `虚构晨曦保理有限公司` — ORG (B)
+  - `91310113FAKE00690H` — BUSINESS_ID (B)
+  - `虚构瀚辰医药股份有限公司` — ORG (B)
+  - `虚构九州融资租赁有限公司` — ORG (B)
+  - `人民币8,800,000.00元` — AMOUNT (B)
+  - `2026年09月30日` — DATE (B)
+  - `人民币8,000,000.00元` — AMOUNT (B)
+  - `6225880000000000690` — BANK_ACCOUNT (H)
+  - `年化4.5%` — AMOUNT (B)
+  - `阮慈` — PERSON (B)
+  - `021-00006901` — PHONE (B)
+- **Must stay readable:** `国内有追索权保理合同`, `保理商`, `统一社会信用代码`, `卖方`, `买方`, `应收账款`, `到期日`, `保理融资款`, `划入卖方账户`, `保理费率`, `年化`, `指定联系人`, `电话`, `回购条款`, `详见第八条及回购通知附件`, `不明账款应在3个工作日内提出`, `本合同适用《中华人民共和国民法典》`, `每月25日`, `对账日`.
+- **Why useful:** Factoring — three orgs + receivable/financing amounts + a `卖方账户` bank account + `年化4.5%` rate + maturity date. `第八条` article ordinal and `3个工作日` duration must read.
+- **Gaps stressed:** `年化4.5%` rate percentage; `第八条` ordinal; `3个工作日` duration.
+- **Test idea:** `it("redacts factoring parties, receivable/financing amounts, 卖方账户, rate and contact; keeps 第八条 / 3个工作日 / 每月25日 readable")`.
+
+### Doc 70 — 董事會報告 (Traditional Chinese / HK, board report)
+
+```
+騫越控股有限公司（股份代號：02870.HK）二零二六年度董事會報告
+本年度本集團收入港幣12.5億元，較去年增長百分之八。
+董事會成員：杜明軒（行政總裁）、溫時晏（執行董事）、裴行（獨立非執行董事）。
+公司秘書：林知微。註冊辦事處：香港虛構灣示例道70號18樓。
+核數師：示例會計師事務所。聯絡電郵：ir@qianyue-fake.com.hk。
+股息每股港幣0.25元。詳見年報附件。本公司近三年持續盈利。
+本報告以繁體中文編製，依據《香港公司條例》披露。
+```
+
+- **Must redact:** `[aspirational: 全文繁體 — Part Two gap #2]`
+  - `騫越控股有限公司` — ORG (B)
+  - `02870.HK` — BUSINESS_ID (B) `[aspirational: 股份代號：NNNNN.HK]`
+  - `二零二六年度` — DATE (B) `[aspirational: 繁體中文數字日期]`
+  - `港幣12.5億元` — AMOUNT (B) `[aspirational: 港幣 unit]`
+  - `杜明軒` / `溫時晏` / `裴行` / `林知微` — PERSON (B)
+  - `香港虛構灣示例道70號18樓` — ADDRESS (B) `[aspirational: 繁體地址 + 樓]`
+  - `ir@qianyue-fake.com.hk` — EMAIL (B)
+  - `港幣0.25元` — AMOUNT (B) `[aspirational: 港幣 unit]`
+- **Must stay readable:** `股份代號`, `董事會報告`, `本年度本集團收入`, `較去年增長百分之八`, `董事會成員`, `行政總裁` / `執行董事` / `獨立非執行董事`, `公司秘書`, `註冊辦事處`, `核數師`, `示例會計師事務所`, `聯絡電郵`, `股息每股`, `詳見年報附件`, `本公司近三年持續盈利`, `本報告以繁體中文編製`, `依據《香港公司條例》披露`.
+- **Why useful:** Second 繁體 sample (Part Two only had Docs 37/47 + Part One 20) — 繁體中文數字 date (`二零二六年度`), `港幣` amounts, `股份代號：NNNNN.HK`, 繁體 role titles (`行政總裁`/`執行董事`), 繁體 address with `樓`, and a `.com.hk` email.
+- **Gaps stressed:** 繁體 numeral dates; `港幣` unit; `百分之八` Chinese-numeral percentage (kept readable); `.com.hk` email TLD.
+- **Test idea:** `it("[繁體] redacts board-report org, 港幣 amounts, directors, address and email; keeps 股份代號：02870.HK label and 百分之八 readable")`.
+
+### Extended Batch 5 coverage
+
+| Kind | Docs exercising it |
+| ---- | ------------------ |
+| PERSON | 61, 62, 64, 65, 66, 67, 68, 69, 70 |
+| ORG | 61, 62, 63, 64, 65, 66, 67, 68, 69, 70 (all 10) |
+| ADDRESS | 62, 66, 68, 70 |
+| BUSINESS_ID | 61(aspirational), 62, 63, 65, 67, 68, 69, 70(aspirational) |
+| NATIONAL_ID | 65, 68 |
+| PHONE | 65, 66, 67, 69 |
+| EMAIL | 65, 67, 70 |
+| DATE | 61, 63, 64, 65, 66, 67, 69, 70(aspirational) |
+| AMOUNT | 61, 62, 63, 64, 65, 67, 68, 69, 70 |
+| CASE_REF | 62(aspirational), 64, 66(aspirational) |
+| BANK_ACCOUNT | 63, 64, 67, 69 |
+
+New trap coverage this batch: aspirational patent `ZL…`/`商标注册号` + `55项` counts (61), `2024年年度报告` year-only + `证监罚字〔2026〕62号` + 第一百九十七条 (62), ABS tranching percentages + `信托账户` + `第十二条`/`期限3年` (63), dual bank accounts + 经办/复核/审批 roles + `开户行` generic (64), `200,000股` count + par/price/total cascade + `限售期2年` (65), `（2026）示例民初字第0066号` civil case + `住所不详` + `09时00分` (66), `90日内`/`24个月`/`60日` durations + `单价1元/件` (67), offshore English org + `注册地：Cayman Islands` + `BVI公司` (68), `年化4.5%` rate + `第八条`/`3个工作日` (69), 繁體 numeral date + `港幣` + `百分之八` + `.com.hk` (70).
+
+---
+
+## Part Three — Overall Coverage (Docs 51–70)
+
+Aggregated across Batches 4–5 (20 new docs). Counts include `[aspirational]` spans, which Codex should land as skipped/counterexample tests.
+
+| Kind | Docs exercising it | Notes |
+| ---- | ------------------ | ---- |
+| PERSON | 20/20 | tabular cells (51), Latin names (60, 68), 繁體 (70), 法官/书记员/仲裁员 roles (66) |
+| ORG | 20/20 | offshore English parent (68), 繁體 (70), bank/leasing/factoring/保理 orgs (55–69), court kept readable vs litigant redacted (66) |
+| ADDRESS | 10/20 | full 省-市-区-路-号-幢-室 (52), 工业园区 (56), 繁體+樓 (70), `注册地：<jurisdiction>` (68) |
+| BUSINESS_ID | 14/20 | patent `ZL…` (61), `商标注册号` (61), `股份代號：NNNNN.HK` (70), `股票代码：` (53), `证券代码 NNNN` (67) |
+| NATIONAL_ID | 8/20 | tabular ×3 (51), inline `身份证号：` (52,54,56,59,60,65,68) |
+| PHONE | 12/20 | landlines `0xxx-` (53,55,66,69), spaced `+86 1xx` (60), `手机：`/`电话：` label split (56) |
+| EMAIL | 10/20 | tabular ×3 (51), `.com.hk` (70), personal-name local-parts (52,54,55,60,65,67) |
+| DATE | 14/20 | `2024年年度报告` year-only trap (62), 繁體 numeral date (70), `2025年…` fiscal dates |
+| AMOUNT | 19/20 | percentages as shares/rates (59,63,65,68,69), `港幣` (70), par/price/total cascade (65), duration traps `24个月`/`60日` (67) |
+| CASE_REF | 4/20 | `证监罚字〔2026〕62号` (62), `（2026）…字第0066号` (66), `FAKE-TRF-…` (64), `FAKE-ARB-…` (60) |
+| BANK_ACCOUNT | 7/20 | `信托账户` (63), `卖方账户` (69), dual accounts (64), heavy-only `单价` traps adjacent |
+
+### Part Three — Aspirational Gap Catalogue (additions)
+
+These either newly appear in Part Three or deepen Part Two's catalogue:
+
+9. **Patent / trademark numbers** — `ZL2018100000FAKE.7` application number and `第FAKE00061号商标` registration number (61).
+10. **Civil case-number formats** — `（2026）示例民初字第0066号` (66) alongside the regulatory `证监罚字〔2026〕62号` (62). Same CASE_REF gap family, two bracket styles.
+11. **Percentage-as-share / percentage-as-rate** — `12%`/`60%`/`40%` inheritance shares (59), `80%`/`15%`/`5%` ABS tranches (63), `年化4.5%` (69), `100%` holding (68). AMOUNT regex must catch `%` reliably without eating `第N条` ordinals or `百分之N` Chinese-numeral percentages.
+12. **Duration expressions** — `90日内` / `24个月` / `60日` / `3个工作日` / `期限3年` / `限售期2年` (63, 65, 67, 69). Must NOT match as dates or amounts.
+13. **`信托账户：` / `卖方账户：` / `收款账户：` label variants** for BANK_ACCOUNT (63, 64, 69).
+14. **Court vs litigant ORG distinction** — issuing `虚构市示例区人民法院` stays readable while litigant `虚构瀚辰医药股份有限公司` redacts (66). Mirrors the regulator-kept-readable convention (38, 48, 62).
+15. **Offshore English org names + jurisdiction values** — `StarGalaxy Holdings Ltd.`, `注册地：Cayman Islands` / `开曼群岛`, `BVI公司` (68).
+
+---
+
+## Part Four — Extended Corpus (Batch 6, Docs 71–80)
+
+Batch 6 rotates to **BUSINESS_ID** (10/10), **CASE_REF** (5/10) and **DATE** (10/10), adds a third 繁體 sample, a customs export declaration, and a cross-border M&A term sheet carrying a USD amount and a passport number. New invented names this batch: 江研, 林疏, 裴慈, 沈昭, 苏叙, 程止, 顾知, 韩嶋, 梁知 (plus 繁體 杜明軒/溫時晏 reused). All identifiers invented and length-valid.
+
+### Doc 71 — 信托受益权转让合同 (asset-management, trust beneficiary transfer)
+
+```
+信托受益权转让合同
+转让方：江研（身份证号310104198811060021）
+受让方：虚构九州融资租赁有限公司（统一社会信用代码91310112FAKE007107）
+信托计划：虚构星河一号财产权信托，保管账户6225880000000000710。
+转让标的：信托受益权份额8,000万份，对应转让价款人民币56,000,000.00元。
+转让日：2026年06月18日。税费各自承担，详见税务附件。
+争议提交虚构仲裁委员会，案号 FAKE-ARB-2026-071。单价1元/件不适用。
+```
+
+- **Must redact:**
+  - `江研` — PERSON (B)
+  - `310104198811060021` — NATIONAL_ID (B)
+  - `虚构九州融资租赁有限公司` — ORG (B)
+  - `91310112FAKE007107` — BUSINESS_ID (B)
+  - `6225880000000000710` — BANK_ACCOUNT (H)
+  - `人民币56,000,000.00元` — AMOUNT (B)
+  - `2026年06月18日` — DATE (B)
+  - `FAKE-ARB-2026-071` — CASE_REF (B)
+- **Must stay readable:** `信托受益权转让合同`, `转让方`, `身份证号`, `受让方`, `统一社会信用代码`, `信托计划`, `虚构星河一号财产权信托` (named product), `保管账户`, `转让标的`, `信托受益权份额`, `8,000万份` (count trap), `对应转让价款`, `转让日`, `税费各自承担`, `详见税务附件`, `争议提交虚构仲裁委员会`, `案号`, `单价1元/件不适用`.
+- **Why useful:** Trust beneficiary transfer — PRC ID + USCC + `保管账户` bank + large amount + ARB case in one doc; `8,000万份` share-count-with-万 must not parse as a 万元 amount.
+- **Gaps stressed:** `保管账户：` label variant; `8,000万份` count; named trust product must read.
+- **Test idea:** `it("redacts trust-transfer parties, PRC ID, USCC, 保管账户, price and ARB case; keeps 8,000万份 count and 单价1元/件 readable")`.
+
+### Doc 72 — 行政强制措施决定书 (regulator notice, administrative coercion)
+
+```
+虚构市市场监督管理局 行政强制措施决定书
+当事人：虚构瀚辰医药股份有限公司（统一社会信用代码91310107FAKE00620C）
+经查，当事人生产记录与实际不符，违反《中华人民共和国药品管理法》。
+依据第九十八条，决定：查封相关设备，期限60日，并处罚款人民币150万元。
+文号：市监强字〔2026〕72号。执行机关：虚构市示例区市场监督管理局。
+当事人如不服，可在60日内申请行政复议，详见救济途径附件。每月25日系统维护。
+```
+
+- **Must redact:**
+  - `虚构瀚辰医药股份有限公司` — ORG (B)
+  - `91310107FAKE00620C` — BUSINESS_ID (B)
+  - `人民币150万元` — AMOUNT (B)
+  - `市监强字〔2026〕72号` — CASE_REF (B) `[aspirational: …〔YYYY〕N号 — Part Two gap #6]`
+- **Must stay readable:** `虚构市市场监督管理局` / `虚构市示例区市场监督管理局` (issuing regulator — kept readable), `行政强制措施决定书`, `当事人`, `统一社会信用代码`, `经查`, `生产记录与实际不符`, `违反《中华人民共和国药品管理法》`, `依据第九十八条`, `决定`, `查封相关设备`, `期限60日`, `罚款`, `文号`, `执行机关`, `当事人如不服`, `可在60日内申请行政复议`, `详见救济途径附件`, `每月25日`, `系统维护`.
+- **Why useful:** Administrative coercion — issuing regulator kept readable while the litigant org redacts; `期限60日` / `60日内` duration traps; `第九十八条` ordinal; `《药品管理法》` statute; `市监强字〔〕` case number.
+- **Gaps stressed:** `期限60日` / `60日内` durations; regulator-vs-litigant ORG distinction; `第九十八条` ordinal.
+- **Test idea:** `it("redacts coercion-decision litigant org, USCC, fine and 市监强字〔2026〕72号; keeps issuing 监督管理局, 期限60日 and 第九十八条 readable")`.
+
+### Doc 73 — 招股说明书董监高简历 (IPO/prospectus, directors & execs bios)
+
+```
+虚构星轨航天科技股份有限公司 董事、监事、高级管理人员简历
+董事长：江研，1975年08月生，虚构大学示例硕士，曾任虚构云图半导体股份有限公司副总裁。
+总经理：林疏，1980年03月生，联系电话021-00007301，电子邮箱 lin.shu@xinggui-fake.com。
+财务总监：裴慈，1982年11月生，注册会计师。独立董事：沈昭。
+公司地址：上海市虚构区示例环路73号。上述人员简历详见招股说明书附件。
+本公司近20年无重大违法违规记录。联系手机13900000073。
+```
+
+- **Must redact:**
+  - `虚构星轨航天科技股份有限公司` — ORG (B)
+  - `江研` — PERSON (B)
+  - `1975年08月` — DATE (B)
+  - `虚构云图半导体股份有限公司` — ORG (B)
+  - `林疏` — PERSON (B)
+  - `1980年03月` — DATE (B)
+  - `021-00007301` — PHONE (B)
+  - `lin.shu@xinggui-fake.com` — EMAIL (B)
+  - `裴慈` — PERSON (B)
+  - `1982年11月` — DATE (B)
+  - `沈昭` — PERSON (B)
+  - `上海市虚构区示例环路73号` — ADDRESS (B)
+  - `13900000073` — PHONE (B)
+- **Must stay readable:** `董事、监事、高级管理人员简历`, `董事长`, `生`, `虚构大学示例硕士` (generic `大学` word), `曾任`, `副总裁`, `总经理`, `财务总监`, `注册会计师`, `独立董事`, `公司地址`, `上述人员简历详见招股说明书附件`, `本公司近20年无重大违法违规记录`, `联系手机`.
+- **Why useful:** Directors/execs bios — heaviest PERSON + birth-date (YYYY年M月) density; three role-titled people plus a fourth; `虚构大学` generic `大学` word; `近20年` trap; role titles (`董事长`/`总经理`/`财务总监`/`副总裁`) must read.
+- **Gaps stressed:** generic `大学` word vs full org name; multiple short `YYYY年M月` dates in one paragraph; role-title words.
+- **Test idea:** `it("redacts prospectus D&O bio persons, birth dates, former-employer org, phones, email and address; keeps role titles, 虚构大学 and 近20年 readable")`.
+
+### Doc 74 — 出口报关单 (procurement/customs, export declaration)
+
+```
+中华人民共和国海关出口货物报关单
+申报单位：虚构瀚辰医药股份有限公司（统一社会信用代码91350100FAKE007409）
+境内发货人：同上  境外收货人：StarGalaxy Holdings Ltd.
+出口口岸：上海海关  申报日期：2026年06月18日
+商品：医疗器械，数量10,000件，单价1元/件仅作报关口径，FOB人民币2,000,000元。
+合同号：FAKE-EXP-2026-074。运抵国：开曼群岛，详见装箱单附件。
+近三年出口额持续增长。不明货物请立即申报。
+```
+
+- **Must redact:**
+  - `虚构瀚辰医药股份有限公司` — ORG (B)
+  - `91350100FAKE007409` — BUSINESS_ID (B)
+  - `StarGalaxy Holdings Ltd.` — ORG (B) `[aspirational: bare English org in CN doc]`
+  - `2026年06月18日` — DATE (B)
+  - `人民币2,000,000元` — AMOUNT (B)
+  - `FAKE-EXP-2026-074` — CASE_REF (B)
+- **Must stay readable:** `中华人民共和国海关出口货物报关单` (heading — country name must NOT redact), `申报单位`, `统一社会信用代码`, `境内发货人`, `同上`, `境外收货人`, `出口口岸`, `上海海关`, `申报日期`, `商品`, `医疗器械`, `数量`, `10,000件` (count), `单价1元/件`, `报关口径`, `FOB`, `合同号`, `运抵国`, `开曼群岛`, `详见装箱单附件`, `近三年`, `出口额持续增长`, `不明货物请立即申报`.
+- **Why useful:** Customs export declaration — offshore English 收货人; `FOB 人民币…元` amount; `合同号` case ref; `10,000件` count; `单价1元/件` trap; `开曼群岛` jurisdiction; `中华人民共和国` country name in the heading must survive.
+- **Gaps stressed:** bare English org (gap #3); country-name heading vs org; `开曼群岛` jurisdiction value.
+- **Test idea:** `it("redacts customs declarant org, USCC, overseas consignee, FOB amount and 合同号; keeps 中华人民共和国 heading, 10,000件 count and 单价1元/件 readable")`.
+
+### Doc 75 — 股东大会表决结果公告 (board/shareholder, voting results)
+
+```
+虚构澜海储能科技股份有限公司 2025年年度股东大会表决结果公告
+会议时间：2026年05月20日。出席会议股东及代理人代表股份80.5%。
+议案一：关于聘请示例会计师事务所的议案——赞成79.2%，反对0.3%，弃权20.5%。
+议案二：关于选举江研为董事的议案——当选。议案三：利润分配方案，每10股派人民币0.50元。
+监票人：苏叙、程止。上述表决结果详见网络投票附件。每月25日不召开会议。
+```
+
+- **Must redact:**
+  - `虚构澜海储能科技股份有限公司` — ORG (B)
+  - `2026年05月20日` — DATE (B)
+  - `示例会计师事务所` — ORG (B)
+  - `80.5%` / `79.2%` / `0.3%` / `20.5%` — AMOUNT (B)
+  - `江研` — PERSON (B)
+  - `人民币0.50元` — AMOUNT (B)
+  - `苏叙` — PERSON (B)
+  - `程止` — PERSON (B)
+- **Must stay readable:** `2025年年度股东大会表决结果公告` (year-only trap), `会议时间`, `出席会议股东及代理人代表股份`, `议案一`, `关于聘请…的议案`, `赞成` / `反对` / `弃权`, `议案二`, `关于选举…为董事的议案`, `当选`, `议案三`, `利润分配方案`, `每10股派` (count), `监票人`, `上述表决结果详见网络投票附件`, `每月25日不召开会议`.
+- **Why useful:** Voting-results announcement — four voting-ratio percentages in one doc; `每10股` share-count; `2025年年度` year-only heading; role people `监票人`.
+- **Gaps stressed:** percentage-as-voting-ratio; `每10股派人民币0.50元` count-adjacent-to-amount; year-only `2025年年度`.
+- **Test idea:** `it("redacts shareholder-meeting org, date, voting percentages, director and 监票人 people and dividend amount; keeps 每10股 and 2025年年度 readable")`.
+
+### Doc 76 — 银行承兑汇票 (bank/payment, banker's acceptance)
+
+```
+银行承兑汇票
+出票人：虚构九州融资租赁有限公司（统一社会信用代码91310101FAKE00760K）
+收款人：虚构瀚辰医药股份有限公司
+出票金额：人民币5,000,000.00元（大写：人民币伍佰万元整）。
+出票日：2026年06月18日，到期日：2026年12月18日。期限6个月。
+承兑人：虚构银行股份有限公司示例支行。票据号码：FAKE-BA-2026-076。
+账号：6227000000000000760。承兑协议详见附件。
+联系电话：021-00007601。本汇票依据《中华人民共和国票据法》。不明背书需核实。
+```
+
+- **Must redact:**
+  - `虚构九州融资租赁有限公司` — ORG (B)
+  - `91310101FAKE00760K` — BUSINESS_ID (B)
+  - `虚构瀚辰医药股份有限公司` — ORG (B)
+  - `人民币5,000,000.00元` — AMOUNT (B)
+  - `大写：人民币伍佰万元整` — AMOUNT (B) `[aspirational: Chinese-numeral amount]`
+  - `2026年06月18日` — DATE (B)
+  - `2026年12月18日` — DATE (B)
+  - `虚构银行股份有限公司示例支行` — ORG (B)
+  - `FAKE-BA-2026-076` — CASE_REF (B)
+  - `6227000000000000760` — BANK_ACCOUNT (H)
+  - `021-00007601` — PHONE (B)
+- **Must stay readable:** `银行承兑汇票`, `出票人`, `统一社会信用代码`, `收款人`, `出票金额`, `大写`, `出票日`, `到期日`, `期限6个月`, `承兑人`, `票据号码`, `账号`, `承兑协议详见附件`, `联系电话`, `本汇票依据《中华人民共和国票据法》`, `不明背书需核实`.
+- **Why useful:** Banker's acceptance — `大写：人民币伍佰万元整` Chinese-numeral amount (aspirational, Part Two gap #7); two dates; `票据号码` case ref; bank org + account + phone; `期限6个月` duration; `《票据法》`.
+- **Gaps stressed:** Chinese-numeral `大写` amount; `期限6个月` duration; `票据号码：` case-ref label variant.
+- **Test idea:** `it("redacts banker's-acceptance parties, amount (incl 大写 numeral), two dates, 票据号码, account, bank org and phone; keeps 期限6个月 and 《票据法》 readable")`.
+
+### Doc 77 — 劳动合同解除协议 (employment/HR, termination settlement)
+
+```
+解除劳动合同协议书
+甲方（用人单位）：虚构青澜新能源科技有限公司（统一社会信用代码91310115FAKE007708）
+乙方（劳动者）：顾知，身份证号31010419920715002X，岗位：高级工程师
+双方协商于2026年06月18日解除劳动合同。甲方支付经济补偿人民币350,000元（N+1）。
+甲方于解除后15日内将款项汇入乙方账户6228480000000000770。
+乙方保密义务详见保密条款附件，保密期2年。不明事项协商解决。
+本协议适用《中华人民共和国劳动合同法》。每月25日为发薪日。
+```
+
+- **Must redact:**
+  - `虚构青澜新能源科技有限公司` — ORG (B)
+  - `91310115FAKE007708` — BUSINESS_ID (B)
+  - `顾知` — PERSON (B)
+  - `31010419920715002X` — NATIONAL_ID (B)
+  - `2026年06月18日` — DATE (B)
+  - `人民币350,000元` — AMOUNT (B)
+  - `6228480000000000770` — BANK_ACCOUNT (H)
+- **Must stay readable:** `解除劳动合同协议书`, `甲方（用人单位）`, `乙方（劳动者）`, `身份证号`, `岗位`, `高级工程师`, `双方协商于`, `解除劳动合同`, `甲方支付经济补偿`, `N+1` (must not parse as an amount), `甲方于解除后15日内将款项汇入乙方账户`, `乙方保密义务详见保密条款附件`, `保密期2年`, `不明事项协商解决`, `本协议适用《中华人民共和国劳动合同法》`, `每月25日`, `发薪日`.
+- **Why useful:** Termination settlement — inline PRC ID + `N+1` severance + worker bank account; `15日内` / `保密期2年` durations; the `N+1` expression must not be eaten by an amount rule; `《劳动合同法》`.
+- **Gaps stressed:** `N+1` compensation expression; `15日内`/`2年` durations; `乙方账户：` bank-account label variant.
+- **Test idea:** `it("redacts termination-settlement employer org, USCC, worker PRC ID, severance amount and account; keeps N+1, 保密期2年 and 《劳动合同法》 readable")`.
+
+### Doc 78 — 法律服务聘请协议 (legal, engagement letter)
+
+```
+法律服务聘请协议
+委托人：虚构晨曦保理有限公司（统一社会信用代码91310101FAKE00780C）
+受托人：虚构天衡联合律师事务所  经办律师：韩嶋、梁知
+委托事项：就 FAKE-ARB-2026-078 仲裁案提供代理服务。
+律师费：基本费人民币200,000元，风险费按回款金额的8%计付。
+联系邮箱 engagement@tianheng-fake.com，电话详见附件。
+本协议适用《中华人民共和国律师法》。争议提交虚构仲裁委员会。
+服务期限自2026年06月18日起1年。不明费用另行书面确认。
+```
+
+- **Must redact:**
+  - `虚构晨曦保理有限公司` — ORG (B)
+  - `91310101FAKE00780C` — BUSINESS_ID (B)
+  - `虚构天衡联合律师事务所` — ORG (B)
+  - `韩嶋` / `梁知` — PERSON (B)
+  - `FAKE-ARB-2026-078` — CASE_REF (B)
+  - `人民币200,000元` — AMOUNT (B)
+  - `8%` — AMOUNT (B)
+  - `engagement@tianheng-fake.com` — EMAIL (B)
+  - `2026年06月18日` — DATE (B)
+- **Must stay readable:** `法律服务聘请协议`, `委托人`, `统一社会信用代码`, `受托人`, `经办律师`, `委托事项`, `就…仲裁案提供代理服务`, `律师费`, `基本费`, `风险费按回款金额的`, `计付`, `联系邮箱`, `电话详见附件`, `本协议适用《中华人民共和国律师法》`, `争议提交虚构仲裁委员会`, `服务期限自…起1年`, `不明费用另行书面确认`.
+- **Why useful:** Engagement letter — case ref + contingency `%` fee + email + `1年` duration; `《律师法》`; `回款金额的8%` rate-as-contingency.
+- **Gaps stressed:** contingency `%` rate; `1年` duration; `不明费用` trap.
+- **Test idea:** `it("redacts engagement-letter client/firm orgs, lawyers, case ref, base fee, contingency %, email and date; keeps 服务期限…1年 and 《律师法》 readable")`.
+
+### Doc 79 — 跨境并购意向书 (mixed Chinese-English, cross-border M&A term sheet)
+
+```
+Term Sheet — Cross-Border Acquisition（非约束性意向书）
+收购方：虚构星河智能科技股份有限公司 (Acquirer)
+目标公司：StarGalaxy Holdings Ltd. (Target, 注册地：Cayman Islands)
+交易对价：USD 120,000,000（约人民币8.6亿元）。定金人民币50,000,000元。
+交割条件：详见附件一。适用法律：《中华人民共和国外商投资法》。
+买方授权代表：江研 / Jiang Yan，护照号 Passport No.：FAKE-P-079（示例）。
+联系人邮箱：legal@stargalaxy-fake.com，电话：+86 13800000079。
+排他期：自2026年06月18日起90日。尽职调查以数据室附件为准。
+```
+
+- **Must redact:**
+  - `虚构星河智能科技股份有限公司` — ORG (B)
+  - `StarGalaxy Holdings Ltd.` — ORG (B) `[aspirational: bare English org in CN doc]`
+  - `USD 120,000,000` — AMOUNT (B) `[aspirational: USD/美元 currency unit]`
+  - `人民币8.6亿元` — AMOUNT (B)
+  - `人民币50,000,000元` — AMOUNT (B)
+  - `江研` / `Jiang Yan` — PERSON (B)
+  - `FAKE-P-079` — NATIONAL_ID (B) `[aspirational: 护照号/Passport No. label]`
+  - `legal@stargalaxy-fake.com` — EMAIL (B)
+  - `+86 13800000079` — PHONE (B)
+  - `2026年06月18日` — DATE (B)
+- **Must stay readable:** `Term Sheet — Cross-Border Acquisition`, `非约束性意向书`, `收购方`, `Acquirer`, `目标公司`, `Target`, `注册地：Cayman Islands` (jurisdiction — aspirational), `交易对价`, `定金`, `交割条件`, `详见附件一`, `适用法律`, `《中华人民共和国外商投资法》`, `买方授权代表`, `护照号`, `Passport No.`, `联系人邮箱`, `电话`, `排他期`, `自…起90日`, `尽职调查以数据室附件为准`.
+- **Why useful:** Cross-border M&A term sheet — `USD` currency amount (aspirational), offshore English target, `护照号/Passport No.` (Part Two gap #5 family), bilingual rep name, `90日` exclusivity duration.
+- **Gaps stressed:** `USD`/`美元` currency unit; passport number; bare English org; `90日` duration.
+- **Test idea:** `it("redacts cross-border M&A acquirer/target orgs, USD + RMB amounts, bilingual rep, passport, email, +86 mobile and date; keeps 注册地：Cayman Islands and 排他期…90日 readable")`.
+
+### Doc 80 — 致股東之通函 (Traditional Chinese / HK, circular)
+
+```
+騫越控股有限公司（股份代號：02870.HK）致股東之通函
+茲通告本公司將於二零二六年八月十五日舉行股東特別大會。
+議案：批准收購 StarGalaxy Holdings Ltd. 之全部已發行股本，代價港幣5.0億元。
+獨立董事委員會成員：杜明軒、溫時晏。獨立財務顧問：示例融資有限公司。
+股東可於二零二六年八月八日前將代表委任表格交回，詳見附件。
+查詢電郵：ir@qianyue-fake.com.hk。本公司近三年持續增長。
+依據《香港公司收購及合併守則》作出本通函。每月廿五日為結算日。
+```
+
+- **Must redact:** `[aspirational: 全文繁體 — Part Two gap #2]`
+  - `騫越控股有限公司` — ORG (B)
+  - `02870.HK` — BUSINESS_ID (B) `[aspirational: 股份代號：NNNNN.HK]`
+  - `二零二六年八月十五日` — DATE (B) `[aspirational: 繁體中文數字日期]`
+  - `StarGalaxy Holdings Ltd.` — ORG (B)
+  - `港幣5.0億元` — AMOUNT (B) `[aspirational: 港幣 unit]`
+  - `杜明軒` / `溫時晏` — PERSON (B)
+  - `示例融資有限公司` — ORG (B)
+  - `二零二六年八月八日` — DATE (B) `[aspirational]`
+  - `ir@qianyue-fake.com.hk` — EMAIL (B)
+- **Must stay readable:** `致股東之通函`, `茲通告本公司將於`, `舉行股東特別大會`, `議案`, `批准收購`, `之全部已發行股本`, `代價`, `獨立董事委員會成員`, `獨立財務顧問`, `股東可於`, `前將代表委任表格交回`, `詳見附件`, `查詢電郵`, `本公司近三年持續增長`, `依據《香港公司收購及合併守則》作出本通函`, `每月廿五日` (繁體 numeral date trap), `結算日`.
+- **Why useful:** Third 繁體 sample — SGM circular with two 繁體中文數字 dates, `港幣` consideration, English target, `每月廿五日` (繁體 numeral variant of the `每月25日` trap), and `《收購守則》`.
+- **Gaps stressed:** 繁體 numeral dates (`二零二六年八月十五日`); `港幣` unit; `每月廿五日` 繁體-numeral date trap; `百分之N`-style ordinals.
+- **Test idea:** `it("[繁體] redacts SGM-circular org, 股份代號, two 繁體 numeral dates, 港幣 consideration, directors, advisor org and email; keeps 每月廿五日 and 《收購守則》 readable")`.
+
+### Extended Batch 6 coverage
+
+| Kind | Docs exercising it |
+| ---- | ------------------ |
+| PERSON | 71, 73, 75, 77, 78, 79, 80 |
+| ORG | 71, 72, 73, 74, 75, 76, 77, 78, 79, 80 (all 10) |
+| ADDRESS | 73 |
+| BUSINESS_ID | 71, 72, 73, 74, 76, 77, 78, 79, 80 (9) |
+| NATIONAL_ID | 71, 77, 79(aspirational passport) |
+| PHONE | 73, 76, 77, 79 |
+| EMAIL | 73, 78, 79, 80 |
+| DATE | 71, 72, 73, 74, 75, 76, 77, 78, 79, 80 (all 10) |
+| AMOUNT | 71, 72, 74, 75, 76, 77, 78, 79, 80 (9) |
+| CASE_REF | 71, 72, 74, 76, 78 (5) |
+| BANK_ACCOUNT | 71, 76, 77 |
+
+New trap coverage this batch: `8,000万份` share-count-with-万 + `保管账户` label (71), `期限60日`/`60日内` durations + regulator-kept-readable + `市监强字〔〕` (72), generic `大学` word + multiple `YYYY年M月` birth dates + role titles (73), country-name heading `中华人民共和国` vs org + `10,000件` count + `开曼群岛` (74), four voting-ratio percentages + `每10股` count + year-only `2025年年度` (75), `大写：人民币伍佰万元整` Chinese-numeral amount + `期限6个月` + `票据号码` (76), `N+1` severance + `15日内`/`保密期2年` durations + `乙方账户` label (77), contingency `8%` rate + `1年` duration (78), `USD` currency + passport + bilingual rep + `90日` duration (79), third 繁體 sample with `二零二六年…` numeral dates + `港幣` + `每月廿五日` 繁體-numeral trap (80).
+
+---
+
+## Part Four — Extended Corpus (Batch 7, Docs 81–90)
+
+Batch 7 is deliberately **ADDRESS-heavy** (7/10) — ADDRESS was the sparsest kind across Parts Two–Six — and introduces fresh document categories (real-estate sale & property certificate, property insurance policy, notarial will, government budget notice, bank credit certificate, bilingual business card) plus a fourth 繁體 sample. New invented names this batch: 闻人熙, 容止, 江临, 苏玦, 林晚, David Lin (plus 繁體 杜明軒/溫時晏/江臨舟 reused). New invented orgs: 虚构澜海置业有限公司, 虚构保险股份有限公司示例分公司. All identifiers invented and length-valid.
+
+### Doc 81 — 商品房买卖合同 (real-estate, commercial housing sale)
+
+```
+商品房买卖合同
+出卖人：虚构澜海置业有限公司（统一社会信用代码91310105FAKE00810K）
+买受人：闻人熙，身份证号330106197810100023，手机13800000081。
+标的房屋：上海市虚构区示例街道88号澜海花园1幢2单元1801室，建筑面积120.50平方米。
+总价款人民币8,800,000.00元，买受人于2026年06月18日前付清。
+付款方式：按揭贷款，首付人民币2,640,000元，贷款划入出卖人账户6228480000000000810。
+交房日期：2027年06月30日。详见附件交付标准。每月25日为还款日。
+本合同适用《中华人民共和国民法典》。不明事项以产权登记为准。
+```
+
+- **Must redact:**
+  - `虚构澜海置业有限公司` — ORG (B)
+  - `91310105FAKE00810K` — BUSINESS_ID (B)
+  - `闻人熙` — PERSON (B)
+  - `330106197810100023` — NATIONAL_ID (B)
+  - `13800000081` — PHONE (B)
+  - `上海市虚构区示例街道88号澜海花园1幢2单元1801室` — ADDRESS (B)
+  - `人民币8,800,000.00元` — AMOUNT (B)
+  - `2026年06月18日` — DATE (B)
+  - `人民币2,640,000元` — AMOUNT (B)
+  - `6228480000000000810` — BANK_ACCOUNT (H)
+  - `2027年06月30日` — DATE (B)
+- **Must stay readable:** `商品房买卖合同`, `出卖人`, `统一社会信用代码`, `买受人`, `身份证号`, `手机`, `标的房屋`, `建筑面积`, `120.50平方米` (area trap — must NOT parse as an amount), `总价款`, `买受人于…前付清`, `付款方式`, `按揭贷款`, `首付`, `贷款划入出卖人账户`, `交房日期`, `详见附件交付标准`, `每月25日`, `还款日`, `本合同适用《中华人民共和国民法典》`, `不明事项以产权登记为准`.
+- **Why useful:** Real-estate sale — the longest multi-element Chinese address in the corpus (街道+号+花园+幢+单元+室); `120.50平方米` area value must not be eaten by the amount rule; mortgage down-payment/loan cascade; `每月25日` / `《民法典》`.
+- **Gaps stressed:** `120.50平方米` area-vs-amount; 6-token address; `贷款划入出卖人账户` bank-account label variant.
+- **Test idea:** `it("redacts housing-sale developer USCC, buyer PRC ID/phone, full multi-token address, total/down-payment amounts and account; keeps 120.50平方米 and 每月25日 readable")`.
+
+### Doc 82 — 不动产权证书 (real-estate, property certificate)
+
+```
+不动产权证书
+权利人：闻人熙  证件号：330106197810100023
+共有情况：单独所有  不动产单元号：310106FAKE0082000082
+坐落：上海市虚构区示例街道88号澜海花园1幢2单元1801室
+权利类型：国有建设用地使用权/房屋所有权  使用期限：至2066年06月17日
+登记机构：上海市虚构区自然资源局。附记详见登记附件。
+本证依《不动产登记暂行条例》核发。每月25日为权属查询日。
+```
+
+- **Must redact:**
+  - `闻人熙` — PERSON (B)
+  - `330106197810100023` — NATIONAL_ID (B)
+  - `310106FAKE0082000082` — BUSINESS_ID (B) `[aspirational: 不动产单元号 label]`
+  - `上海市虚构区示例街道88号澜海花园1幢2单元1801室` — ADDRESS (B)
+  - `2066年06月17日` — DATE (B)
+- **Must stay readable:** `不动产权证书`, `权利人`, `证件号` (alternative ID label), `共有情况`, `单独所有`, `不动产单元号`, `坐落`, `权利类型`, `国有建设用地使用权` / `房屋所有权`, `使用期限`, `至`, `登记机构`, `上海市虚构区自然资源局` (登记机构 — kept readable), `附记详见登记附件`, `本证依《不动产登记暂行条例》核发`, `每月25日`, `权属查询日`.
+- **Why useful:** Property certificate — `不动产单元号` (aspirational BUSINESS_ID), `证件号` alternative NATIONAL_ID label, a full repeated address, and a `使用期限：至…` future date; `登记机构` kept readable like a regulator.
+- **Gaps stressed:** `证件号：` vs `身份证号：` label; `不动产单元号` ID; `登记机构`-as-regulator distinction.
+- **Test idea:** `it("redacts property-certificate owner name, 证件号 national id, 不动产单元号, address and 使用期限 date; keeps 登记机构 and 《不动产登记暂行条例》 readable")`.
+
+### Doc 83 — 财产一切险保险单 (insurance, property policy)
+
+```
+财产一切险保险单
+投保人：虚构瀚辰医药股份有限公司（统一社会信用代码91440100FAKE00630K）
+被保险人：同上  保险标的：位于江苏省苏州市虚构工业园区示例路56号的厂房及设备
+保险金额：人民币120,000,000.00元。免赔额：人民币50,000元。
+保险期间：自2026年06月18日零时起至2027年06月17日二十四时止。
+保单号码：FAKE-INS-2026-083。签单机构：虚构保险股份有限公司示例分公司。
+报案电话：021-00008301。本保单适用《中华人民共和国保险法》。详见条款附件。
+```
+
+- **Must redact:**
+  - `虚构瀚辰医药股份有限公司` — ORG (B)
+  - `91440100FAKE00630K` — BUSINESS_ID (B)
+  - `江苏省苏州市虚构工业园区示例路56号` — ADDRESS (B)
+  - `人民币120,000,000.00元` — AMOUNT (B)
+  - `人民币50,000元` — AMOUNT (B)
+  - `2026年06月18日` — DATE (B)
+  - `2027年06月17日` — DATE (B)
+  - `FAKE-INS-2026-083` — CASE_REF (B)
+  - `虚构保险股份有限公司示例分公司` — ORG (B)
+  - `021-00008301` — PHONE (B)
+- **Must stay readable:** `财产一切险保险单`, `投保人`, `统一社会信用代码`, `被保险人`, `同上`, `保险标的`, `位于`, `的厂房及设备`, `保险金额`, `免赔额`, `保险期间`, `自…零时起至…二十四时止` (time-of-day must not break the date), `保单号码`, `签单机构`, `报案电话`, `本保单适用《中华人民共和国保险法》`, `详见条款附件`.
+- **Why useful:** Property insurance — `保险标的` address; large insured amount + deductible; two dates each carrying a time-of-day (`零时`/`二十四时`) that must not corrupt the date span; `保单号码` case ref; 分公司 branch org; `《保险法》`.
+- **Gaps stressed:** `零时`/`二十四时` time-of-day adjacency to dates; `保单号码：` case-ref label variant; `签单机构`/`分公司` branch org.
+- **Test idea:** `it("redacts property-policy insured org, 保险标的 address, insured/deductible amounts, dates, 保单号码, branch org and phone; keeps 零时/二十四时 and 《保险法》 readable")`.
+
+### Doc 84 — 遗嘱公证书 (legal/notarial, will)
+
+```
+遗嘱公证书
+立遗嘱人：容止，男，1950年06月05日生，身份证号11010119500605001X，
+住所：北京市虚构区示例胡同84号。
+我自愿将名下虚构长风文化传媒股份有限公司15%股权，由女儿江临继承。
+其余财产详见财产清单附件。本遗嘱为最终遗嘱，此前遗嘱作废。
+本遗嘱经虚构市示例公证处公证，公证书编号：（2026）示例证字第0084号。
+立遗嘱日期：2026年06月18日。每月25日不办理遗嘱公证。
+```
+
+- **Must redact:**
+  - `容止` — PERSON (B)
+  - `1950年06月05日` — DATE (B)
+  - `11010119500605001X` — NATIONAL_ID (B)
+  - `北京市虚构区示例胡同84号` — ADDRESS (B)
+  - `虚构长风文化传媒股份有限公司` — ORG (B)
+  - `15%` — AMOUNT (B)
+  - `江临` — PERSON (B)
+  - `（2026）示例证字第0084号` — CASE_REF (B) `[aspirational: （YYYY）…证字第N号 notarial format]`
+  - `2026年06月18日` — DATE (B)
+- **Must stay readable:** `遗嘱公证书`, `立遗嘱人`, `男`, `生`, `身份证号`, `住所`, `我自愿将名下`, `股权`, `由女儿…继承`, `其余财产详见财产清单附件`, `本遗嘱为最终遗嘱`, `此前遗嘱作废`, `本遗嘱经虚构市示例公证处公证` (公证处 — kept readable), `公证书编号`, `立遗嘱日期`, `每月25日不办理遗嘱公证`.
+- **Why useful:** Notarial will — inline PRC ID + address + `15%` inheritance share + a daughter person (`女儿…继承` kinship) + a notarial `公证书编号` case number (new `（YYYY）…证字第N号` variant); notarizing `公证处` kept readable.
+- **Gaps stressed:** `（YYYY）…证字第N号` notarial case format; kinship `女儿` co-reference; `公证处`-as-regulator distinction.
+- **Test idea:** `it("redacts will testator PRC ID, address, 15% bequest, heir person and 公证书编号; keeps 公证处 and 每月25日 readable")`.
+
+### Doc 85 — 财政专项资金下达通知 (regulator/government, budget)
+
+```
+虚构市财政局 财政专项资金下达通知
+收款单位：虚构瀚辰医药股份有限公司（统一社会信用代码91350100FAKE007409）
+下达项目：研发补贴，金额人民币3,000,000.00元。
+资金用途：专款专用，详见资金管理办法附件。
+拨付日期：2026年06月18日，拨付至单位账户6225880000000000850。
+文号：财企〔2026〕85号。不明款项应在10个工作日内反馈。
+本通知依据《中华人民共和国预算法》。每月25日为对账日。
+```
+
+- **Must redact:**
+  - `虚构瀚辰医药股份有限公司` — ORG (B)
+  - `91350100FAKE007409` — BUSINESS_ID (B)
+  - `人民币3,000,000.00元` — AMOUNT (B)
+  - `2026年06月18日` — DATE (B)
+  - `6225880000000000850` — BANK_ACCOUNT (H)
+  - `财企〔2026〕85号` — CASE_REF (B) `[aspirational: …〔YYYY〕N号 — Part Two gap #6]`
+- **Must stay readable:** `虚构市财政局` (issuing regulator — kept readable), `财政专项资金下达通知`, `收款单位`, `统一社会信用代码`, `下达项目`, `研发补贴`, `金额`, `资金用途`, `专款专用`, `详见资金管理办法附件`, `拨付日期`, `拨付至单位账户`, `文号`, `不明款项应在10个工作日内反馈`, `本通知依据《中华人民共和国预算法》`, `每月25日`, `对账日`.
+- **Why useful:** Government budget notice — issuing `财政局` kept readable while the recipient company redacts; subsidy amount + disbursement account + `财企〔2026〕85号` doc number; `10个工作日` duration; `《预算法》`.
+- **Gaps stressed:** `财企〔2026〕85号` regulatory number; `10个工作日` duration; `拨付至单位账户` bank-account label variant; regulator-vs-recipient ORG distinction.
+- **Test idea:** `it("redacts budget-notice recipient org, USCC, subsidy amount, disbursement account and 财企〔2026〕85号; keeps issuing 财政局 and 10个工作日 readable")`.
+
+### Doc 86 — 董监高持股变动公告 (cap table / IPO, exec shareholding change)
+
+```
+虚构澜海储能科技股份有限公司关于董事、高级管理人员持股变动的公告
+证券代码：688086 证券简称：虚构澜海
+江研于2026年06月18日通过集中竞价减持公司股份50,000股，占公司总股本0.05%。
+减持后，江研持有公司股份450,000股，占比0.45%。成交均价每股人民币18.50元。
+本次变动详见上海证券交易所披露文件附件。公司近三年无其他变动。
+不明变动以登记结算数据为准。每月25日为披露截止日。
+```
+
+- **Must redact:**
+  - `虚构澜海储能科技股份有限公司` — ORG (B)
+  - `江研` — PERSON (B)
+  - `2026年06月18日` — DATE (B)
+  - `0.05%` — AMOUNT (B)
+  - `0.45%` — AMOUNT (B)
+  - `人民币18.50元` — AMOUNT (B)
+- **Must stay readable:** `关于…持股变动的公告`, `证券代码：`, `688086` (aspirational stock code), `证券简称：`, `虚构澜海`, `于`, `通过集中竞价减持公司股份`, `50,000股` (count), `占公司总股本`, `减持后`, `持有公司股份`, `450,000股` (count), `占比`, `成交均价每股`, `本次变动详见上海证券交易所披露文件附件` (`上海证券交易所` generic), `公司近三年无其他变动`, `不明变动以登记结算数据为准`, `每月25日`, `披露截止日`.
+- **Why useful:** Exec shareholding change — share **counts** (`50,000股`/`450,000股`) must survive while the **ratios** (`0.05%`/`0.45%`) and the per-share price (`人民币18.50元`) redact; `证券代码：688086` label (aspirational); `上海证券交易所` generic exchange name.
+- **Gaps stressed:** count-vs-percentage-vs-price disambiguation; `证券代码：NNNN` label; `每股人民币…` price phrasing (re-spelled away from the `/股` slash trap).
+- **Test idea:** `it("redacts shareholding-change percentages and per-share price while keeping 50,000股/450,000股 counts; keeps 证券代码：688086 and 上海证券交易所 readable")`.
+
+### Doc 87 — 供应商资格审查记录 (procurement, supplier qualification)
+
+```
+供应商资格审查记录
+供应商：虚构瀚海生物医药有限公司（统一社会信用代码91350100FAKE008709）
+注册地址：江苏省苏州市虚构工业园区示例路87号
+法定代表人：苏玦，联系电话0571-00008700，手机13900000087，邮箱 qual@hanhai-fake.com。
+资质：医疗器械生产许可证编号 FAKE-MD-2026-087，有效期至2027年12月31日。
+近三年无重大违法违规记录。详见资质证明附件。
+本记录适用《中华人民共和国政府采购法》。不明信息以核实为准。
+```
+
+- **Must redact:**
+  - `虚构瀚海生物医药有限公司` — ORG (B)
+  - `91350100FAKE008709` — BUSINESS_ID (B)
+  - `江苏省苏州市虚构工业园区示例路87号` — ADDRESS (B)
+  - `苏玦` — PERSON (B)
+  - `0571-00008700` — PHONE (B)
+  - `13900000087` — PHONE (B)
+  - `qual@hanhai-fake.com` — EMAIL (B)
+  - `FAKE-MD-2026-087` — BUSINESS_ID (B) `[aspirational: 许可证编号 label]`
+  - `2027年12月31日` — DATE (B)
+- **Must stay readable:** `供应商资格审查记录`, `供应商`, `统一社会信用代码`, `注册地址`, `法定代表人`, `联系电话`, `手机`, `邮箱`, `资质`, `医疗器械生产许可证编号`, `有效期至`, `近三年无重大违法违规记录`, `详见资质证明附件`, `本记录适用《中华人民共和国政府采购法》`, `不明信息以核实为准`.
+- **Why useful:** Supplier qualification — a `许可证编号` (aspirational BUSINESS_ID) alongside the USCC; two phones + email + 工业园区 address in one block; `近三年` / `不明` / `见附件` traps; `《政府采购法》`.
+- **Gaps stressed:** `许可证编号` ID label; `联系电话：`/`手机：` dual phone labels; `有效期至…` date phrasing.
+- **Test idea:** `it("redacts supplier-qualification USCC, 许可证编号, address, rep person, two phones and email; keeps 有效期至 and 近三年 readable")`.
+
+### Doc 88 — 银行资信证明 (bank/payment, credit certificate)
+
+```
+资信证明
+兹证明虚构瀚辰医药股份有限公司（统一社会信用代码91310101FAKE00880C）
+在我行开立结算账户，账号6227000000000000880。
+截至2026年06月18日，账户余额人民币32,000,000.00元，币种人民币。
+该客户近三年结算正常，无不良信用记录。
+经办：林晚。联系电话021-00008801。本证明仅供参考，详见征信报告附件。
+出具机构：虚构银行股份有限公司示例支行。依据《中华人民共和国商业银行法》。
+```
+
+- **Must redact:**
+  - `虚构瀚辰医药股份有限公司` — ORG (B)
+  - `91310101FAKE00880C` — BUSINESS_ID (B)
+  - `6227000000000000880` — BANK_ACCOUNT (H)
+  - `2026年06月18日` — DATE (B)
+  - `人民币32,000,000.00元` — AMOUNT (B)
+  - `林晚` — PERSON (B)
+  - `021-00008801` — PHONE (B)
+  - `虚构银行股份有限公司示例支行` — ORG (B)
+- **Must stay readable:** `资信证明`, `兹证明`, `统一社会信用代码`, `在我行开立结算账户`, `账号`, `截至`, `账户余额`, `币种人民币`, `该客户近三年结算正常`, `无不良信用记录`, `经办`, `联系电话`, `本证明仅供参考`, `详见征信报告附件`, `出具机构`, `依据《中华人民共和国商业银行法》`.
+- **Why useful:** Bank credit certificate — `结算账户` bank account + balance amount + issuing branch org + 经办 person; `近三年` / `不明`(none) traps; `《商业银行法》`; the bare `我行` pronoun must read while the full branch name redacts.
+- **Gaps stressed:** `我行` pronoun-vs-branch; `账号：` label; `结算账户` framing.
+- **Test idea:** `it("redacts credit-certificate customer org, USCC, 结算账户 account, balance, 经办 person, phone and issuing branch; keeps 我行 and 《商业银行法》 readable")`.
+
+### Doc 89 — 中英文双语名片块 (mixed Chinese-English, business card)
+
+```
+Business Card / 名片
+林晚 / David Lin    职位 / Title: 总经理 General Manager
+公司 / Company: StarGalaxy Holdings Ltd.（虚构星河智能科技股份有限公司）
+电话 / Tel: 021-00008900   手机 / Mobile: +86 13800000089
+邮箱 / Email: david.lin@stargalaxy-fake.com
+地址 / Address: Room 8900, 18 Fuxing Road, Shanghai（上海市虚构区示例路89号18层）
+统一社会信用代码 / USCC: 91310104FAKE00680L
+详见名片背面附件。每月25日为对账日。单价1元/件仅供参考。
+```
+
+- **Must redact:**
+  - `林晚` / `David Lin` — PERSON (B)
+  - `StarGalaxy Holdings Ltd.` — ORG (B) `[aspirational: bare English org in CN doc]`
+  - `虚构星河智能科技股份有限公司` — ORG (B)
+  - `021-00008900` — PHONE (B)
+  - `+86 13800000089` — PHONE (B)
+  - `david.lin@stargalaxy-fake.com` — EMAIL (B)
+  - `Room 8900, 18 Fuxing Road, Shanghai` — ADDRESS (B) `[aspirational: English address line in CN doc]`
+  - `上海市虚构区示例路89号18层` — ADDRESS (B)
+  - `91310104FAKE00680L` — BUSINESS_ID (B)
+- **Must stay readable:** `Business Card / 名片`, `职位 / Title:`, `总经理`, `General Manager`, `公司 / Company:`, `电话 / Tel:`, `手机 / Mobile:`, `邮箱 / Email:`, `地址 / Address:`, `统一社会信用代码 / USCC:`, `详见名片背面附件`, `每月25日`, `对账日`, `单价1元/件仅供参考`.
+- **Why useful:** Bilingual business card — a Latin person name (`David Lin`), an English company, a paired EN+CN address (both must redact), two phones, an email, and a USCC, all in label/value pairs; `单价1元/件` / `见附件` traps.
+- **Gaps stressed:** bare Latin name + English org + English address line (Part Two gaps #2/#3 family); bilingual label alignment.
+- **Test idea:** `it("redacts bilingual-card Latin+CN name, English+CN company, paired EN+CN addresses, phones, email and USCC; keeps bilingual labels and 单价1元/件 readable")`.
+
+### Doc 90 — 招股章程風險因素 (Traditional Chinese / HK, prospectus risk factors)
+
+```
+騫越控股有限公司（股份代號：02870.HK）招股章程（概要）— 風險因素
+本公司主要業務依賴少數主要客戶，前五大客戶佔收益百分之六十八。
+董事：杜明軒、溫時晏、江臨舟。註冊辦事處：香港虛構灣示例道90號20樓。
+截至二零二五年十二月三十一日止年度，收入港幣18.5億元，純利港幣2.3億元。
+保薦人：示例融資有限公司。聯絡：ir@qianyue-fake.com.hk。
+近三年毛利率波動，詳見年報附件。依據《香港公司條例》披露。
+不明風險以招股章程全文為準。每月廿五日為結算日。
+```
+
+- **Must redact:** `[aspirational: 全文繁體 — Part Two gap #2]`
+  - `騫越控股有限公司` — ORG (B)
+  - `02870.HK` — BUSINESS_ID (B) `[aspirational: 股份代號：NNNNN.HK]`
+  - `杜明軒` / `溫時晏` / `江臨舟` — PERSON (B)
+  - `香港虛構灣示例道90號20樓` — ADDRESS (B) `[aspirational: 繁體地址 + 樓]`
+  - `二零二五年十二月三十一日` — DATE (B) `[aspirational: 繁體中文數字日期]`
+  - `港幣18.5億元` — AMOUNT (B) `[aspirational: 港幣 unit]`
+  - `港幣2.3億元` — AMOUNT (B) `[aspirational: 港幣 unit]`
+  - `示例融資有限公司` — ORG (B)
+  - `ir@qianyue-fake.com.hk` — EMAIL (B)
+- **Must stay readable:** `招股章程（概要）— 風險因素`, `本公司主要業務依賴少數主要客戶`, `前五大客戶佔收益百分之六十八` (Chinese-numeral percentage — kept readable), `董事`, `註冊辦事處`, `截至`, `止年度`, `收入`, `純利`, `保薦人`, `聯絡`, `近三年毛利率波動`, `詳見年報附件`, `依據《香港公司條例》披露`, `不明風險以招股章程全文為準`, `每月廿五日` (繁體 numeral date trap), `結算日`.
+- **Why useful:** Fourth 繁體 sample — prospectus risk factors with a 繁體中文數字 date (`二零二五年十二月三十一日`), `港幣` income/profit amounts, a Chinese-numeral percentage (`百分之六十八`, kept readable), 繁體 address with `樓`, and a `.com.hk` email. Deepens Part Two gap #2.
+- **Gaps stressed:** 繁體 numeral dates; `港幣` unit; `百分之六十八` Chinese-numeral percentage (must stay readable); `…止年度` fiscal-year phrasing.
+- **Test idea:** `it("[繁體] redacts prospectus org, 股份代號, directors, 繁體 address, 繁體 numeral date, 港幣 amounts, sponsor org and email; keeps 百分之六十八 and 每月廿五日 readable")`.
+
+### Extended Batch 7 coverage
+
+| Kind | Docs exercising it |
+| ---- | ------------------ |
+| PERSON | 81, 82, 84, 86, 87, 88, 89, 90 |
+| ORG | 81, 83, 84, 85, 86, 87, 88, 89, 90 |
+| ADDRESS | 81, 82, 83, 84, 87, 89, 90 (7/10 — strongest address batch) |
+| BUSINESS_ID | 81, 82(aspirational), 83, 85, 86(aspirational), 87(aspirational), 88, 89, 90(aspirational) |
+| NATIONAL_ID | 81, 82, 84 |
+| PHONE | 81, 83, 87, 88, 89 |
+| EMAIL | 87, 89, 90 |
+| DATE | 81, 82, 83, 84, 85, 86, 87, 88, 90 |
+| AMOUNT | 81, 83, 84, 85, 86, 88, 90 |
+| CASE_REF | 83, 84(aspirational), 85 |
+| BANK_ACCOUNT | 81, 85, 88 |
+
+New trap coverage this batch: 6-token real-estate address + `120.50平方米` area-vs-amount + mortgage cascade (81), `证件号`/`不动产单元号` ID labels + `登记机构`-as-regulator (82), `零时`/`二十四时` time-of-day adjacency to dates + `保单号码` case (83), notarial `（2026）…证字第0084号` + kinship `女儿…继承` + `公证处`-as-regulator (84), `财企〔2026〕85号` + `10个工作日` duration + `拨付至单位账户` label (85), share-count vs percentage vs per-share price disambiguation + `每股人民币…` re-spelling (86), `许可证编号` ID + dual `联系电话/手机` labels (87), `我行` pronoun vs full branch + `结算账户` framing (88), Latin name + English org + paired EN/CN addresses (89), fourth 繁體 sample + `百分之六十八` Chinese-numeral percentage + `二零二五年…` date (90).
+
+---
+
+## Grand Coverage — All Parts (Docs 01–90)
+
+Cumulative kind coverage across Part One (01–20), Part Two (21–50) and Parts Three–Four (51–90). Counts treat `[aspirational]` spans as exercised (Codex lands them as `it.skip` or counterexample asserts).
+
+| Kind | Rough coverage | Highest-value remaining gaps |
+| ---- | -------------- | --------------------------- |
+| PERSON | ~80/90 | tabular cells (25,26,46,51), Latin names (36,45,46,60,68,79,89), 繁體 (20,37,47,70,80,90), 法官/书记员/仲裁员 roles (28,66) |
+| ORG | ~90/90 | bare English orgs (36,45,46,68,74,79,89), regulator/court/公证处 kept-readable convention (38,48,62,66,72,82,84,85), 繁體 |
+| ADDRESS | ~40/90 | full multi-token 省-市-区-路-号-幢-单元-室 (52,81), 工业园区 (56,83,87), 繁體+樓 (70,80,90), EN address lines (18,89), `注册地：<jurisdiction>` (32,68,74,79) |
+| BUSINESS_ID | ~70/90 | patent `ZL…`/`商标注册号`/`许可证编号`/`不动产单元号` (61,82,87), `股票代码：`/`证券代码`/`股份代號：NNNNN.HK` (37,43,53,57,67,70,80,86,90), SWIFT/发票代码 (24,30) |
+| NATIONAL_ID | ~25/90 | tabular (25,51), inline `身份证号：`/`证件号：` (52,54,56,59,60,65,68,71,77,81,82,84), passport `护照号/Passport No.` (45,79) |
+| PHONE | ~50/90 | landlines `0xxx-` (5,18,53,55,66,69,73,76,83,87,88,89), spaced `+86 1xx` (18,60,79,89), `+86-21-` landline gap (46) |
+| EMAIL | ~35/90 | tabular (51), 繁體 (37,47,70,80,90), personal-name local-parts, `.com.hk` TLD (70,80,90) |
+| DATE | ~85/90 | 繁體 numeral dates (37,47,70,80,90), `每月25日`/`每月廿五日` traps (many), `2025年末`/`2024年年度` year-only (7,31,62,75), time-of-day adjacency (83) |
+| AMOUNT | ~80/90 | percentages-as-shares/rates (59,63,65,68,69,75,78,86), `港幣`/`USD` (37,47,70,79,80,90), `大写` Chinese numerals (30,76), `单价1元/件`/`120.50平方米`/`8,000万份` traps (many) |
+| CASE_REF | ~30/90 | `〔YYYY〕第N号`/`财企〔〕`/`市监强字〔〕` (21,28,38,48,62,72,85), `（YYYY）…字第N号` civil/notarial (66,84), `FAKE-ARB`/`FAKE-TRF`/`FAKE-BA`/`FAKE-INS`/`FAKE-EXP` contract numbers (60,64,71,74,76,78,83) |
+| BANK_ACCOUNT | ~30/90 | heavy-only label traps; label variants `信托账户`/`卖方账户`/`收款账户`/`保管账户`/`乙方账户`/`拨付至单位账户` (33,36,39,44,45,46,52,55,58,63,64,67,69,71,76,77,81,85,88) |
+
+### Conversion Notes (additions for Parts Three–Four)
+
+- Batch 4–7 IDs are all length-valid: USCC = 18 chars, PRC ID = 18 chars, bank account = 16–19 digits. Before committing, Codex should still assert `isValidUscc`/PRC-ID-regex against every `[BUSINESS_ID]/[NATIONAL_ID]` fixture string (a couple of reused orgs share a USCC across docs by design — that's fine).
+- Several docs deliberately **reuse** an invented company across documents (e.g. `虚构瀚辰医药股份有限公司` in 63/66/72/74/83/85/88, `StarGalaxy Holdings Ltd.` in 68/74/79/80/89). This is intentional: it exercises cross-document label consistency, not a copy-paste defect.
+- The **regulator/court/公证处/登记机构 kept-readable** convention (issuing authority stays, private litigant redacts) is a judgment call baked into Docs 62, 66, 72, 82, 84, 85. If Codex prefers to redact issuing authorities too, flip those `[Must stay readable]` entries to `[Must redact: ORG]` and update the matching asserts.
+- `百分比` spans flagged `[aspirational: 港幣 unit]` / `繁體 numeral date` / `大写 numeral amount` / `百分之N` are the clearest places to start with `it.skip` counterexamples so the suite stays green until the matching batch-two rule ships.
