@@ -2,6 +2,116 @@
 
 The redaction engine uses semantic versioning independently from the app package.
 
+## 1.3.0 - 2026-06-18
+
+Chinese redaction batch three: numeral dates, bare 万/亿 amounts, contact
+handles, passport/vehicle-plate labels, and two correctness fixes to the
+batch-two bare-identifier and amount rules. All deterministic, browser-only;
+no AI/LLM/backend/telemetry added.
+
+New coverage:
+
+- Chinese numeral dates (`二〇二六年六月十八日`, `贰零贰陆年壹月拾伍日`) as
+  `DATE` at Balanced. The pattern requires `年…月` so that `年度报告`,
+  `甲午战争`, and bare numeric runs stay readable. Digit-by-digit reading of
+  the year/month plus the compound day forms (`十八`/`廿三`/`三十`) are
+  supported for both Simplified and Traditional numeral sets.
+- Bare 万/亿 amounts with no trailing `元` (`合同金额80万`, `市值约1400万`,
+  `投资总额3亿`) as `AMOUNT` at Balanced. A counter-noun guard rejects
+  quantifier uses such as `1万个`, `3万年`, `万人空巷`, `80万人`.
+- WeChat / QQ contact handle labels (`微信号`, `QQ号`) as `CHANNEL` at
+  Balanced, with a value shape check so placeholders like `见附件` stay
+  readable.
+- Passport number labels (`护照号码`, `护照号`) as `NATIONAL_ID` at Light.
+- Vehicle plate labels (`车牌号`, `车牌号码`) as `BUSINESS_ID` at Light.
+
+Behavior changes (correctness fixes):
+
+- Bare USCC and bare PRC resident-ID detection now run even when the document
+  has NO Han text. Previously the whole `detectChinese` path was gated behind
+  `hasHanText`, so identifiers in English-only table cells or parentheticals
+  (e.g. `Code: 91110000MA12345679`, `Ref (…)` ) leaked. The bare-identifier
+  detector is now called before the Han gate; it remains checksum/date-gated
+  so the false-positive rate is unchanged.
+- The bare 万/亿 counter-noun guard is now anchored to the start of the
+  lookahead window. Previously the counter regex matched anywhere in the
+  four-character window, so a counter character appearing later (e.g. `部` in
+  `20万外的部分`) caused a real amount to be left readable. Counters must now
+  immediately follow `万`/`亿`.
+
+Known limitations (deferred):
+
+- Quoted person names in signature blocks (`签字：（张三）`) and free-form
+  Chinese person names in prose remain out of scope (high false-positive risk
+  without segmentation).
+- Hong Kong BR numbers and HKID still need their own validators (HK BR MOD-7:
+  needs verification).
+- Year-only Chinese dates (`2026年` without `月`) are intentionally not
+  redacted because `年度报告` / `公司于2026年成立` are common non-sensitive
+  prose.
+
+## 1.2.0 - 2026-06-18
+
+Chinese redaction batch two: bare-identifier detection with checksum guards,
+context organization detection, multi-line addresses, and Traditional label
+aliases. All deterministic, browser-only; no AI/LLM/backend/telemetry added.
+
+New coverage:
+
+- Bare Unified Social Credit Codes anywhere in text (`BUSINESS_ID`, Light),
+  gated by the GB 32100-2015 mod-31 checksum. The regex charset itself excludes
+  `I/O/S/V/Z`, so most random alphanumeric runs are rejected before the checksum
+  runs. The bare rule additionally requires at least one letter, because ~32% of
+  random 18-digit runs pass the checksum (the check character can itself be a
+  digit, e.g. `123456789012345678`); a real USCC's organization-identifier
+  portion (GB 11714) is effectively always alphanumeric. All-digit USCCs, if any
+  legitimately exist, are still caught by the labeled rule (`统一社会信用代码：…`).
+- Bare PRC resident identity numbers anywhere in text (`NATIONAL_ID`, Light),
+  gated by the GB 11643-1999 mod-11 checksum AND a real-date check on the
+  embedded `YYYYMMDD`. The date check is mandatory: shape-only detection has a
+  9.1% false-positive rate on random 18-digit numbers; checksum-only is still
+  9.1%; checksum + date drops it to ~0.033% (a 270x reduction). Years are
+  bounded to 1900-2099.
+- Context Chinese organizations outside labels (`ORG`, Balanced), using a
+  strong-suffix allowlist (`有限公司`, `股份有限公司`, `研究院`, `医院`, …) and
+  common-noun-prefix exclusion (`我公司`, `本局`, `该中心`, `全市医院` stay
+  readable). Weak suffixes (`公司`/`局`/`中心`/`部`) are intentionally excluded.
+  Statute names inside `《…》` book brackets are protected.
+- Multi-line labeled Chinese addresses (`ADDRESS`, Balanced), mirroring the
+  English `Address:` continuation rule: a label on its own line folds up to three
+  following address-looking lines, stopping at a new label, a blank line, or an
+  enumerated item.
+- Legal and finance reference labels (`CASE_REF`, Light): `案号`, `文书号`,
+  `文号`, `判决书号`, `裁定书号`, `执行案号`, `仲裁案号`, `公证书编号`,
+  `发票号`, `发票号码`, `票据号`, `票据编号`, `报关单号`, `备案号`,
+  `核销单号`, `流水号`, `凭证号`, `凭证编号`, `许可证编号`, `批准文号`,
+  `备案文号`. Values must contain a digit, so prose such as `流水线生产` and
+  `凭证管理` stays readable.
+- Traditional Chinese / HK / TW label aliases (供應商, 註冊地址, 法定代理人,
+  聯絡電話, 身分證號, …) plus Traditional strong-suffix aliases (大學, 醫院,
+  有限責任公司, …) so existing Simplified detectors fire on Traditional
+  documents without new kinds.
+
+Behavior notes:
+
+- Bare USCC and bare PRC-ID detection are Light, so they apply at all levels.
+  They dedupe cleanly against the existing label-bound rules via the shared
+  `Detector.add` merge.
+- Context-org detection is Balanced; the broad CJK `NON_LATIN_TEXT` fallback
+  remains Heavy-only (unchanged from 1.1.0).
+- Book-title statute names wrapped in `《…》` are protected from the context-org
+  rule.
+
+Known limitations (deferred to batch three):
+
+- Bare Chinese bank accounts remain label-bound, Heavy-only: no checksum exists
+  and bare 16-19 digit detection is unsafe.
+- Hong Kong BR numbers and HKID need their own validators (HK BR MOD-7:
+  needs verification) and a dedicated false-positive suite.
+- Free-form Chinese person names in prose, Chinese numeral dates
+  (`二〇二六年六月十八日`), and weak-suffix orgs (`公司`, `局`, `中心`) remain
+  out of scope for false-positive reasons.
+
 ## 1.1.0 - 2026-06-18
 
 First deterministic Chinese redaction layer (beta). Added a separate Chinese
