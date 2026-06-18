@@ -9,7 +9,7 @@ import {
   parseFieldNoteMdx,
   renderFieldNoteArticle,
 } from "./fieldNotes";
-import templateFieldNoteSource from "./field-notes/template.mdx?raw";
+import unredacted01FieldNoteSource from "./field-notes/unredacted-01-why-we-built-noai.mdx?raw";
 import { redactDocuments } from "./redactor/engine";
 import {
   CandidateKind,
@@ -80,6 +80,7 @@ interface AppState {
 
 const APP_VERSION = packageMeta.version;
 const FIRST_VISIT_COVER_KEY = "noai_visited";
+const FIRST_FIELD_NOTE_ROUTE = "field-notes/unredacted-01-why-we-built-noai";
 
 const state: AppState = {
   route: routeFromHash(),
@@ -142,13 +143,13 @@ interface PublicProject {
 const CURRENT_PROJECT_ID = "noai";
 const PUBLIC_PROJECTS = projectCatalog as PublicProject[];
 
-const FIELD_NOTES: FieldNote[] = [parseFieldNoteMdx(templateFieldNoteSource)];
+const FIELD_NOTES: FieldNote[] = [parseFieldNoteMdx(unredacted01FieldNoteSource)];
 const FIELD_NOTE_TEMPLATE = FIELD_NOTES[0];
 
 const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
   "field-notes": {
     route: "field-notes",
-    title: "Field Notes",
+    title: "Field Notes: Unredacted",
     summary:
       "Irregular notes from building NoAI: privacy boundaries, redaction engine changes, document workflows, and small decisions worth leaving a trail for.",
     sections: [
@@ -813,7 +814,7 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
 const SITE_LINKS: Array<{ route: AppRoute; label: string; icon: string }> = [
   { route: "workspace", label: "NoAI", icon: "ph-file-lock" },
   { route: "faq", label: "FAQ", icon: "ph-question" },
-  { route: "field-notes", label: "Field Notes", icon: "ph-notebook" },
+  { route: "field-notes", label: "Field Notes: Unredacted", icon: "ph-notebook" },
   { route: "about", label: "About", icon: "ph-info" },
   { route: "privacy", label: "Privacy", icon: "ph-shield-check" },
   { route: "terms", label: "Terms", icon: "ph-scroll" },
@@ -1733,6 +1734,7 @@ function renderSiteMenuLink(link: (typeof SITE_LINKS)[number]): string {
 
 function routeFromHash(): AppRoute {
   const route = window.location.hash.replace(/^#\/?/, "").split("#")[0];
+  if (route === FIRST_FIELD_NOTE_ROUTE) return "field-note-template";
   if (route === "field-notes/template") return "field-note-template";
   if (route === "field-notes") return "field-notes";
   if (route === "faq") return "faq";
@@ -1744,7 +1746,7 @@ function routeFromHash(): AppRoute {
 }
 
 function routeHref(route: AppRoute): string {
-  if (route === "field-note-template") return "#/field-notes/template";
+  if (route === "field-note-template") return `#/${FIRST_FIELD_NOTE_ROUTE}`;
   return route === "workspace" ? "#/" : `#/${route}`;
 }
 

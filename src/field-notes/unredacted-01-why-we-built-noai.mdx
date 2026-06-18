@@ -1,0 +1,88 @@
+---
+slug: unredacted-01-why-we-built-noai
+title: Unredacted 01: Why We Built NoAI
+date: 18 June 2026
+datetime: 2026-06-18
+summary: Why we built NoAI, and why the redaction path itself must stay local, deterministic, and non-AI.
+---
+
+“I want to use AI to help, but this is confidential.”
+
+We have heard this over and over again. From others, and from ourselves.
+
+The concern is valid. When you use an online AI tool, the information you provide leaves your device and passes through infrastructure controlled by someone else. 
+
+As things stand, most major AI providers draw a line between consumer and business products: data submitted to consumer services is usable for model training, those submitted to business services usually is not by default. Some people also have a network security concern - 'No System is Safe', as they say.
+
+Some may trust the AI companies' privacy promises and security measures. Some may not. But either way, once a person submits a document to an online AI service, the information is out of their hands. This is true whether the interface is a chatbot, a legal AI platform, a desktop app, or a coding agent.
+
+We believe one solution, if not *the* solution, is to sanitize the documents before sharing with AI, which is why we built NoAI to help people more easily redact documents before using them with AI.
+
+Importantly, the santizer itself must not use any AI tool. Otherwise it defeats the purpose.
+
+## The Basic Idea
+
+NoAI is a static web app. That means it does not run on a server: the browser downloads it, and then runs it locally on the user's device. No document leaves  the device. No AI model reads it. No backend processes it.
+
+![NoAI local processing flow compared with an AI server flow](/field-notes/noai-system-flow-redraw.svg)
+
+The workflow is intentionally simple:
+
+1. Add a document for NoAI to detect and redact likely sensitive information.
+2. Preview the result and add any manual redactions needed.
+3. Export clean Markdown for use with AI tools.
+
+Markdown is used because it is one of the most AI-friendly document formats available. It preserves enough structure to remain useful, but avoids the noise and formatting complexity of Word documents or PDFs. For AI tools, Markdown is often the closest thing to a native reading format.
+
+The goal is not to make the document beautiful, but to make it safer and easier to use for AI agents. So this tool that is completely free of AI, is actually "AI-facing" in this sense.
+
+## Why Rule-Based
+
+A rule-based, deterministic engine is the dumb but right way to do make this 'non-AI detection and redaction' possible.
+
+That may sound strange in a market where every product wants to add AI. But  as we said above, using AI inside the redaction process would defeat the point: If a document has to be sent to an AI model in order to remove confidential information, the confidential information has already been exposed.
+
+The current engine (version 1.0.15) is composed of 5,000+ rules covering pattern matching, contextual heuristics, and dictionary exclusions. In plain terms, that means it looks for recognizable structures, surrounding context, and words that should or should not be treated as sensitive.
+
+Some things are direct patterns: emails, phone numbers, URLs, dates, monetary amounts, addresses, case references, exhibit references, company identifiers, and similar structured information.
+
+Other things require context: names, organizations, locations, project names, legal parties, document-specific terms, and repeated references that become sensitive because of how they appear in the document.
+
+The engine also needs exclusions. Redaction that catches too much becomes useless. A legal document contains many capitalized words that are not names, a business document contains many terms that look important but are not confidential - these are all obstacles that we have to counter in order to achieve safer redaction while avoiding unnecessary ones. Apart from making general exceptions to rules, dictionary exclusions also help the engine avoid redacting ordinary language, common legal terms, and generic business phrases.
+
+This is a large and growing set of rigid mechanisms trying to achieve the result of 'intelligence'. So far, in our test case, we have found the results to be more than satisfactory as a first pass.
+
+## Current engine
+
+The first version of the redaction engine was developed using hundreds of publicly available business and legal documents.
+
+We used public material because NoAI cannot be improved by collecting private user documents.
+
+The initial methodology was simple:
+
+- study real public documents;
+- identify recurring sensitive patterns;
+- add deterministic rules for those patterns;
+- test against synthetic examples;
+- reduce false positives where the output becomes unreadable;
+- keep the redaction labels useful enough for AI tools to understand the structure of the document.
+
+## Limits
+
+NoAI will not catch everything. No redaction tool can promise that, especially across messy PDFs, inconsistent formatting, unusual names, industry-specific terms, and documents with context that only the user understands.
+
+Most importantly, the 'overfitting' problem means that being a perfect match for a particualr scenario often means under-par performance in others. More on this in another field note later.
+
+As a result, users should always preview the output and add any extra redactions needed before using the result with AI. (As with any result produced by any tools, AI or non-AI, one may argue.)
+
+## Direction
+
+We are continuing to improve the robustness of the engine by expanding the public document set, adding more synthetic regression tests, and tightening the rules where they either miss obvious sensitive information or redact too aggressively.
+
+We are also building an open benchmark for this specific purpose to measure overall engine performance. More on this in another field note later.
+
+NoAI exists because there is a real gap between “AI is useful” and “this information is safe to share.”
+
+People should not have to choose between using modern tools and protecting confidential information.
+
+NoAI is our attempt to bridge that gap: redact locally, and only share sanitized information with your favourite AI tools later.

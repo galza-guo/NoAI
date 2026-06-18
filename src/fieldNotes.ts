@@ -123,7 +123,35 @@ function renderFieldNoteBlock(block: FieldNoteBlock): string {
     `;
   }
 
-  return `<p>${escapeHtml(block.text)}</p>`;
+  return `<p>${renderInlineMarkdown(block.text)}</p>`;
+}
+
+function renderInlineMarkdown(value: string): string {
+  let html = "";
+  let index = 0;
+
+  while (index < value.length) {
+    const open = value.indexOf("*", index);
+    if (open === -1) {
+      html += escapeHtml(value.slice(index));
+      break;
+    }
+
+    const close = value.indexOf("*", open + 1);
+    const content = close === -1 ? "" : value.slice(open + 1, close);
+
+    if (close === -1 || content.length === 0 || content.trim() !== content) {
+      html += escapeHtml(value.slice(index, open + 1));
+      index = open + 1;
+      continue;
+    }
+
+    html += escapeHtml(value.slice(index, open));
+    html += `<em>${escapeHtml(content)}</em>`;
+    index = close + 1;
+  }
+
+  return html;
 }
 
 function escapeHtml(value: string): string {

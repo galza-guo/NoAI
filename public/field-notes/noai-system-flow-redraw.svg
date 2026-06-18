@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1320" viewBox="0 0 1440 1320" role="img" aria-labelledby="title desc">
+  <title id="title">NoAI local processing flow compared with an AI server flow</title>
+  <desc id="desc">A two-part diagram. In a normal AI server flow, a document is sent from the user to an AI chat page and uploaded to an AI server. With NoAI, the static app downloads to the browser and the document is processed locally on the user's device.</desc>
+  <defs>
+    <style>
+      .page { fill: #f5f7fb; }
+      .card { fill: #ffffff; stroke: #d9e1ec; stroke-width: 2; }
+      .divider { stroke: #d9e1ec; stroke-width: 2; }
+      .ink { fill: #152033; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .muted { fill: #5f6b7c; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .label { fill: #5a6575; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 23px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+      .title { font-size: 31px; font-weight: 800; }
+      .node { font-size: 29px; font-weight: 800; }
+      .caption { font-size: 29px; font-weight: 500; }
+      .small-icon { fill: none; stroke: #718095; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+      .badge { fill: #ffffff; stroke: #d9e1ec; stroke-width: 2; }
+      .arrow-up, .arrow-down { fill: none; stroke: #5a6575; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+  <rect class="page" width="1440" height="1320"/>
+
+  <g transform="translate(70 44)">
+    <circle class="badge" cx="26" cy="26" r="23"/>
+    <path class="small-icon" d="M17 21.5h18M17 28.5h12M17 35.5h8M14 17h24v20H24l-8 7v-7h-2z"/>
+    <text class="ink title" x="68" y="36">When an AI server is involved</text>
+  </g>
+
+  <g transform="translate(70 94)">
+    <rect class="card" width="1300" height="468" rx="8"/>
+    <line class="divider" x1="0" y1="110" x2="1300" y2="110"/>
+    <line class="divider" x1="0" y1="190" x2="1300" y2="190"/>
+    <line class="divider" x1="0" y1="300" x2="1300" y2="300"/>
+    <line class="divider" x1="0" y1="380" x2="1300" y2="380"/>
+    <line class="divider" x1="650" y1="110" x2="650" y2="190"/>
+    <line class="divider" x1="650" y1="300" x2="650" y2="380"/>
+
+    <g transform="translate(592 38)">
+      <path class="small-icon" d="M17 34h30a12 12 0 0 0 0-24 15 15 0 0 0-28-5 10 10 0 0 0-2 20z"/>
+      <text class="ink node" x="58" y="29">AI server</text>
+    </g>
+
+    <g transform="translate(260 139)">
+      <path class="arrow-up" d="M14 25V3M5 12l9-9 9 9"/>
+      <text class="label" x="42" y="28">Upload document</text>
+    </g>
+    <g transform="translate(846 139)">
+      <path class="arrow-down" d="M14 3v22M5 16l9 9 9-9"/>
+      <text class="label" x="42" y="28">Response returns</text>
+    </g>
+
+    <text class="ink node" x="650" y="256" text-anchor="middle">AI chat page</text>
+
+    <g transform="translate(276 329)">
+      <path class="arrow-up" d="M14 25V3M5 12l9-9 9 9"/>
+      <text class="label" x="42" y="28">Send document</text>
+    </g>
+    <g transform="translate(846 329)">
+      <path class="arrow-down" d="M14 3v22M5 16l9 9 9-9"/>
+      <text class="label" x="42" y="28">Get response</text>
+    </g>
+
+    <text class="ink node" x="650" y="450" text-anchor="middle">You</text>
+  </g>
+
+  <text class="muted caption" x="70" y="618">Documents are processed on the server, so an upload is involved.</text>
+
+  <g transform="translate(70 682)">
+    <circle class="badge" cx="26" cy="26" r="23"/>
+    <path class="small-icon" d="M26 14l16 6v13c0 12-7 21-16 25-9-4-16-13-16-25V20z"/>
+    <path class="small-icon" d="M19 31l5 5 10-12"/>
+    <text class="ink title" x="68" y="36">How NoAI works</text>
+  </g>
+
+  <g transform="translate(70 732)">
+    <rect class="card" width="1300" height="468" rx="8"/>
+    <line class="divider" x1="0" y1="110" x2="1300" y2="110"/>
+    <line class="divider" x1="0" y1="190" x2="1300" y2="190"/>
+    <line class="divider" x1="0" y1="300" x2="1300" y2="300"/>
+    <line class="divider" x1="0" y1="380" x2="1300" y2="380"/>
+    <line class="divider" x1="650" y1="110" x2="650" y2="190"/>
+    <line class="divider" x1="650" y1="300" x2="650" y2="380"/>
+
+    <g transform="translate(528 38)">
+      <path class="small-icon" d="M17 34h30a12 12 0 0 0 0-24 15 15 0 0 0-28-5 10 10 0 0 0-2 20z"/>
+      <text class="ink node" x="58" y="29">NoAI static site</text>
+    </g>
+
+    <g transform="translate(508 139)">
+      <path class="arrow-down" d="M14 3v22M5 16l9 9 9-9"/>
+      <text class="label" x="42" y="28">Download web app</text>
+    </g>
+
+    <text class="ink node" x="650" y="256" text-anchor="middle">Browser</text>
+
+    <g transform="translate(276 329)">
+      <path class="arrow-up" d="M14 25V3M5 12l9-9 9 9"/>
+      <text class="label" x="42" y="28">Open document</text>
+    </g>
+    <g transform="translate(800 329)">
+      <path class="arrow-down" d="M14 3v22M5 16l9 9 9-9"/>
+      <text class="label" x="42" y="28">Get redacted Markdown</text>
+    </g>
+
+    <text class="ink node" x="650" y="450" text-anchor="middle">You</text>
+  </g>
+
+  <text class="muted caption" x="70" y="1256">The app downloads to your browser. Documents are processed on your device, so no upload is involved.</text>
+</svg>

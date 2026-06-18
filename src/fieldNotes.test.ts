@@ -59,4 +59,17 @@ describe("field note mdx", () => {
       "Closing &lt;script&gt;alert(1)&lt;/script&gt;.",
     );
   });
+
+  it("renders inline emphasis while escaping emphasized text", () => {
+    const note = parseFieldNoteMdx(
+      TEMPLATE_MDX.replace(
+        "Closing paragraph.",
+        "This is *important* and *<safe>*.",
+      ),
+    );
+
+    const html = renderFieldNoteArticle(note);
+
+    expect(html).toContain("This is <em>important</em> and <em>&lt;safe&gt;</em>.");
+  });
 });
