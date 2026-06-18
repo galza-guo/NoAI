@@ -595,6 +595,86 @@ h2 {
   text-decoration: underline;
 }
 
+.field-notes-list {
+  display: grid;
+  gap: 30px;
+}
+
+.field-notes-section {
+  grid-template-columns: 1fr;
+  gap: 0;
+  border-bottom: 0;
+  padding-bottom: 12px;
+}
+
+.field-note-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.34fr) minmax(0, 1fr);
+  gap: clamp(24px, 4vw, 56px);
+  align-items: start;
+  padding: 0;
+  border-bottom: 0;
+  color: var(--color-text-main);
+  text-decoration: none;
+}
+
+.info-page .field-note-row:hover,
+.info-page .field-note-row:focus-visible {
+  text-decoration: none;
+}
+
+.field-note-row:hover,
+.field-note-row:focus-visible {
+  color: var(--color-text-main);
+  text-decoration: none;
+  outline: none;
+}
+
+.field-notes-list:has(.field-note-row:hover) .field-note-row:not(:hover),
+.field-notes-list:has(.field-note-row:focus-visible) .field-note-row:not(:focus-visible) {
+  opacity: 0.45;
+}
+
+.field-note-row:focus-visible {
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.field-note-date {
+  padding-top: 5px;
+  color: var(--color-text-soft);
+  font-family: var(--font-sans);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.field-note-copy {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.field-note-title {
+  color: var(--color-text-main);
+  font-family: var(--font-display);
+  font-size: clamp(1.16rem, 1.5vw, 1.38rem);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.field-note-row:hover .field-note-title,
+.field-note-row:focus-visible .field-note-title {
+  color: var(--color-accent);
+}
+
+.field-note-summary {
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.55;
+}
+
 .more-project-link img {
   width: 34px;
   height: 34px;
@@ -964,24 +1044,24 @@ button.info-toggle:focus-visible {
 
 .site-menu {
   position: fixed;
-  z-index: 19;
+  z-index: 30;
   top: 0;
-  left: 0;
   right: 0;
   bottom: 0;
   display: flex;
   flex-direction: column;
-  width: 100vw;
+  width: min(430px, 100vw);
   min-width: 0;
   min-height: 0;
-  padding: var(--topbar-height) var(--topbar-gutter) 32px;
+  padding: 96px 48px 28px;
   border: 0;
   border-radius: 0;
+  border-left: 1px solid var(--color-border-soft);
   background: var(--color-bg-panel);
-  box-shadow: none;
+  box-shadow: -18px 0 42px rgba(19, 32, 51, 0.08);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-100%);
+  transform: translateX(100%);
   transition:
     opacity var(--duration-base) var(--ease-standard),
     transform var(--duration-base) var(--ease-standard),
@@ -1000,25 +1080,42 @@ button.info-toggle:focus-visible {
   visibility: visible;
 }
 
+.site-menu-close {
+  position: absolute;
+  top: 26px;
+  right: 28px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  color: var(--color-text-muted);
+}
+
+.site-menu-close i {
+  font-size: 20px;
+}
+
+.site-menu-close:hover:not(:disabled),
+.site-menu-close:focus-visible {
+  color: var(--color-text-main);
+}
+
 .site-menu-list {
   display: grid;
-  padding-top: 8px;
   border-bottom: 1px solid var(--color-border-soft);
 }
 
 .site-menu a {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 28px;
+  display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 79px;
+  min-height: 58px;
   padding: 0;
   border-bottom: 1px solid var(--color-border-soft);
   border-radius: 0;
   color: var(--color-text-main);
   font-family: var(--font-sans);
-  font-size: 1.45rem;
-  font-weight: 700;
+  font-size: 1rem;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -1030,24 +1127,8 @@ button.info-toggle:focus-visible {
 .site-menu a:focus-visible,
 .site-menu a.active {
   color: var(--color-text-main);
-  background: var(--color-accent-tint);
+  background: transparent;
   outline: none;
-}
-
-.site-menu a i {
-  color: var(--color-text-main);
-  font-size: 21px;
-}
-
-.site-menu a .site-menu-caret {
-  font-size: 16px;
-  justify-self: end;
-}
-
-.site-menu a.active i,
-.site-menu a:hover i,
-.site-menu a:focus-visible i {
-  color: var(--color-text-main);
 }
 
 .panel {

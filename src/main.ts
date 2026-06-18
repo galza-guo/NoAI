@@ -37,6 +37,7 @@ interface LoadedDocument {
 
 type AppRoute =
   | "workspace"
+  | "field-notes"
   | "faq"
   | "about"
   | "privacy"
@@ -111,6 +112,13 @@ interface InfoPageScaffold {
   sections: InfoSection[];
 }
 
+interface FieldNoteEntry {
+  title: string;
+  date: string;
+  summary: string;
+  href: string;
+}
+
 type CatalogLocale = "zh-Hans" | "zh-Hant" | "en" | "ko" | "ja";
 
 interface PublicProject {
@@ -131,7 +139,48 @@ interface PublicProject {
 const CURRENT_PROJECT_ID = "noai";
 const PUBLIC_PROJECTS = projectCatalog as PublicProject[];
 
+const FIELD_NOTES: FieldNoteEntry[] = [
+  {
+    title: "Why NoAI stays browser-only",
+    date: "2026-06-17",
+    summary:
+      "A short note on the product boundary that matters most: documents should be read and redacted on the user's device, without AI calls or backend uploads.",
+    href: "#/faq",
+  },
+  {
+    title: "Engine changes in plain English",
+    date: "2026-06-17",
+    summary:
+      "A running record of deterministic redaction improvements, repair passes, and the kinds of synthetic cases covered by each release.",
+    href: "#/changelog",
+  },
+  {
+    title: "Markdown as the handoff format",
+    date: "2026-06-17",
+    summary:
+      "Notes on why NoAI exports readable Markdown for external AI tools instead of inventing a heavier document package.",
+    href: "#/faq",
+  },
+];
+
 const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
+  "field-notes": {
+    route: "field-notes",
+    title: "Field Notes",
+    summary:
+      "Irregular notes from building NoAI: privacy boundaries, redaction engine changes, document workflows, and small decisions worth leaving a trail for.",
+    sections: [
+      {
+        heading: "Notes",
+        blocks: [
+          {
+            type: "html",
+            html: renderFieldNotesGrid(),
+          },
+        ],
+      },
+    ],
+  },
   faq: {
     route: "faq",
     title: "FAQ",
@@ -775,6 +824,7 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
 
 const SITE_LINKS: Array<{ route: AppRoute; label: string; icon: string }> = [
   { route: "workspace", label: "NoAI", icon: "ph-file-lock" },
+  { route: "field-notes", label: "Field Notes", icon: "ph-notebook" },
   { route: "faq", label: "FAQ", icon: "ph-question" },
   { route: "about", label: "About", icon: "ph-info" },
   { route: "privacy", label: "Privacy", icon: "ph-shield-check" },
@@ -874,6 +924,9 @@ app.innerHTML = `
       <div class="reading-progress" id="reading-progress" aria-hidden="true" hidden></div>
     </header>
     <nav class="site-menu" id="site-menu" aria-label="NoAI pages" aria-hidden="true" inert>
+      <button id="site-menu-close" type="button" class="icon-button site-menu-close" aria-label="Close site menu">
+        <i class="ph ph-x" aria-hidden="true"></i>
+      </button>
       <div class="site-menu-list">
         ${renderSiteMenuLinks()}
       </div>
@@ -1048,6 +1101,8 @@ const readingProgress =
 const siteMenuToggle =
   document.querySelector<HTMLButtonElement>("#site-menu-toggle")!;
 const siteMenu = document.querySelector<HTMLElement>("#site-menu")!;
+const siteMenuClose =
+  document.querySelector<HTMLButtonElement>("#site-menu-close")!;
 const workspaceGrid = document.querySelector<HTMLElement>("#workspace-grid")!;
 const documentsToggle =
   document.querySelector<HTMLButtonElement>("#documents-toggle")!;
@@ -1132,11 +1187,18 @@ siteMenuToggle.addEventListener("click", (event) => {
   setInfoMenuOpen(!state.infoMenuOpen);
 });
 
-siteMenu.addEventListener("click", () => setInfoMenuOpen(false));
+siteMenuClose.addEventListener("click", () => setInfoMenuOpen(false));
+
+siteMenu.addEventListener("click", (event) => {
+  if ((event.target as HTMLElement).closest("[data-route-link]")) {
+    setInfoMenuOpen(false);
+  }
+});
 
 document.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
   if (target.closest(".site-menu-wrap")) return;
+  if (target.closest(".site-menu")) return;
   setInfoMenuOpen(false);
 });
 
@@ -1231,6 +1293,35 @@ function renderMoreByMeProjects(): string {
   `;
 }
 
+function renderFieldNotesGrid(): string {
+  const notes = [...FIELD_NOTES].sort((a, b) => b.date.localeCompare(a.date));
+  return `
+    <div class="field-notes-list">
+      ${notes.map(renderFieldNoteRow).join("")}
+    </div>
+  `;
+}
+
+function renderFieldNoteRow(note: FieldNoteEntry): string {
+  return `
+    <a class="field-note-row" href="${escapeHtml(note.href)}">
+      <time class="field-note-date" datetime="${escapeHtml(note.date)}">${formatNoteDate(note.date)}</time>
+      <span class="field-note-copy">
+        <span class="field-note-title">${escapeHtml(note.title)}</span>
+        <span class="field-note-summary">${escapeHtml(note.summary)}</span>
+      </span>
+    </a>
+  `;
+}
+
+function formatNoteDate(date: string): string {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(`${date}T00:00:00`));
+}
+
 function renderProjectLink(project: PublicProject, locale: CatalogLocale): string {
   const href = primaryProjectLink(project);
   const name = localizedValue(project.name, locale);
@@ -1295,6 +1386,14 @@ function formatPlatform(platform: string): string {
 const COLLAPSED_CHANGELOG_ITEM_COUNT = 4;
 
 function renderInfoSection(route: InfoRoute, section: InfoSection): string {
+  if (route === "field-notes") {
+    return `
+      <section class="info-section field-notes-section">
+        ${renderInfoBlocks(section.blocks)}
+      </section>
+    `;
+  }
+
   const isCollapsibleChangelog =
     route === "changelog" && section.heading === "Engine changelog";
   const shouldCollapse =
@@ -1473,9 +1572,7 @@ function renderSiteMenuLinks(): string {
   return SITE_MENU_LINKS.map(
     (link) => `
       <a href="${routeHref(link.route)}" data-route-link="${link.route}">
-        <i class="ph ${link.icon}" aria-hidden="true"></i>
         <span>${escapeHtml(link.label)}</span>
-        <i class="ph ph-caret-right site-menu-caret" aria-hidden="true"></i>
       </a>
     `,
   ).join("");
@@ -1483,6 +1580,7 @@ function renderSiteMenuLinks(): string {
 
 function routeFromHash(): AppRoute {
   const route = window.location.hash.replace(/^#\/?/, "").split("#")[0];
+  if (route === "field-notes") return "field-notes";
   if (route === "faq") return "faq";
   if (route === "about") return "about";
   if (route === "privacy") return "privacy";
@@ -2172,7 +2270,9 @@ function renderEntryRow(entry: ReplacementEntry, index: number = 0): string {
 }
 
 function renderInfoHeroSummary(route: InfoRoute, summary: string): string {
-  void summary;
+  if (route === "field-notes") {
+    return `<p>${escapeHtml(summary)}</p>`;
+  }
   if (route !== "about") return "";
   return `
     <p>App ${escapeHtml(APP_VERSION)} · Engine ${escapeHtml(ENGINE_VERSION)} · <a href="#/changelog">History</a></p>
