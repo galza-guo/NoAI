@@ -79,6 +79,7 @@ interface AppState {
 }
 
 const APP_VERSION = packageMeta.version;
+const FIRST_VISIT_COVER_KEY = "noai_visited";
 
 const state: AppState = {
   route: routeFromHash(),
@@ -601,7 +602,7 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
           },
           {
             type: "html",
-            html: '<p>NoAI handles information as described in the <a href="#/privacy">Privacy Policy</a>. Read it together with this User Agreement before using the app.</p>',
+            html: '<p>NoAI handles information as described in the <a href="#/privacy">Privacy Policy</a>, which is incorporated into this User Agreement. Read both before using the app.</p>',
           },
           {
             type: "text",
@@ -919,6 +920,50 @@ app.innerHTML = `
       </div>
     </nav>
 
+    <section class="first-visit-cover" id="first-visit-cover">
+      <div class="cover-content">
+        <h1 class="cover-title">You don't trust AI.<br/>Neither do we.</h1>
+        <p class="cover-subtitle">Sanitize your documents locally.<br/>Nothing leaves your device.</p>
+        <div class="cover-guarantees">
+          <p class="guarantee-item">
+            <span class="guarantee-icon" aria-hidden="true">
+              <i class="ph ph-brain"></i>
+              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
+                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+              </svg>
+            </span>
+            <span>No AI</span>
+          </p>
+          <p class="guarantee-item">
+            <span class="guarantee-icon" aria-hidden="true">
+              <i class="ph ph-hard-drives"></i>
+              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
+                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+              </svg>
+            </span>
+            <span>No servers</span>
+          </p>
+          <p class="guarantee-item">
+            <span class="guarantee-icon" aria-hidden="true">
+              <i class="ph ph-cloud-arrow-up"></i>
+              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
+                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+              </svg>
+            </span>
+            <span>No uploads</span>
+          </p>
+        </div>
+        <button type="button" id="start-redacting-btn" class="start-redacting-btn">
+          Start Redacting
+        </button>
+        <p class="cover-agreement">
+          By continuing, you agree to NoAI's
+          <a href="#/terms">User Agreement</a>.
+        </p>
+      </div>
+      <a href="#/faq" class="cover-learn-more-link">How this works</a>
+    </section>
+
     <section class="workspace" id="workspace-view">
 
       <section class="workspace-grid" id="workspace-grid" aria-live="polite">
@@ -1114,6 +1159,11 @@ const searchInput = document.querySelector<HTMLInputElement>("#search-input")!;
 const omniboxAddAction = document.querySelector<HTMLElement>(
   "#omnibox-add-action",
 )!;
+const firstVisitCover =
+  document.querySelector<HTMLElement>("#first-visit-cover")!;
+const startRedactingBtn = document.querySelector<HTMLButtonElement>(
+  "#start-redacting-btn",
+)!;
 
 const levelButtons =
   document.querySelectorAll<HTMLButtonElement>("[data-level]");
@@ -1172,6 +1222,67 @@ const redactSelectionBtn =
 let pendingRedactionText = "";
 let originalPreviewTimer: number | undefined;
 
+/* ----------------------------- Init Cover -------------------------- */
+
+const isLocalDev = import.meta.env.DEV;
+const isVisited = safeReadStorage(FIRST_VISIT_COVER_KEY) === "true";
+
+if (isVisited && !isLocalDev) {
+  firstVisitCover.classList.add("hidden-up");
+  firstVisitCover.remove();
+}
+
+startRedactingBtn.addEventListener("click", () => {
+  dismissFirstVisitCover();
+});
+
+function dismissFirstVisitCover(): void {
+  firstVisitCover.classList.add("hidden-up");
+  if (!isLocalDev) {
+    safeWriteStorage(FIRST_VISIT_COVER_KEY, "true");
+  }
+  syncCoverAccessibility();
+  window.setTimeout(() => {
+    firstVisitCover.remove();
+    syncCoverAccessibility();
+  }, 600);
+}
+
+function firstVisitCoverIsActive(): boolean {
+  return Boolean(
+    firstVisitCover.parentElement &&
+      state.route === "workspace" &&
+      !firstVisitCover.hidden &&
+      !firstVisitCover.classList.contains("hidden-up"),
+  );
+}
+
+function syncCoverAccessibility(): void {
+  const coverActive = firstVisitCoverIsActive();
+  workspaceView.toggleAttribute("inert", coverActive);
+  if (coverActive) {
+    workspaceView.setAttribute("aria-hidden", "true");
+  } else {
+    workspaceView.removeAttribute("aria-hidden");
+  }
+}
+
+function safeReadStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeWriteStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Storage can be blocked in private or hardened browser contexts.
+  }
+}
+
 /* ----------------------------- Routing ----------------------------- */
 
 siteMenuToggle.addEventListener("click", (event) => {
@@ -1229,6 +1340,11 @@ function renderRoute(): void {
   workspaceView.hidden = !showingWorkspace;
   infoView.hidden = showingWorkspace;
   appShell.classList.toggle("info-page-active", !showingWorkspace);
+
+  if (firstVisitCover.parentElement) {
+    firstVisitCover.hidden = !showingWorkspace;
+  }
+  syncCoverAccessibility();
 
   document.title =
     state.route === "workspace"
