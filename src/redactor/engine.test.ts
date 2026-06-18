@@ -3283,6 +3283,289 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("之外");
     expect(output).toContain("AMOUNT_");
   });
+
+  // --------------------------------------------------------------------
+  // Batch 4 — procurement/logistics refs, spaced bank cards, multi-line
+  // addresses (5-line), HK identifiers, signature names, agreement parties.
+  // All values invented.
+  // --------------------------------------------------------------------
+
+  it("redacts procurement / logistics / listing reference labels", () => {
+    const output = redact(
+      [
+        "订单号：DD20260618001",
+        "快递单号：SF1234567890",
+        "运单号：YD20260618001",
+        "挂牌号：GP2026-001",
+        "受理号：SL2026001",
+        "提单号：BL2026001",
+        "保单号：BD2026001",
+      ].join("\n"),
+      "light",
+    );
+    for (const leaked of [
+      "DD20260618001",
+      "SF1234567890",
+      "YD20260618001",
+      "GP2026-001",
+      "SL2026001",
+      "BL2026001",
+      "BD2026001",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    // Prose with the same Han chars but no digit value stays readable.
+    expect(output).toContain("订单号：");
+    expect(output).toContain("快递单号：");
+    expect(output).toContain("CASE_REF_");
+  });
+
+  it("keeps procurement reference prose readable", () => {
+    const output = redact(
+      ["订单状态已更新。", "快递送达签收。", "物流管理规范。"].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("订单状态");
+    expect(output).toContain("快递送达");
+    expect(output).toContain("物流管理");
+    expect(output).not.toContain("CASE_REF_");
+  });
+
+  it("redacts spaced and unspaced bank accounts at heavy level", () => {
+    const output = redact(
+      [
+        "账号：6222 0000 0000 0000",
+        "开户账号：6222 0000 0000 0000 123",
+        "收款账号：6222000011112222333",
+      ].join("\n"),
+      "heavy",
+    );
+    expect(output).not.toContain("6222 0000 0000 0000");
+    expect(output).not.toContain("6222000011112222333");
+    expect(output).toContain("BANK_ACCOUNT_");
+  });
+
+  it("redacts multi-line Chinese addresses up to five continuation lines", () => {
+    const output = redact(
+      ["地址：", "虚构省虚构市", "虚构区虚构路", "8号", "虚构附楼"].join("\n"),
+      "balanced",
+    );
+    expect(output).not.toContain("虚构省虚构市");
+    expect(output).not.toContain("虚构附楼");
+    expect(output).toContain("ADDRESS_");
+    // The label line stays readable.
+    expect(output).toContain("地址：");
+  });
+
+  it("redacts Hong Kong BR and HKID labels (shape-validated, no checksum)", () => {
+    const output = redact(
+      [
+        "商业登记号：12345678-9",
+        "商業登記號：87654321",
+        "香港身份证：A123456(7)",
+        "香港身份證：B987654(3)",
+        "身分證字號：AB123456(1)",
+      ].join("\n"),
+      "light",
+    );
+    expect(output).not.toContain("12345678-9");
+    expect(output).not.toContain("87654321");
+    expect(output).not.toContain("A123456");
+    expect(output).not.toContain("B987654");
+    expect(output).not.toContain("AB123456");
+    expect(output).toContain("BUSINESS_ID_");
+    expect(output).toContain("NATIONAL_ID_");
+  });
+
+  it("redacts stock / securities code labels", () => {
+    const output = redact(
+      [
+        "股份代號：01234.HK",
+        "股票代码：600519.SH",
+        "证券代码：000001.SZ",
+        "港股代码：00700.HK",
+      ].join("\n"),
+      "balanced",
+    );
+    for (const leaked of ["01234.HK", "600519.SH", "000001.SZ", "00700.HK"]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("CASE_REF_");
+  });
+
+  it("keeps securities-label prose readable", () => {
+    const output = redact(
+      ["股份代号说明详见附件。", "证券代码简介如下。"].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("股份代号说明");
+    expect(output).toContain("证券代码简介");
+    expect(output).not.toContain("CASE_REF_");
+  });
+
+  it("redacts signature / authorization parenthesized names", () => {
+    const output = redact(
+      [
+        "签字：（张三）",
+        "盖章：（李四）",
+        "经办人：（王五）",
+        "委托代理人：（吴九）",
+        "法定代表人：（郑十）",
+      ].join("\n"),
+      "balanced",
+    );
+    for (const leaked of ["张三", "李四", "王五", "吴九", "郑十"]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PERSON_");
+    // Parentheses and labels stay readable.
+    expect(output).toContain("签字：（");
+    expect(output).toContain("盖章：（");
+  });
+
+  it("keeps non-name signature parentheticals readable", () => {
+    const output = redact(
+      [
+        "签字：（盖章）",
+        "经办：（见附件）",
+        "签字：（略）",
+        "签字：（待定）",
+        "盖章：（公章）",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("（盖章）");
+    expect(output).toContain("（见附件）");
+    expect(output).toContain("（略）");
+    expect(output).toContain("（待定）");
+    expect(output).toContain("（公章）");
+    expect(output).not.toContain("PERSON_");
+  });
+
+  it("redacts agreement-party headings (由 X 与 Y 就)", () => {
+    const output = redact(
+      "由 张小明 与 李大伟 就设立合资公司达成协议。",
+      "balanced",
+    );
+    expect(output).not.toContain("张小明");
+    expect(output).not.toContain("李大伟");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("就设立合资公司");
+  });
+
+  // --------------------------------------------------------------------
+  // Batch 5 — fullwidth-digit amounts (U+FF10-FF19) and fullwidth comma.
+  // --------------------------------------------------------------------
+
+  it("redacts fullwidth-digit RMB amounts", () => {
+    const output = redact(
+      [
+        "金额：５０００元",
+        "合计：１２３４５元",
+        "总额：人民币８０万元",
+        "对价：３.５亿元",
+        "已付：￥５，０００",
+        "合同金额８０万。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).not.toContain("５０００元");
+    expect(output).not.toContain("１２３４５元");
+    expect(output).not.toContain("人民币８０万元");
+    expect(output).not.toContain("３.５亿元");
+    expect(output).not.toContain("￥５，０００");
+    expect(output).not.toContain("合同金额８０万");
+    expect(output).toContain("AMOUNT_");
+    // Labels stay readable.
+    expect(output).toContain("金额：");
+    expect(output).toContain("合同金额");
+  });
+
+  it("keeps fullwidth-digit counter phrases readable", () => {
+    // Fullwidth counter guard must reject 产量１万个 just like the halfwidth form.
+    const output = redact("产量１万个应于月底交付。", "balanced");
+    expect(output).toContain("产量１万个");
+    expect(output).not.toContain("AMOUNT_");
+  });
+
+  // --------------------------------------------------------------------
+  // Large Balanced-level false-positive suite (40+ counterexamples). Every
+  // phrase here is common Chinese business/legal/procurement prose that MUST
+  // stay readable at the default Balanced level. Grouped by trap category.
+  // All values invented; none are sensitive.
+  // --------------------------------------------------------------------
+
+  it("keeps a large suite of common Chinese prose readable at balanced level", () => {
+    const counterexamples: { text: string; mustContain: string }[] = [
+      // Dates / numbers that are prose, not sensitive
+      { text: "公司于2026年成立。", mustContain: "2026年成立" },
+      { text: "本报告涵盖2026年度业绩。", mustContain: "2026年度" },
+      { text: "详见第三百零八条。", mustContain: "第三百零八条" },
+      { text: "二〇二六年度报告已发布。", mustContain: "二〇二六年度报告" },
+      { text: "甲午战争历史研究。", mustContain: "甲午战争" },
+      { text: "单价1元/件。", mustContain: "1元/件" },
+      { text: "元旦放假安排通知。", mustContain: "元旦" },
+      {
+        text: "本合同自双方签字盖章之日起生效。",
+        mustContain: "签字盖章",
+      },
+      { text: "百年老店的历史传承。", mustContain: "百年老店" },
+      // Orgs / roles that are common nouns (not specific entities)
+      { text: "我公司负责该项目。", mustContain: "我公司" },
+      { text: "本局已审批通过。", mustContain: "本局" },
+      { text: "该中心提供咨询服务。", mustContain: "该中心" },
+      { text: "各部委联合发文。", mustContain: "各部委" },
+      { text: "全市医院均已就绪。", mustContain: "全市医院" },
+      { text: "此部门人员不足。", mustContain: "此部门" },
+      { text: "其他公司参与竞标。", mustContain: "其他公司" },
+      { text: "第三方评估机构介入。", mustContain: "第三方" },
+      { text: "双方同意按条款执行。", mustContain: "双方同意" },
+      { text: "本公司全体员工参加。", mustContain: "本公司全体" },
+      // Statute / book titles
+      {
+        text: "依据《中华人民共和国公司法》执行。",
+        mustContain: "公司法》",
+      },
+      { text: "参照《某大学章程》办理。", mustContain: "某大学章程》" },
+      { text: "《合同法》及《民法典》均适用。", mustContain: "《合同法》" },
+      { text: "《红楼梦》是古典名著。", mustContain: "《红楼梦》" },
+      { text: "查阅《企业会计准则》。", mustContain: "会计准则》" },
+      // Counters / quantifiers (万/亿)
+      { text: "产量1万个应于月底交付。", mustContain: "1万个" },
+      { text: "耗时3万年不适用。", mustContain: "3万年" },
+      { text: "万人空巷的场面壮观。", mustContain: "万人空巷" },
+      { text: "增长80万人规模。", mustContain: "80万人" },
+      { text: "百公里油耗标准。", mustContain: "百公里" },
+      // Reference prose (labels without digit values)
+      { text: "订单状态已更新。", mustContain: "订单状态" },
+      { text: "快递送达签收。", mustContain: "快递送达" },
+      { text: "物流管理规范。", mustContain: "物流管理" },
+      { text: "流水线生产效率高。", mustContain: "流水线" },
+      { text: "凭证管理流程规范。", mustContain: "凭证管理" },
+      { text: "发票管理系统的升级。", mustContain: "发票管理" },
+      { text: "账号信息请联系客服。", mustContain: "账号信息" },
+      { text: "地址栏填写规范要求。", mustContain: "地址栏" },
+      { text: "股份代号说明详见附件。", mustContain: "股份代号说明" },
+      { text: "证券代码简介如下所述。", mustContain: "证券代码简介" },
+      // Misc prose / boilerplate
+      { text: "详见附件一。", mustContain: "附件一" },
+      { text: "本协议一式两份。", mustContain: "一式两份" },
+      { text: "甲方乙方共同确认。", mustContain: "甲方乙方" },
+      { text: "双方各执一份。", mustContain: "各执一份" },
+      { text: "特此说明。", mustContain: "特此说明" },
+      { text: "如有疑问请联系经办。", mustContain: "联系经办" },
+      { text: "本项目涉及多个部门。", mustContain: "多个部门" },
+      {
+        text: "最终解释权归本公司所有。",
+        mustContain: "最终解释权",
+      },
+      { text: "附件清单如下所列。", mustContain: "附件清单" },
+    ];
+    for (const { text, mustContain } of counterexamples) {
+      const output = redact(text, "balanced");
+      expect(output, `over-redacted: ${text}`).toContain(mustContain);
+    }
+  });
 });
 
 describe("PRC identifier checksum validators", () => {

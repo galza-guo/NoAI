@@ -115,6 +115,35 @@ const LEGAL_REF_LABELS = [
   "仲裁案号",
   "公证书编号",
 ];
+// Procurement / logistics / listing reference labels (CASE_REF, Light). These
+// identify a specific transaction or shipment on PO headers, delivery notes,
+// e-commerce orders, and exchange listings. Values must contain a digit (enforced
+// by PROJECT_REF_RE) so prose such as 订单管理 / 快递送达 stays readable.
+const PROCUREMENT_REF_LABELS = [
+  "订单号",
+  "订单编号",
+  "采购订单号",
+  "快递单号",
+  "运单号",
+  "运单编号",
+  "物流单号",
+  "提单号",
+  "提单编号",
+  "报关单号", // also in FINANCE_REF_LABELS; dedup is safe (same kind/level)
+  "回单号",
+  "回执号",
+  "受理号",
+  "受理编号",
+  "挂牌号",
+  "挂牌编号",
+  "保单号",
+  "保单编号",
+  "保函号",
+  "保函编号",
+  "挂号单号",
+  "查询号",
+  "查询码",
+];
 const FINANCE_REF_LABELS = [
   "发票号",
   "发票号码",
@@ -143,6 +172,40 @@ const CONTACT_HANDLE_LABELS = [
 ];
 const PASSPORT_LABELS = ["护照号码", "护照号", "护照编号"];
 const VEHICLE_PLATE_LABELS = ["车牌号", "车牌号码", "车牌编号", "车辆牌号"];
+// Hong Kong / Traditional identifiers (label-bound, shape-validated, NO checksum).
+// HK BR MOD-7 and HKID check-digit algorithms have multiple conflicting public
+// descriptions (needs verification), so bare detection is NOT enabled. Labels
+// are reliable anchors and the shape validators catch the canonical forms.
+const HK_BR_LABELS = [
+  "商业登记号",
+  "商业登记证号",
+  "商业登记号码",
+  "商業登記號",
+  "商業登記證號",
+  "商業登記號碼",
+];
+const HK_ID_LABELS = [
+  "香港身份证",
+  "香港身份证号",
+  "香港身份證",
+  "香港身份證號",
+  "身分證號",
+  "身分證字號",
+  "身分證號碼",
+];
+// Stock / securities code labels (CASE_REF). HK (.HK), Shanghai (.SH),
+// Shenzhen (.SZ) suffixes. Pure shape — no checksum exists. Values must have
+// a digit so 股份代号说明 / 证券代码简介 stay readable.
+const STOCK_CODE_LABELS = [
+  "股份代号",
+  "股份代號",
+  "股票代码",
+  "股票代碼",
+  "证券代码",
+  "證券代碼",
+  "港股代码",
+  "港股代碼",
+];
 
 const PLACEHOLDER_VALUES = new Set([
   "见附件",
@@ -168,24 +231,72 @@ const CHINESE_NUMERAL_DATE_RE = new RegExp(
   NUMERAL + "{4}年" + NUMERAL + "{1,2}月(?:" + DAY_NUMERAL + "{1,3}日)?",
   "g",
 );
-const RMB_WAN_YUAN_RE = /(?:人民币\s*)?\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*万元/g;
-const RMB_YI_YUAN_RE = /(?:人民币\s*)?\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*亿元/g;
+const RMB_WAN_YUAN_RE =
+  /(?:人民币\s*)?[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?\s*万元/g;
+const RMB_YI_YUAN_RE =
+  /(?:人民币\s*)?[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?\s*亿元/g;
 // Bare 万/亿 amounts with NO trailing 元 (合同金额80万 / 市值约80亿). The digit
 // run must be directly followed by 万 or 亿, and the char after that must not be
 // a counter (万人/1万个/3万年) nor 元 (covered by the 万元/亿元 rules). The counter
 // guard is applied in the allow() filter, not the regex, so the regex itself
-// stays simple.
-const BARE_WAN_YI_RE = /\d+(?:,\d{3})*(?:\.\d+)?\s*[万亿]/g;
+// stays simple. Accepts fullwidth digits (U+FF10-FF19) and fullwidth comma.
+const BARE_WAN_YI_RE =
+  /[0-9０-９]+(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?\s*[万亿]/g;
 const WAN_YI_COUNTER_AFTER =
   /^(?:人|个|家|名|位|岁|里|年|吨|公里|米|平米|平方米|分|秒|次|字|伏|瓦|赫|克|斤|桶|亩|公顷|件|盒|箱|车|辆|台|套|本|支|张|幅|尊|部|处|座|栋|条|块|片|株|头|只|匹|群|批)/;
-const RMB_YUAN_RE = /\d+(?:,\d{3})*(?:\.\d+)?\s*元(?!年|旦|素)/g;
-const FULLWIDTH_YEN_RE = /\uFFE5\s*\d{1,3}(?:,\d{3})*(?:\.\d+)?/g;
+const RMB_YUAN_RE =
+  /[0-9０-９]+(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?\s*元(?!年|旦|素)/g;
+const FULLWIDTH_YEN_RE =
+  /\uFFE5\s*[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?/g;
 const REGULATORY_DOC_NO_RE =
   /[\u3400-\u9fff]{1,8}[〔［\[]\d{4}[〕］\]]\d{1,5}号/g;
 const COURT_CASE_NO_RE =
   /[（(]\d{4}[)）][\u3400-\u9fff]{1,4}\d{0,4}[\u3400-\u9fff]{1,8}第?\d{1,6}号/g;
 const AGREEMENT_PARTY_RE =
   /由\s*([\u3400-\u9fff·]{2,6})\s*与\s*([\u3400-\u9fff·]{2,6})\s*就/g;
+// Signature / authorization contexts where a parenthesized 2-4 Han-char name is
+// almost always a real person (签字：（张三）, 盖章：（李四）, 经办人：（王五）).
+// Used to scope a PERSON candidate that the bare-context detector cannot reach.
+const SIGNATURE_CONTEXT_LABELS = [
+  "签字",
+  "签署",
+  "签章",
+  "盖章",
+  "盖童",
+  "经办",
+  "签署人",
+  "签字人",
+  "经办人",
+  "负责人",
+  "联系人",
+  "代理人",
+  "委托代理人",
+  "法定代表人",
+  "授权代表",
+];
+// Parenthetical tokens that look like names but are NOT (印章/附件/略/待定 etc).
+// These must stay readable even after a signature label.
+const SIGNATURE_NON_NAME = new Set([
+  "盖章",
+  "盖童", // OCR variant of 盖章
+  "公童", // OCR variant of 公章
+  "公章",
+  "签字",
+  "签署",
+  "签章",
+  "略",
+  "待定",
+  "附件",
+  "见附件",
+  "详见附件",
+  "另附",
+  "不详",
+  "未知",
+  "无",
+  "暂无",
+  "同上",
+  "注",
+]);
 const CHINESE_ROLE_TERMS = new Set([
   "甲方",
   "乙方",
@@ -252,7 +363,11 @@ const PRC_ID_RE = /^[1-9]\d{16}[\dXx]$/;
 const BARE_USCC_RE = /(?<![0-9A-Za-z])[0-9A-HJ-NPQRTUWXY]{18}(?![0-9A-Za-z])/g;
 const BARE_PRC_ID_RE = /(?<![0-9A-Za-z])[1-9]\d{16}[\dXx](?![0-9A-Za-z])/g;
 const PHONE_RE = /^(?:\+?86[-\s]?)?(?:1[3-9]\d{9}|0\d{2,3}[-\s]?\d{7,8})$/;
-const BANK_ACCOUNT_RE = /^\d{16,19}$/;
+// Bank accounts: 16-19 digits, optionally grouped as 4-digit space-separated
+// blocks (e.g. 6222 0000 0000 0000). The spacing variant is normalized by
+// stripping spaces before the length check; a single regex with backreferences
+// would be more brittle than the two-shape union below.
+const BANK_ACCOUNT_RE = /^(?:\d{16,19}|(?:\d{4}\s){3}\d{4}(?:\s\d{1,3})?)$/;
 const PROJECT_REF_RE = /^(?=[A-Za-z0-9._/-]*\d)[A-Za-z0-9._/-]{4,50}$/;
 // WeChat IDs: must start with a letter, 6-20 chars, letters/digits/_/-.
 const WECHAT_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{5,19}$/;
@@ -262,6 +377,19 @@ const PASSPORT_RE = /^[A-Za-z]\d{6,9}$/;
 // PRC vehicle plates: province Han char + letter + 5-6 alphanumerics, or new-
 // energy (8 chars). e.g. 京A12345 / 粤B12345D.
 const VEHICLE_PLATE_RE = /^[\u3400-\u9fff][A-Za-z][A-Za-z0-9]{4,6}$/;
+// HK Business Registration: 8 digits, optionally followed by a hyphen and a
+// check digit (12345678-9). No checksum is validated (MOD-7: needs verification).
+const HK_BR_RE = /^\d{8}(?:-\d)?$/;
+// HK Identity Card: 1-2 letters + 6 digits + optional parenthesized check
+// digit (A123456(7), AB123456(1)). No checksum is validated (needs verification).
+// NOTE: cleanChineseValue strips a trailing ')' (balanced-punctuation), so the
+// validator accepts both the bracketed and the paren-stripped form.
+const HK_ID_RE = /^[A-Za-z]{1,2}\d{6}(?:\([A0-9]\)|\(?[A0-9])?$/;
+// Securities / stock codes with exchange suffix. HK (.HK), Shanghai (.SS or
+// .SH), Shenzhen (.SZ). Also accepts a bare 5-6 digit run after the label,
+// but the suffix form is the safest because a bare digit run collides with
+// other numeric references.
+const STOCK_CODE_RE = /^\d{4,6}(?:\.(?:HK|SS|SH|SZ))?$/;
 const PERSON_RE = /^[\u3400-\u9fff·]{2,6}$/;
 const ORG_RE = /^[\u3400-\u9fffA-Za-z0-9()（）·.&' -]{2,60}$/;
 const ADDRESS_SUFFIX_RE =
@@ -356,6 +484,8 @@ export function detectChinese(doc: RedactionInput, add: AddCandidate): void {
   detectChineseLabelValues(doc, add);
   detectChineseAddressContinuations(doc, add);
   detectContextOrgs(doc, add);
+  detectAgreementParties(doc, add);
+  detectSignatureNames(doc, add);
 }
 
 // Bare PRC direct identifiers (USCC + resident ID). Always runs regardless of
@@ -562,6 +692,18 @@ function detectChineseLabelValues(
     add,
     isPlausibleRefValue,
   );
+  // Procurement / logistics / listing references (Light). The value shape is the
+  // same as project/contract refs (PROJECT_REF_RE), so e.g. DD20260618001,
+  // SF1234567890, GP2026-001 are caught while 订单状态 / 快递送达 stay readable.
+  applyLabelRules(
+    doc,
+    PROCUREMENT_REF_LABELS,
+    "CASE_REF",
+    1,
+    "Chinese procurement/logistics reference label",
+    add,
+    (v) => PROJECT_REF_RE.test(v),
+  );
   // Social / contact handles (CHANNEL, Balanced). Label-bound only: WeChat IDs
   // and QQ numbers have no fixed checksum and bare detection would be unsafe.
   // The validator accepts the WeChat username shape OR a digit-bearing handle
@@ -595,6 +737,38 @@ function detectChineseLabelValues(
     "Chinese vehicle plate label",
     add,
     (v) => VEHICLE_PLATE_RE.test(v),
+  );
+  // Hong Kong / Traditional identifiers (label-bound, shape-validated).
+  // HK BR -> BUSINESS_ID (entity identifier), HKID -> NATIONAL_ID.
+  // Checksums are NOT validated (HK BR MOD-7 / HKID check digit:
+  // needs verification), so bare detection stays disabled; the label is the
+  // trust anchor and the shape validator catches the canonical forms.
+  applyLabelRules(
+    doc,
+    HK_BR_LABELS,
+    "BUSINESS_ID",
+    1,
+    "Hong Kong Business Registration label",
+    add,
+    (v) => HK_BR_RE.test(v),
+  );
+  applyLabelRules(
+    doc,
+    HK_ID_LABELS,
+    "NATIONAL_ID",
+    1,
+    "Hong Kong Identity Card label",
+    add,
+    (v) => HK_ID_RE.test(v),
+  );
+  applyLabelRules(
+    doc,
+    STOCK_CODE_LABELS,
+    "CASE_REF",
+    2,
+    "Chinese stock / securities code label",
+    add,
+    (v) => STOCK_CODE_RE.test(v),
   );
 }
 
@@ -634,7 +808,11 @@ function detectChineseAddressContinuations(
       if (!isPlausibleAddressFragment(candidate)) break;
       if (firstOffset < 0) firstOffset = offsets[cursor];
       parts.push(candidate);
-      if (parts.length >= 3) break;
+      // Real Chinese addresses frequently span 4-5 lines (province -> city ->
+      // district -> street -> building/room). isPlausibleAddressFragment already
+      // rejects prose, so a higher cap is safe and catches addresses that the
+      // old 3-line limit truncated.
+      if (parts.length >= 5) break;
     }
     if (parts.length === 0) continue;
     const collapsed = cleanChineseValue(parts.join(" "));
@@ -743,6 +921,33 @@ function detectAgreementParties(doc: RedactionInput, add: AddCandidate): void {
         doc.name,
         secondStart,
       );
+  }
+}
+
+// Signature / authorization names: a signature-context label immediately
+// followed by a parenthesized 2-4 Han-char name (签字：（张三）, 盖章：（李四）,
+// 经办人：（王五）). The parenthesized form is the trust anchor; a bare 2-4
+// Han run in prose would be far too FP-prone. SIGNATURE_NON_NAME excludes
+// seal/placeholder tokens (盖章/公章/略/待定/附件) that share the shape.
+function detectSignatureNames(doc: RedactionInput, add: AddCandidate): void {
+  const re = new RegExp(
+    `(?:${labelAlt(SIGNATURE_CONTEXT_LABELS)})` +
+      `\s*[：:]?\s*` +
+      `[（(]([\u3400-\u9fff·]{2,4})[）)]`,
+    "g",
+  );
+  for (const match of doc.text.matchAll(re)) {
+    const name = match[1] ?? "";
+    if (SIGNATURE_NON_NAME.has(name)) continue;
+    const nameStart = (match.index ?? 0) + match[0].lastIndexOf(name);
+    add(
+      name,
+      "PERSON",
+      2,
+      "Chinese signature / authorization name",
+      doc.name,
+      nameStart,
+    );
   }
 }
 

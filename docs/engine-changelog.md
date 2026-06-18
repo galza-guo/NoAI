@@ -2,6 +2,65 @@
 
 The redaction engine uses semantic versioning independently from the app package.
 
+## 1.4.0 - 2026-06-18
+
+Chinese redaction batches four and five: procurement/logistics reference
+labels, spaced bank cards, extended multi-line addresses, Hong Kong
+identifiers, signature names, fullwidth-digit amounts, and a large
+Balanced-level false-positive suite. All deterministic, browser-only; no
+AI/LLM/backend/telemetry added.
+
+New coverage:
+
+- Procurement / logistics / listing reference labels (`CASE_REF`, Light):
+  `订单号`, `订单编号`, `采购订单号`, `快递单号`, `运单号`, `运单编号`,
+  `物流单号`, `提单号`, `提单编号`, `回单号`, `回执号`, `受理号`,
+  `受理编号`, `挂牌号`, `挂牌编号`, `保单号`, `保单编号`, `保函号`,
+  `保函编号`, `挂号单号`, `查询号`, `查询码`. Values must match the project-
+  ref shape (digit-bearing) so 订单状态 / 快递送达 stay readable.
+- Spaced bank-account numbers (`BANK_ACCOUNT`, Heavy): the label validator now
+  accepts 4-digit space-separated groups (`6222 0000 0000 0000`) in addition to
+  the bare 16-19 digit form.
+- Multi-line labeled Chinese addresses (`ADDRESS`, Balanced) now fold up to five
+  continuation lines (was three), matching real address depth
+  (province -> city -> district -> street -> building/room).
+- Hong Kong / Traditional identifiers (label-bound, shape-validated, NO
+  checksum): HK Business Registration (`商业登记号` / `商業登記號` ->
+  `BUSINESS_ID`), HK Identity Card (`香港身份证` / `香港身份證` / `身分證字號`
+  -> `NATIONAL_ID`), stock / securities codes (`股份代號` / `股票代码` /
+  `证券代码` -> `CASE_REF`, accepting `.HK` / `.SH` / `.SZ` / `.SS` suffixes
+  or a bare 4-6 digit run). HK BR MOD-7 and HKID check-digit algorithms have
+  multiple conflicting public descriptions (needs verification), so bare
+  detection remains disabled; the label is the trust anchor.
+- Signature / authorization parenthesized names (`PERSON`, Balanced):
+  `签字：（张三）`, `盖章：（李四）`, `经办人：（王五）`, etc. A non-name
+  exclusion set (`盖章` / `公章` / `略` / `待定` / `附件` …) keeps seal and
+  placeholder parentheticals readable.
+- Agreement-party headings (`PERSON`, Balanced): `由 X 与 Y 就` is now wired
+  (the detector existed but was never invoked).
+- Fullwidth-digit RMB amounts (`AMOUNT`, Balanced): the `万元` / `亿元` / `元` /
+  bare `万` / `亿` / fullwidth-yen regexes now accept fullwidth digits
+  (U+FF10-FF19) and the fullwidth comma `，`, so `５０００元`,
+  `人民币８０万元`, `￥５，０００` are redacted. The counter guard
+  (`产量１万个`) is unchanged.
+
+Behavior notes:
+
+- The `万/亿` counter-noun guard is anchored to the start of the lookahead
+  window (carried over from 1.3.0); fullwidth counter forms are still rejected.
+- HK ID values are matched in their paren-stripped form because
+  `cleanChineseValue` strips a trailing `)`; the sensitive identifier is fully
+  redacted and only a cosmetic dangling `)` may remain.
+
+Known limitations (deferred):
+
+- HK BR MOD-7 and HKID check-digit validators still need verification before
+  bare detection can be enabled.
+- Fullwidth-digit detection is limited to RMB amount regexes; dates,
+  identifiers, and phone numbers still require halfwidth digits.
+- Free-form Chinese person names in prose (outside signature/agreement
+  contexts) remain out of scope.
+
 ## 1.3.0 - 2026-06-18
 
 Chinese redaction batch three: numeral dates, bare 万/亿 amounts, contact
