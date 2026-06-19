@@ -223,7 +223,9 @@ Give a tight implementation order for a developer:
 3. Wire detector.
 4. Move `NON_LATIN_TEXT` to Heavy.
 5. Run tests.
-6. Bump engine version.
+6. Update `src/redactor/version.ts`: bump `CHINESE_RULES_VERSION` for
+   Chinese-rule behavior changes, and bump `ENGINE_VERSION` only for shared
+   engine/API/review-metadata changes.
 7. Update changelog.
 
 Include exact commands:

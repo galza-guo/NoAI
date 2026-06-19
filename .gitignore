@@ -22,4 +22,5 @@ benchmarking/suites/*/model-input/
 benchmarking/suites/*/model-proposals/
 benchmarking/suites/*/gold/
 benchmarking/suites/*/reports/
+benchmarking/suites/*/engine-output/
 .vercel

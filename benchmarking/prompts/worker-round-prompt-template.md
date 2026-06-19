@@ -39,7 +39,10 @@ counterexamples it must avoid.
 4. Convert generalizable findings into synthetic tests in
    `src/redactor/engine.test.ts`.
 5. Patch only engine-related files unless explicitly instructed otherwise.
-6. Bump `src/redactor/version.ts` for engine behavior changes.
+6. Update `src/redactor/version.ts` for engine behavior changes:
+   - bump `ENGINE_VERSION` for shared engine/API/review-metadata changes;
+   - bump `GENERAL_RULES_VERSION` for English/general rule changes;
+   - bump `CHINESE_RULES_VERSION` for Chinese rule changes.
 7. Update `docs/engine-changelog.md`.
 8. Run:
    - `npm test`
