@@ -3,11 +3,22 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
-## NoAI redaction engine 1.5.5 (general r2, chinese r5) - 2026-06-19
+## NoAI redaction engine 1.5.6 (general r2, chinese r6) - 2026-06-19
 
-Patch: Chinese development round 4 (public procurement award notices from
-ccgp.gov.cn). Deterministic rule changes only. No AI/LLM/backend/telemetry
-added.
+Patch: Chinese postcode label detection and label guard hardening.
+Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added POSTCODE_LABELS (邮编/邮政编码/郵編/郵政編碼/编码) with a strict
+  6-digit validator (POSTCODE_RE). Chinese postcodes are 6-digit runs
+  (100000-854099 domestic, 999001-999078 special); the validator accepts
+  exactly 6 digits with no letters or punctuation.
+- Extended ADDRESS_NEXT_LABEL_RE to stop address value capture at
+  账号/开户行/收款单位/收款行 sub-labels, preventing address values from
+  swallowing bank-account fields that follow on the same line.
+- Added 4 synthetic tests: postcode label coverage and FP guard, address
+  fragment guard, and keep-clean verification.
+
+## NoAI redaction engine 1.5.5 (general r2, chinese r5) - 2026-06-19
 
 - Added 14 procurement-specific labels to cover Chinese government procurement
   award notice patterns: 采购代理机构, 代理机构名称, 采购单位, 中标供应商,

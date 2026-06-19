@@ -32,6 +32,11 @@ const PHONE_LABELS = [
   "代理机构联系方式",
   "手机号码",
   "电话",
+  // 手机 alone is too short (it matches "手机号码" as a substring and the
+  // trailing 号码 slots into the value), so sort it before 手机号码 in the alt
+  // to ensure the longer label wins. But alt is sorted longest-first, so 手机号码
+  // already wins. 手机 is intentionally kept but must be a distinct label, not a
+  // substring collision.
   "手机",
   "传真",
   // Traditional / HK / TW aliases:
@@ -42,6 +47,11 @@ const PHONE_LABELS = [
   "採購單位聯繫方式",
   "代理機構聯繫方式",
 ];
+
+// Postcode / ZIP labels (POSTCODE, Light). Chinese postcodes are 6-digit
+// (100000-854099 for domestic, 999001-999078 for special). The value validator
+// accepts the strict 6-digit form only; letters or punctuation are rejected.
+const POSTCODE_LABELS = ["邮编", "邮政编码", "郵編", "郵政編碼", "编码"];
 const BANK_ACCOUNT_LABELS = [
   "银行账号",
   "开户账号",
@@ -469,6 +479,7 @@ const HK_ID_RE = /^[A-Za-z]{1,2}\d{6}(?:\([A0-9]\)|\(?[A0-9])?$/;
 // but the suffix form is the safest because a bare digit run collides with
 // other numeric references.
 const STOCK_CODE_RE = /^\d{4,6}(?:\.(?:HK|SS|SH|SZ))?$/;
+const POSTCODE_RE = /^\d{6}$/;
 const PERSON_RE = /^[\u3400-\u9fff·]{2,6}$/;
 const ORG_RE = /^[\u3400-\u9fffA-Za-z0-9()（）·.&' -]{2,60}$/;
 const ADDRESS_SUFFIX_RE =
@@ -853,6 +864,15 @@ function detectChineseLabelValues(
     add,
     (v) => STOCK_CODE_RE.test(v),
   );
+  applyLabelRules(
+    doc,
+    POSTCODE_LABELS,
+    "POSTCODE",
+    1,
+    "Chinese postcode label",
+    add,
+    (v) => POSTCODE_RE.test(v),
+  );
 }
 
 // Multi-line labeled Chinese addresses. The single-line applyLabelRules only
@@ -1030,7 +1050,7 @@ function isPlausibleContextOrg(value: string): boolean {
   if (!HAN_RE.test(value)) return false;
   if (value.length < 4 || value.length > 60) return false;
   if (COMMON_NOUN_PREFIX_RE.test(value)) return false;
-  const hanCount = (value.match(/[\u3400-\u9fff]/g) ?? []).length;
+  const hanCount = (value.match(/[㐀-鿿]/g) ?? []).length;
   return hanCount >= 3;
 }
 
@@ -1362,7 +1382,7 @@ function isPlausibleAddress(value: string): boolean {
 // cuts at the first whitespace-prefixed contact/address sub-label so the
 // following fields stay readable (and are redacted by their own label rules).
 const ADDRESS_NEXT_LABEL_RE =
-  /\s+(?:邮编|邮政编码|编码|总机|电话|联系电话|传真|邮箱|电子邮箱|电邮|网址|网站|联系人|联系)\s*[：:]/;
+  /\s+(?:邮编|邮政编码|编码|总机|电话|联系电话|传真|邮箱|电子邮箱|电邮|网址|网站|联系人|联系|账号|开户行|收款单位|收款行)\s*[：:]/;
 function trimAddressAtNextLabel(rawValue: string): string {
   const m = rawValue.match(ADDRESS_NEXT_LABEL_RE);
   if (!m || m.index === undefined) return rawValue;

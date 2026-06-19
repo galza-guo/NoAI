@@ -4055,6 +4055,30 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("用户代表对采购");
     expect(output).toContain("项目联系人负责");
   });
+  it("redacts Chinese postcode labels at light level", () => {
+    // Chinese postcodes are 6-digit numbers (100000-854099 domestic, 999001-999078 special).
+    // All values are invented synthetic fixtures.
+    const output = redact(`
+邮编：100080
+邮政编码：518000
+邮编：200120
+`, "light");
+    expect(output).not.toContain("100080");
+    expect(output).not.toContain("518000");
+    expect(output).not.toContain("200120");
+  });
+
+  it("keeps non-postcode digit runs readable after postcode labels", () => {
+    // FP guard: 邮编/邮政编码 labels with non-6-digit values must stay readable.
+    const output = redact(`
+邮编：请见附件
+邮政编码：不详
+邮编：ABC123
+`, "light");
+    expect(output).toContain("请见附件");
+    expect(output).toContain("不详");
+    expect(output).toContain("ABC123");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {
