@@ -149,18 +149,18 @@ Our Further Response to Blake
 
   it("redacts people in titles, case captions, all-caps table cells, surnames, and contextual given names", () => {
     const output = redact(`
-# Kodera v Wingtech
-KOUJI KODERA
-<td>KOUJI KODERA</td>
+# Rivera v Northstar Technologies Limited
+ALEX RIVERA
+<td>ALEX RIVERA</td>
 Mr Michael Li says that Ms Jenny Chan was not copied to Jenny.
 Michael Li was involved in the transaction.
 Li further explained the timing.
 `);
 
     for (const leaked of [
-      "Kodera",
-      "Wingtech",
-      "KOUJI KODERA",
+      "Rivera",
+      "Northstar Technologies Limited",
+      "ALEX RIVERA",
       "Michael Li",
       "Jenny Chan",
       "Jenny",
@@ -208,40 +208,49 @@ Ref: HKIAC/A25088
     expect(output).not.toMatch(/<\/ADDRESS_/);
   });
 
-  it("redacts corpus-specific banks, advisers, projects, assets, and agreement terms", () => {
-    const output = redact(`
-BAM and Brookfield discussed HSBC, UOB and LUSO financing.
-The KETD Project, ICETD Project, Huatai financing and Haimen Park were mentioned.
-The Commission Agreement, Amendment to Schedule A, SHA, SSA, SSHA, PSA and MOU were disputed.
-Future Government Subsidies and Neibaowaidai were also discussed.
-WINGTECH \\(HONG KONG\\) LIMITED appeared in Procedural Order No\\.1.
-`);
+  it("does not ship corpus-specific lookup terms but supports caller-supplied local config", () => {
+    const text = `
+Alphora discussed the Zephyr Bridge Agreement in Silverpine.
+`;
+    const defaultResult = redactDocuments([{ name: "sample.md", text }], {
+      level: "balanced",
+    });
 
-    for (const leaked of [
-      "BAM",
-      "Brookfield",
-      "HSBC",
-      "UOB",
-      "LUSO",
-      "KETD",
-      "ICETD",
-      "Huatai",
-      "Haimen",
-      "Commission Agreement",
-      "Amendment to Schedule A",
-      "SHA",
-      "SSA",
-      "SSHA",
-      "PSA",
-      "MOU",
-      "Future Government Subsidies",
-      "Neibaowaidai",
-      "WINGTECH",
-      "HONG KONG",
-      "Procedural Order No\\.1",
-    ]) {
-      expect(output).not.toContain(leaked);
-    }
+    expect(defaultResult.combinedMarkdown).toContain("Alphora");
+    expect(defaultResult.combinedMarkdown).toContain("Zephyr Bridge Agreement");
+    expect(defaultResult.combinedMarkdown).toContain("Silverpine");
+
+    const configuredResult = redactDocuments([{ name: "sample.md", text }], {
+      level: "balanced",
+      knownOrganizations: ["Alphora"],
+      matterTerms: ["Zephyr Bridge Agreement"],
+      locations: ["Silverpine"],
+    });
+
+    expect(configuredResult.combinedMarkdown).not.toContain("Alphora");
+    expect(configuredResult.combinedMarkdown).not.toContain(
+      "Zephyr Bridge Agreement",
+    );
+    expect(configuredResult.combinedMarkdown).not.toContain("Silverpine");
+    expect(configuredResult.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          value: "Alphora",
+          kind: "ORG",
+          reason: "configured organization",
+        }),
+        expect.objectContaining({
+          value: "Zephyr Bridge Agreement",
+          kind: "PROJECT_OR_ISSUE",
+          reason: "configured matter term",
+        }),
+        expect.objectContaining({
+          value: "Silverpine",
+          kind: "LOCATION",
+          reason: "configured location",
+        }),
+      ]),
+    );
   });
 
   it("keeps ordinary lower-case words readable after person alias detection", () => {
@@ -377,6 +386,9 @@ Passport No. 452190134 expired.
 EIN 12-3456789 covers the entity.
 IBAN GB29 NWBK 601613 31926819 and sort code 12-34-56.
 SWIFT code: NWBKGB2L.
+Swift Code: WUBAHKHH.
+Sw ift Code: ABCDHKHH.
+Swift Code: to be confirmed.
 `);
 
     for (const leaked of [
@@ -387,9 +399,12 @@ SWIFT code: NWBKGB2L.
       "GB29 NWBK 601613 31926819",
       "12-34-56",
       "NWBKGB2L",
+      "WUBAHKHH",
+      "ABCDHKHH",
     ]) {
       expect(output).not.toContain(leaked);
     }
+    expect(output).toContain("Swift Code: to be confirmed");
   });
 
   it("redacts UK, Canadian, and US ZIP+4 postcodes", () => {
@@ -419,6 +434,38 @@ Case No. 21-cv-98765 was dismissed.
     ]) {
       expect(output).not.toContain(leaked);
     }
+  });
+
+  it("redacts bare HKIAC arbitration numbers derived from slash references", () => {
+    const output = redact(`
+Subject: HKIAC/A34567 Example Holdings v Example Parks
+Attachment: 20240119 A34567 institution letter.pdf
+Download: A34567 case file.zip
+Attachment: Agenda for 22 March CMC A34567.doc
+`);
+
+    expect(output).not.toContain("HKIAC/A34567");
+    expect(output).not.toContain("A34567");
+    expect(output).toContain("CASE_REF_");
+
+    const counterexample = redact(`
+Inventory code A34567 is a product reference with no arbitration context.
+`);
+    expect(counterexample).toContain("A34567");
+    expect(counterexample).not.toContain("CASE_REF_");
+  });
+
+  it("redacts bracketed internal matter tags without redacting ordinary bracket labels", () => {
+    const output = redact(`
+Forwarded marker [team.D19995] and [ALPHA-MATTERS.FID1695188] appeared in the thread.
+Please review [Draft.V1] and [Schedule.A] before filing.
+`);
+
+    expect(output).not.toContain("[team.D19995]");
+    expect(output).not.toContain("[ALPHA-MATTERS.FID1695188]");
+    expect(output).toContain("[Draft.V1]");
+    expect(output).toContain("[Schedule.A]");
+    expect(output).toContain("CASE_REF_");
   });
 
   it("redacts slash, ISO, dash, quarter, and financial-year dates", () => {
@@ -501,6 +548,20 @@ Further dates were 28th Nov, 28-Nov-2025, Nov 28, and November 28, 2025.
       expect(output).not.toContain(leaked);
     }
     expect(output).toContain("DATE_");
+  });
+
+  it("redacts birth-year and birthplace biography details without redacting ordinary year prose", () => {
+    const output = redact(`
+Born in 1957 in Meridian City, the witness later moved abroad.
+The company was founded in 1957 in London and expanded in 2020.
+The phrase "born in the cloud" is marketing copy.
+`);
+
+    expect(output).not.toContain("Born in 1957 in Meridian City");
+    expect(output).toContain("DATE_");
+    expect(output).toContain("founded in 1957 in");
+    expect(output).toContain("and expanded in 2020");
+    expect(output).toContain("born in the cloud");
   });
 
   it("heavy mode redacts repeated non-person capitalized phrases", () => {
@@ -685,6 +746,48 @@ The parties met at 22 Market Close. Section 12 remains unchanged.
     }
     expect(output).toContain("Section 12 remains unchanged.");
     expect(output).toContain("ADDRESS_");
+  });
+
+  it("redacts SEC exhibit letterhead phones and Markdown ordinal street addresses", () => {
+    // Public filing conversions often preserve ordinal suffixes as Markdown
+    // superscripts ("177^(th)") and letterheads mix separators in US phones.
+    const output = redact(`
+Letterhead: Tel (212) 895.3500 • (800) 724·0761 • fax (212) 895-3783.
+The registered address is 13110 NE 177^(th) Place, #293, Woodinville, WA 98072.
+Send a copy to 501 1^(st) Ave N., Suite 900, St. Petersburg, FL 33701.
+`);
+
+    for (const leaked of [
+      "(212) 895.3500",
+      "(800) 724·0761",
+      "(212) 895-3783",
+      "13110 NE 177^(th) Place",
+      "#293, Woodinville, WA 98072",
+      "501 1^(st) Ave",
+      "Suite 900, St. Petersburg, FL 33701",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PHONE_");
+    expect(output).toContain("ADDRESS_");
+  });
+
+  it("keeps SEC report titles readable while redacting real people nearby", () => {
+    const output = redact(`
+The issuer prepares Registration Statements, Quarterly Reports, Annual Reports, Current Reports, and consolidated statements.
+Mr. Rowan Ash signed the certification.
+`);
+
+    for (const kept of [
+      "Registration Statements",
+      "Quarterly Reports",
+      "Annual Reports",
+      "Current Reports",
+    ]) {
+      expect(output).toContain(kept);
+    }
+    expect(output).not.toContain("Rowan Ash");
+    expect(output).toContain("PERSON_");
   });
 
   // ---- Round 2: litigation / regulatory filings ----
@@ -982,7 +1085,7 @@ Counsel at Crestview Advisors, Inc. reviewed the schedules.
     expect(output).toContain("ORG_");
   });
 
-  it("does not redact the common word 'forum' as a known organization", () => {
+  it("does not redact the common word 'forum' as an organization", () => {
     const output = redact(`
 The exclusive forum for any dispute shall be the state courts.
 Parties may object on forum non conveniens grounds.
@@ -1132,6 +1235,17 @@ describe("interactive review model", () => {
     );
 
     expect(result.engineVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(result.engineVersionLabel).toMatch(
+      /^NoAI redaction engine \d+\.\d+\.\d+ \(general r\d+, chinese r\d+\)$/,
+    );
+    expect(result.engineVersionInfo).toMatchObject({
+      engine: result.engineVersion,
+      label: result.engineVersionLabel,
+      rulesets: {
+        general: expect.any(Number),
+        chinese: expect.any(Number),
+      },
+    });
   });
 
   it("builds replacement entries across multiple documents with stable metadata", () => {
@@ -2220,6 +2334,22 @@ Bank Account Number: to be confirmed
     expect(output).not.toMatch(/Bank Account No\.: PHONE_/);
   });
 
+  it("redacts OCR-spaced bank account and company registration labels", () => {
+    const output = redact(`
+Accoun t number: 020-60 l-806-5443- 7
+company re gi st rati on number 913702007768040659
+company re gi st rati on number pending
+accounting principles remain readable.
+`);
+
+    expect(output).not.toContain("020-60 l-806-5443- 7");
+    expect(output).not.toContain("913702007768040659");
+    expect(output).toContain("company re gi st rati on number pending");
+    expect(output).toContain("accounting principles remain readable");
+    expect(output).toContain("BANK_ACCOUNT_");
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
   it("preserves invoice table headers, boilerplate, and unlabeled line items", () => {
     // Counterexample: finance labels, boilerplate terms, manufacturer item
     // codes, table quantities, unit prices, totals, and version numbers must
@@ -3160,6 +3290,112 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("ORG_");
   });
 
+  // Batch 2.1 — Traditional-Chinese legal/arbitration role labels and contact
+  // variants seen in HK arbitral / court paperwork. All names invented. These
+  // close a large person-recall gap: named arbitrators, secretaries, and
+  // contact persons introduced by role labels that previously had no alias.
+  it("redacts Traditional Chinese arbitration, court, and contact role labels", () => {
+    const output = redact(
+      [
+        "獨任仲裁員：",
+        "陳大文大律師",
+        "仲裁庭秘書：",
+        "李偉恒先生",
+        "聯係人：",
+        "王律師/張律師",
+        "法律顧問：",
+        "黃議員",
+      ].join("\n"),
+      "balanced",
+    );
+    for (const leaked of [
+      "陳大文大律師",
+      "李偉恒先生",
+      "王律師",
+      "張律師",
+      "黃議員",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PERSON_");
+    // The role labels themselves stay readable.
+    expect(output).toContain("獨任仲裁員：");
+    expect(output).toContain("仲裁庭秘書：");
+    expect(output).toContain("聯係人：");
+  });
+
+  it("keeps Traditional role-label prose readable", () => {
+    const output = redact(
+      [
+        "仲裁員應保持獨立公正。",
+        "仲裁庭秘書負責程序事項。",
+        "法律顧問提供專業意見。",
+        "請聯絡法律代表確認。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("仲裁員應保持獨立公正");
+    expect(output).toContain("仲裁庭秘書負責程序事項");
+    expect(output).toContain("法律顧問提供專業意見");
+    expect(output).not.toContain("PERSON_");
+  });
+
+  it("redacts Traditional Chinese service and registered-office address labels", () => {
+    const output = redact(
+      [
+        "送達地址：香港中環干諾道中100號20樓2000室",
+        "註冊辦公地址：台北市信義區松仁路50號",
+        "通訊位址：高雄市左營區博愛二路200號",
+      ].join("\n"),
+      "balanced",
+    );
+    for (const leaked of [
+      "香港中環干諾道中100號20樓2000室",
+      "台北市信義區松仁路50號",
+      "高雄市左營區博愛二路200號",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("ADDRESS_");
+    expect(output).toContain("送達地址：");
+    expect(output).toContain("註冊辦公地址：");
+  });
+
+  it("redacts labeled Chinese addresses that wrap across soft newlines", () => {
+    // PDF text extraction frequently wraps a single address at a line break:
+    // the street line ends with 號, then floor/room continue on the next line.
+    // The engine must fold the continuation so the floor/room is not leaked.
+    const output = redact(
+      [
+        "送達地址：香港中環干諾道中100號",
+        "20樓2000室。聯絡電話：",
+        "註冊地址：廣東省深圳市南山區科技園路8號",
+        "A棟30層3001室。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).not.toContain("20樓2000室");
+    expect(output).not.toContain("A棟30層3001室");
+    expect(output).toContain("ADDRESS_");
+    // The label and the following non-address line stay readable.
+    expect(output).toContain("送達地址：");
+    expect(output).toContain("聯絡電話：");
+  });
+
+  it("does not fold non-address lines after a labeled address", () => {
+    // A sentence continuing on the next line must NOT be swallowed as an
+    // address continuation.
+    const output = redact(
+      [
+        "送達地址：北京市海淀區中關村大街1號。",
+        "本公司保留最終解釋權。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("本公司保留最終解釋權");
+    expect(output).toContain("ADDRESS_");
+  });
+
   // ----------------------------------------------------------------------
   // Batch 3 — numeral dates, bare 万/亿 amounts, contact handles, passport,
   // vehicle plates. All values invented.
@@ -3401,6 +3637,139 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("股份代号说明");
     expect(output).toContain("证券代码简介");
     expect(output).not.toContain("CASE_REF_");
+  });
+
+  // Batch 4 — court / litigation document labels and address value guards.
+  // Driven by public Chinese court judgments (CICC, maritime, intermediate
+  // courts). All names invented.
+
+  it("redacts litigation agent (委托诉讼代理人) and representative labels", () => {
+    // 委托诉讼代理人 is the standard court-document term for a party's lawyer.
+    // It contains the existing label 委托代理人 as a substring, but the 诉讼
+    // infix means the old label cannot anchor on the separator, so the lawyer
+    // name leaked.
+    const output = redact(
+      [
+        "委托诉讼代理人：陈大文，北京虚构律师事务所律师。",
+        "委托诉讼代理人：李四，上海虚构律师事务所律师。",
+        "诉讼代理人：王五，广州虚构律师事务所律师。",
+      ].join("\n"),
+      "balanced",
+    );
+    for (const leaked of ["陈大文", "李四", "王五"]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("委托诉讼代理人：");
+  });
+
+  it("keeps litigation-agent prose readable", () => {
+    const output = redact(
+      [
+        "委托诉讼代理人应当提交授权委托书。",
+        "诉讼代理人代为承认诉讼请求需特别授权。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("委托诉讼代理人应当提交授权委托书");
+    expect(output).toContain("诉讼代理人代为承认诉讼请求需特别授权");
+    expect(output).not.toContain("PERSON_");
+  });
+
+  it("redacts spaced-out Chinese judge and clerk signature names", () => {
+    // Chinese court signature blocks space out the role title with full-width
+    // spaces for alignment (审　判　长　　刘玉蓉) and separate role from name
+    // with full-width spaces, not a colon. The colon-anchored label rules cannot
+    // reach these, so judges and clerks leaked.
+    const output = redact(
+      [
+        "审　判　长　　刘玉蓉",
+        "审　判　员　　曾大津",
+        "人民陪审员　　颜达成",
+        "书　记　员　　朱健芳",
+      ].join("\n"),
+      "balanced",
+    );
+    for (const leaked of ["刘玉蓉", "曾大津", "颜达成", "朱健芳"]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PERSON_");
+  });
+
+  it("keeps judge-title prose readable", () => {
+    const output = redact(
+      [
+        "审判长主持庭审。",
+        "审判员应当依法履职。",
+        "书记员负责记录。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("审判长主持庭审");
+    expect(output).toContain("审判员应当依法履职");
+    expect(output).toContain("书记员负责记录");
+    expect(output).not.toContain("PERSON_");
+  });
+
+  // Batch 5 — honorific-suffixed bare person names. Public listed-company
+  // announcements and news introduce people as "刘大涛先生" / "王芳女士"
+  // without any label anchor. The 先生/女士/小姐 honorific is an extremely
+  // reliable person marker in business/legal text (it follows names, not common
+  // nouns), so a name-shaped prefix before it can be redacted. All names below
+  // invented.
+
+  it("redacts honorific-suffixed bare person names (先生/女士/小姐)", () => {
+    const output = redact(
+      [
+        "会议由董事长陈大文先生主持。",
+        "提名李四女士为公司独立董事。",
+        "王五小姐代表公司出席。",
+        "选举张三先生、赵六先生为董事。",
+      ].join("\n"),
+      "balanced",
+    );
+    for (const leaked of ["陈大文", "李四", "王五", "张三", "赵六"]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PERSON_");
+    // Honorific suffix and role text stay readable.
+    expect(output).toContain("先生");
+    expect(output).toContain("女士");
+    expect(output).toContain("董事长");
+  });
+
+  it("keeps honorific prose and common nouns readable", () => {
+    const output = redact(
+      [
+        "各位先生女士请注意。",
+        "这位先生请问有何贵干。",
+        "先生女士们，朋友们。",
+        "欢迎各位先生光临。",
+      ].join("\n"),
+      "balanced",
+    );
+    // No 2-4 Han name precedes 先生/女士 here, so nothing should be redacted.
+    expect(output).toContain("各位先生女士请注意");
+    expect(output).toContain("这位先生");
+    expect(output).toContain("先生女士们");
+    expect(output).toContain("各位先生光临");
+  });
+
+  it("does not swallow following labeled fields into a labeled address", () => {
+    // A labeled address line in a directory/header often continues with other
+    // labeled fields on the same line (邮编/总机/电话). The address value must
+    // stop at the next label separator instead of eating 邮编/phone values.
+    const output = redact(
+      "地址：北京市东城区虚构路27号 邮编：100000 总机：01000000000 举报电话：01011111111",
+      "balanced",
+    );
+    expect(output).not.toContain("北京市东城区虚构路27号");
+    // The following labeled fields must stay readable as their own labels.
+    expect(output).toContain("邮编：");
+    expect(output).toContain("总机：");
+    expect(output).toContain("举报电话：");
+    // The phone numbers in those fields are still redacted as phones.
+    expect(output).not.toContain("01000000000");
   });
 
   it("redacts signature / authorization parenthesized names", () => {

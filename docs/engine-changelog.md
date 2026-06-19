@@ -3,6 +3,69 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.3 (general r2, chinese r3) - 2026-06-19
+
+Patch: Chinese development round 2 (public court judgments, procurement notices,
+listed-company announcements). Deterministic rule changes only. No
+AI/LLM/backend/telemetry added.
+
+- Added the litigation-agent labels 委托诉讼代理人 and 诉讼代理人 to person
+  detection. These are the standard court-document terms for a party's lawyer;
+  the existing 委托代理人 label is a substring but the 诉讼 infix stopped it from
+  anchoring on the separator, so named lawyers in judgments leaked.
+- Added a court-signature-block detector for spaced-out role titles. Chinese
+  judgment signature lines space the role out with full-width spaces for
+  alignment (审　判　长　　刘玉蓉, 书　记　员　　朱健芳) and separate role from name
+  with full-width spaces rather than a colon. The colon-anchored label rules
+  could not reach presiding judges, judges, people's assessors, clerks, and
+  judges' assistants; they are now redacted. Detection is line-anchored and name-
+  shaped, so judge-title prose (审判长主持庭审) stays readable.
+- Added an address value guard that stops a labeled address at the next inline
+  sub-label. Directory/header lines commonly chain fields
+  (地址：…27号 邮编：100000 总机：01000000000); previously the address value
+  swallowed the postcode and phone. It now stops at 邮编/邮政编码/总机/电话/
+  传真/邮箱/网址/etc., so those fields stay readable and are redacted by their
+  own label rules.
+
+## NoAI redaction engine 1.5.2 (general r2, chinese r2) - 2026-06-19
+
+Patch: Chinese development round 1 (HK arbitration + share-pledge documents).
+Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added Traditional-Chinese (HK/TW) legal, arbitration, and contact role labels
+  that introduce a named individual, so named arbitrators, tribunal secretaries,
+  legal advisers, and `聯係人` contacts are now redacted. New labels include
+  獨任仲裁員, 仲裁員, 仲裁庭秘書/書記員, 審判長/審判員, 法律顧問, 代表律師,
+  and the HK `聯係人` variant of 聯絡人. Generic role nouns in prose stay
+  readable because detection still requires the label + separator anchor.
+- Added Traditional-Chinese service and registered-office address labels
+  (送達地址, 註冊辦公地址, 通訊位址) so addresses introduced by these labels are
+  redacted instead of leaking because only the trailing 地址 sub-label matched.
+- Added folding for labeled Chinese addresses that wrap across a soft newline
+  (common in PDF text extraction). When a labeled address value ends a line and
+  the next line starts with a building/floor/room marker (樓/层/室/棟/號…), the
+  continuation is folded into one redacted span. Continuation lines are truncated
+  at the first hard stop and must start with an address marker, so following
+  prose sentences are not swallowed.
+
+## NoAI redaction engine 1.5.1 (general r2, chinese r1) - 2026-06-19
+
+Patch: removed built-in real-entity lookup lists from default English/general
+redaction behavior. No AI/LLM/backend/telemetry added.
+
+- Removed committed organization and matter-term allowlists that had carried
+  prototype corpus knowledge into the default engine.
+- Removed corpus-specific location terms from default location detection;
+  generic city coverage remains.
+- Added explicit `RedactionOptions` fields for caller-supplied local
+  organizations, matter terms, and locations. These default to empty and redact
+  with `configured ...` reason strings when used.
+- Replaced real-name regression fixtures with synthetic examples and added
+  coverage proving default redaction has no configured corpus memory.
+- Local benchmark check against `benchmark-v1.0` at Balanced level retained
+  span recall at 59.8%, improved precision proxy from 50.4% to 50.7%, and
+  improved keep-span clean rate from 85.9% to 88.7%.
+
 ## NoAI redaction engine 1.5.0 (general r1, chinese r1) - 2026-06-19
 
 Minor: introduced split engine/ruleset version metadata for AI-maintained
@@ -18,6 +81,69 @@ development loops.
   overwrite each other.
 - Updated the pre-commit engine-version hook to require the relevant ruleset
   counter when `src/redactor/rules.ts` or `src/redactor/chinese.ts` changes.
+
+## 1.4.6 - 2026-06-19
+
+Patch: user-supplied Huarong facility/finder-fee PDF development round. Raw
+PDFs, extracted text, and Claude Code pattern notes were kept under
+`benchmarking/private/dev-rounds/2026-06-19-user-huarong-pdfs/`.
+
+- Made `SWIFT/BIC` label detection case-insensitive and added an OCR-spaced
+  `Sw ift Code` variant so bank-code values in account-detail blocks are
+  redacted consistently.
+- Added a label-bound OCR-spaced `Accoun t number` detector for scanned
+  bank-account values with injected spaces and common `1`/`l` OCR confusion.
+- Added a label-bound OCR-spaced `company re gi st rati on number` detector for
+  business identifiers in scanned bilingual facility agreements.
+- Added synthetic regression coverage and counterexamples for the OCR-spaced
+  bank-account and company-registration forms.
+
+## 1.4.5 - 2026-06-19
+
+Patch: user-supplied arbitration-correspondence development round using the
+first 100 Markdown files from the local correspondence folder. Raw/source
+Markdown, extracted engine output, and Claude Code pattern notes were kept under
+`benchmarking/private/dev-rounds/2026-06-19-user-correspondence-first100/`.
+
+- Added context-derived redaction for bare HKIAC arbitration numbers such as
+  `A34567` when the number is learned from `HKIAC/A34567` or procedural
+  correspondence filenames such as `Agenda for 22 March CMC A34567.doc`.
+  This closes overlap leaks where `HKIAC` was masked separately but the stable
+  A-number remained visible in subjects, filenames, and case-file links.
+- Added redaction for bracketed internal matter tags with dotted `D` / `FID`
+  numeric suffixes, such as `[team.D19995]` and
+  `[ALPHA-MATTERS.FID1695188]`, while keeping ordinary labels like
+  `[Draft.V1]` and `[Schedule.A]` readable.
+- Added synthetic regression coverage and counterexamples for both patterns.
+
+## 1.4.4 - 2026-06-19
+
+Patch: user-supplied arbitration-pleadings development round. Raw DOCX files,
+extracted text, and Claude Code notes were kept under
+`benchmarking/private/dev-rounds/2026-06-19-user-mountain-road-pleadings/` and
+were not added to committed fixtures.
+
+- Added Balanced-level detection for narrow biographical birth details such as
+  `Born in 1957 in Meridian City`. The rule requires both birth context and a
+  birthplace-looking location, so ordinary year prose such as company founding
+  dates stays readable.
+- Added synthetic regression coverage for birth-year/birthplace redaction and
+  a counterexample for non-biographical year prose.
+
+## 1.4.3 - 2026-06-19
+
+Patch: SEC/public-agreement development round improvements. All changes are
+deterministic and browser-only; no AI/LLM/backend/telemetry added.
+
+- Added US letterhead phone coverage for mixed separator forms such as
+  `(212) 895.3500`, `(800) 724·0761`, and `(212) 895-3783`.
+- Extended numbered street-address detection to handle Markdown-converted
+  ordinal street names such as `177^(th) Place` and `1^(st) Ave`.
+- Added a ZIP-anchored full US address pattern for unit-bearing addresses such
+  as `#293` or `Suite 203`, reducing leaks of city/state/ZIP tails.
+- Added `Current` to commercial/SEC defined-term guards so filing boilerplate
+  such as `Current Reports` stays readable instead of becoming a person
+  candidate.
 
 ## 1.4.2 - 2026-06-18
 

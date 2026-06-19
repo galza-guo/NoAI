@@ -62,6 +62,12 @@ export interface RedactionInput {
 export interface RedactionOptions {
   level: RedactionLevel;
   customTerms?: string[];
+  /** Optional caller-supplied organization names. Empty by default. */
+  knownOrganizations?: string[];
+  /** Optional caller-supplied matter/project terms. Empty by default. */
+  matterTerms?: string[];
+  /** Optional caller-supplied location terms, added to generic city coverage. */
+  locations?: string[];
   /** Optional user-edited or manually added replacement entries. */
   entries?: ReplacementEntry[];
   /** Entry ids the user deleted from the current review session. */

@@ -4,10 +4,7 @@ import {
   BUILDING_KEYWORDS,
   COMMON_TITLE_WORDS,
   CONTRACT_DEFINED_TERM_TOKENS,
-  GENERAL_ORGS,
-  KNOWN_ORGS,
-  LOCATION_TERMS,
-  MATTER_TERMS,
+  GENERAL_LOCATIONS,
   ORG_NAME_TAIL_TOKENS,
   PROPER_NOUN_STOP_TERMS,
   SINGLE_PERSON_STOPWORDS,
@@ -50,6 +47,7 @@ const BUILDING_KEYWORD_ALT = BUILDING_KEYWORDS.join("|");
 const ADDRESS_UNIT_WORDS_ALT = [...UNIT_INDICATORS, ...BUILDING_KEYWORDS].join(
   "|",
 );
+const STREET_NAME_TOKEN_PATTERN = String.raw`(?:[A-Z][A-Za-z'’-]+|\d{1,5}(?:\^\((?:st|nd|rd|th)\)|st|nd|rd|th)?)`;
 const STANDALONE_UNIT_RE = new RegExp(
   String.raw`\b(?:${ADDRESS_UNIT_WORDS_ALT})\b|\b\d+\s*/\s*F\b`,
   "i",
@@ -59,7 +57,7 @@ const STANDALONE_STREET_RE = new RegExp(
   "i",
 );
 const STANDALONE_STREET_ADDRESS_RE = new RegExp(
-  String.raw`\b\d+[A-Za-z]?\s+(?:[A-Z][A-Za-z'’-]*\s+){0,5}(?:${STREET_SUFFIX_ALT})\b`,
+  String.raw`\b\d+[A-Za-z]?\s+(?:(?:[NSEW]\.?|[NS][EW])\s+)?${STREET_NAME_TOKEN_PATTERN}(?:\s+${STREET_NAME_TOKEN_PATTERN}){0,4}\s+(?:${STREET_SUFFIX_ALT})\b`,
   "i",
 );
 const MONTH_ALT =
@@ -284,6 +282,13 @@ const KIND_PRIORITY: Record<CandidateKind, number> = {
   PROPER_NOUN: 27,
 };
 
+type DetectorConfig = {
+  customTerms?: string[];
+  knownOrganizations?: string[];
+  matterTerms?: string[];
+  locations?: string[];
+};
+
 function cleanValue(raw: string): string {
   return raw
     .replaceAll("&amp;", "&")
@@ -300,6 +305,12 @@ function meaningful(value: string): boolean {
     cleaned.length >= 2 &&
     !["the", "and", "or", "of", "to", "in", "for", "with"].includes(cleaned)
   );
+}
+
+function normalizedLexicon(values: string[] | undefined): string[] {
+  return [
+    ...new Set((values ?? []).map(cleanValue).filter((value) => meaningful(value))),
+  ];
 }
 
 function normalizeForDedupe(value: string): string {
@@ -440,11 +451,20 @@ export class Detector {
   private candidates = new Map<string, Candidate>();
   private readonly exactIndex = new Map<string, Set<CandidateKind>>();
   private readonly normIndex = new Map<string, Set<CandidateKind>>();
+  private readonly customTerms: string[];
+  private readonly knownOrganizations: string[];
+  private readonly matterTerms: string[];
+  private readonly configuredLocations: string[];
 
   constructor(
     private readonly docs: RedactionInput[],
-    private readonly customTerms: string[] = [],
-  ) {}
+    config: DetectorConfig = {},
+  ) {
+    this.customTerms = normalizedLexicon(config.customTerms);
+    this.knownOrganizations = normalizedLexicon(config.knownOrganizations);
+    this.matterTerms = normalizedLexicon(config.matterTerms);
+    this.configuredLocations = normalizedLexicon(config.locations);
+  }
 
   detect(): Candidate[] {
     for (const doc of this.docs) {
@@ -584,6 +604,15 @@ export class Detector {
         1,
         "dot-separated phone number",
       ],
+      [
+        "PHONE",
+        // Letterheads often mix parentheses with dot, dash, or middle-dot
+        // separators: "(212) 895.3500", "(800) 724·0761". Keep this US-shaped
+        // so decimal amounts and dotted references are not caught.
+        /(?<![\w.])\(?\d{3}\)?[\s.-]+\d{3}[.\-·]\d{4}(?![A-Za-z0-9]|\.\d)/g,
+        1,
+        "mixed-separator US phone number",
+      ],
       ["URL", /https?:\/\/[^\s)>\]]+/g, 1, "URL"],
       [
         "INTERNAL_LINK",
@@ -602,6 +631,19 @@ export class Detector {
       ],
       [
         "ADDRESS",
+        // Full US address line with a ZIP anchor, including Markdown-converted
+        // ordinal streets and required unit fragments:
+        // "13110 NE 177^(th) Place, #293, Woodinville, WA 98072".
+        // The ZIP anchor keeps this from swallowing ordinary numbered prose.
+        new RegExp(
+          String.raw`(?<![A-Za-z0-9])\d{1,6}[A-Za-z]?\s+(?:(?:[NSEW]\.?|[NS][EW])\s+)?${STREET_NAME_TOKEN_PATTERN}(?:\s+${STREET_NAME_TOKEN_PATTERN}){0,4}\s+(?:${STREET_SUFFIX_ALT})\.?,?\s+(?:#\s*[A-Z0-9-]+|(?:Suite|Ste\.?|Unit|Apt|Room|Floor|Level)\s+[A-Z0-9-]+)(?:,?\s+[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,3}){0,2},?\s+(?:${US_STATE_ALT}|[A-Z][a-z]+)\s+\d{5}(?:-\d{4})?\b`,
+          "g",
+        ),
+        1,
+        "full US street address",
+      ],
+      [
+        "ADDRESS",
         // Numbered street address without a leading unit indicator, e.g.
         // "1 Technology Drive" or "221 Baker Street". Requires a street
         // suffix so ordinary sentences with numbers are not caught. Allows an
@@ -609,7 +651,7 @@ export class Detector {
         // token ("6409 E. Nisbet Road", "5435 NE Dawson Creek Drive") because
         // the main token class requires a 2+ letter capitalized word.
         new RegExp(
-          String.raw`(?<![A-Za-z0-9])\d{1,6}[A-Za-z]?\s+(?:(?:[NSEW]\.?|[NS][EW])\s+)?[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,4}\s+(?:${STREET_SUFFIX_ALT})\b`,
+          String.raw`(?<![A-Za-z0-9])\d{1,6}[A-Za-z]?\s+(?:(?:[NSEW]\.?|[NS][EW])\s+)?${STREET_NAME_TOKEN_PATTERN}(?:\s+${STREET_NAME_TOKEN_PATTERN}){0,4}\s+(?:${STREET_SUFFIX_ALT})\b`,
           "g",
         ),
         1,
@@ -634,7 +676,38 @@ export class Detector {
         1,
         "arbitration number",
       ],
+      [
+        "CASE_REF",
+        // Also store the bare HKIAC arbitration number from "HKIAC/A23205".
+        // HKIAC itself can be detected separately as an organization; keeping
+        // the trailing A-number as its own case-ref candidate prevents overlap
+        // replacement from leaving a stable matter ID visible in subjects and
+        // attachment filenames.
+        /\bHKIAC\/([A-Z]\d{5})\b/g,
+        1,
+        "bare HKIAC arbitration number",
+      ],
+      [
+        "CASE_REF",
+        // Arbitration correspondence attachment filenames often carry the
+        // bare matter number after procedural words such as CMC/agenda/hearing
+        // ("Agenda for 22 March CMC A23205.doc"). Keep this context-bound so
+        // unrelated product/reference codes like "A34567" remain readable.
+        /\b(?:CMC|agenda|hearing|case\s+file|arbitration)[^\r\n]{0,60}\b([A-Z]\d{5})\b/gi,
+        1,
+        "procedural filename arbitration number",
+      ],
       ["CASE_REF", /\bHKIAC\/[A-Z]?\d+\b/g, 1, "case shorthand"],
+      [
+        "CASE_REF",
+        // Bracketed law-firm / case-management matter tags in forwarded email
+        // subjects, e.g. "[team.D19995]" or "[FIRM-MATTERS.FID1695188]".
+        // Require the bracket, a dotted D/FID numeric suffix, and 4+ digits so
+        // ordinary bracketed prose like [Draft.V1] stays readable.
+        /\[[A-Za-z0-9_-]+(?:[.-][A-Za-z0-9_-]+)*\.(?:FID|D)\d{4,}\]/gi,
+        1,
+        "internal matter tag",
+      ],
       ["NATIONAL_ID", /\b\d{3}-\d{2}-\d{4}\b/g, 1, "US Social Security number"],
       [
         "NATIONAL_ID",
@@ -656,9 +729,27 @@ export class Detector {
       ],
       [
         "BANK_ACCOUNT",
-        /\b(?:SWIFT|BIC)(?:\s*(?:code|address))?\s*[:#]?\s*([A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b/g,
+        /\b(?:SWIFT|BIC)(?:\s*(?:code|address))?\s*[:#]?\s*([A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b/gi,
         2,
         "SWIFT/BIC code",
+      ],
+      [
+        "BANK_ACCOUNT",
+        // OCR can split "Swift Code" as "Sw ift Code". Keep the same SWIFT
+        // value shape and label anchor as the normal rule.
+        /\bSw\s*ift\s+Code\s*[:#]?\s*([A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b/gi,
+        2,
+        "OCR-spaced SWIFT/BIC code",
+      ],
+      [
+        "BANK_ACCOUNT",
+        // OCR from scanned agreements can split the label and misread "1" as
+        // "l": "Accoun t number: 020-60 l-806-5443- 7". Keep this label-bound
+        // and require a long digit/OCR-digit run so prose account references
+        // stay readable.
+        /\bAccoun\s*t\s+number\s*[:#]?\s*((?=(?:[0-9IlO]\s*[- ]?\s*){8,})(?:[0-9IlO]\s*[- ]?\s*){8,})\b/gi,
+        1,
+        "OCR-spaced bank account number label",
       ],
       [
         "BANK_ACCOUNT",
@@ -760,6 +851,16 @@ export class Detector {
         /\b(?:company number|registered no\.?|registration no\.?)\s*[:：]?\s*(?=[A-Za-z0-9-]*\d)[A-Z0-9-]{5,}\b/gi,
         1,
         "business registration label",
+      ],
+      [
+        "BUSINESS_ID",
+        // OCR from scanned bilingual contracts can split "registration" into
+        // "re gi st rati on". The label remains reliable, so capture the
+        // following digit-bearing company identifier without enabling broad
+        // all-digit bare detection.
+        /\bcompany\s+re\s*gi\s*st\s*rati\s*on\s+number\s*[:：]?\s*((?=[A-Z0-9-]*\d)[A-Z0-9-]{5,})\b/gi,
+        1,
+        "OCR-spaced business registration label",
       ],
       [
         "BUSINESS_ID",
@@ -1138,6 +1239,16 @@ export class Detector {
         /\b(?:financial|fiscal)\s+year\s+\d{4}\b/gi,
         2,
         "financial year reference",
+      ],
+      [
+        "DATE",
+        // Biographical birth details in pleadings/affidavits identify a
+        // person even when the year is otherwise too broad to redact alone.
+        // Require both a birth verb and a birthplace-looking location so
+        // ordinary company/prose years stay readable.
+        /\b[Bb]orn\s+in\s+(?:18|19|20)\d{2}\s+in\s+[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,3}\b/g,
+        2,
+        "birth year and birthplace",
       ],
       [
         "AMOUNT",
@@ -2380,7 +2491,7 @@ export class Detector {
       );
     }
 
-    for (const value of KNOWN_ORGS) {
+    for (const value of this.knownOrganizations) {
       for (const match of doc.text.matchAll(
         new RegExp(
           "(?<![A-Za-z0-9])" + escapeRegExp(value) + "(?![A-Za-z0-9])",
@@ -2391,25 +2502,7 @@ export class Detector {
           match[0],
           "ORG",
           2,
-          "known organization",
-          doc.name,
-          match.index ?? 0,
-        );
-      }
-    }
-
-    for (const value of GENERAL_ORGS) {
-      for (const match of doc.text.matchAll(
-        new RegExp(
-          "(?<![A-Za-z0-9])" + escapeRegExp(value) + "(?![A-Za-z0-9])",
-          "gi",
-        ),
-      )) {
-        this.add(
-          match[0],
-          "ORG",
-          2,
-          "recognized global organization",
+          "configured organization",
           doc.name,
           match.index ?? 0,
         );
@@ -2419,7 +2512,7 @@ export class Detector {
 
   // Strip leading sentence-leading conjunctions/adverbs that the suffix
   // pattern may prepend when an organization name starts a sentence
-  // (e.g. "Although DG Capital", "Moreover Goldman Sachs"). Returns the
+  // (e.g. "Although Example Capital", "Moreover Sample Holdings"). Returns the
   // trimmed surface, or null if nothing usable remains.
   private normalizeOrgSurface(raw: string): string | null {
     const LEADING = new Set([
@@ -2576,7 +2669,7 @@ export class Detector {
           (match.index ?? 0) + match[0].indexOf(codename),
         );
     }
-    for (const value of MATTER_TERMS) {
+    for (const value of this.matterTerms) {
       for (const match of doc.text.matchAll(
         new RegExp(escapeRegExp(value), "gi"),
       )) {
@@ -2584,7 +2677,7 @@ export class Detector {
           match[0],
           "PROJECT_OR_ISSUE",
           2,
-          "matter glossary term",
+          "configured matter term",
           doc.name,
           match.index ?? 0,
         );
@@ -2593,36 +2686,35 @@ export class Detector {
   }
 
   private detectLocations(doc: RedactionInput): void {
-    for (const value of LOCATION_TERMS) {
-      for (const match of doc.text.matchAll(
-        new RegExp(escapeRegExp(value), "gi"),
-      )) {
-        // Do not redact a location token that sits inside a regulated
-        // exchange-entity name (e.g. "Hong Kong" in "Hong Kong Exchanges and
-        // Clearing Limited" or "The Stock Exchange of Hong Kong Limited",
-        // "London" in "London Stock Exchange", "Singapore" in "Singapore
-        // Exchange"). These are listing-venue boilerplate and must stay
-        // readable; the exchange name is preserved as a unit.
-        const start = match.index ?? 0;
-        const end = start + match[0].length;
-        const window = doc.text
-          .slice(Math.max(0, start - 24), end + 32)
-          .replace(/\s+/g, " ");
-        if (
-          /Exchanges and Clearing/i.test(window) ||
-          /Stock Exchange of Hong Kong/i.test(window) ||
-          /London Stock Exchange/i.test(window) ||
-          /Singapore Exchange/i.test(window)
-        )
-          continue;
-        this.add(
-          match[0],
-          "LOCATION",
-          2,
-          "location dictionary",
-          doc.name,
-          start,
-        );
+    const groups: Array<{ values: string[]; reason: string }> = [
+      { values: GENERAL_LOCATIONS, reason: "common location" },
+      { values: this.configuredLocations, reason: "configured location" },
+    ];
+    for (const group of groups) {
+      for (const value of group.values) {
+        for (const match of doc.text.matchAll(
+          new RegExp(escapeRegExp(value), "gi"),
+        )) {
+          // Do not redact a location token that sits inside a regulated
+          // exchange-entity name (e.g. "Hong Kong" in "Hong Kong Exchanges and
+          // Clearing Limited" or "The Stock Exchange of Hong Kong Limited",
+          // "London" in "London Stock Exchange", "Singapore" in "Singapore
+          // Exchange"). These are listing-venue boilerplate and must stay
+          // readable; the exchange name is preserved as a unit.
+          const start = match.index ?? 0;
+          const end = start + match[0].length;
+          const window = doc.text
+            .slice(Math.max(0, start - 24), end + 32)
+            .replace(/\s+/g, " ");
+          if (
+            /Exchanges and Clearing/i.test(window) ||
+            /Stock Exchange of Hong Kong/i.test(window) ||
+            /London Stock Exchange/i.test(window) ||
+            /Singapore Exchange/i.test(window)
+          )
+            continue;
+          this.add(match[0], "LOCATION", 2, group.reason, doc.name, start);
+        }
       }
     }
   }
@@ -2941,7 +3033,6 @@ export class Detector {
       "Mainland China",
       "Civil Code",
       "Hong Kong",
-      "Mountain Road",
       "Working Group Meeting",
       "Document Request Schedule",
       "Related-Party Transactions",
@@ -3496,7 +3587,11 @@ export function redactDocuments(
   options: RedactionOptions,
 ): ReviewModel {
   const legacyCustomEntries = customTermEntries(options.customTerms ?? []);
-  const detector = new Detector(inputs);
+  const detector = new Detector(inputs, {
+    knownOrganizations: options.knownOrganizations,
+    matterTerms: options.matterTerms,
+    locations: options.locations,
+  });
   const candidates = detector.detect();
   const mapping = tokenMap(candidates);
   const level = LEVELS[options.level];

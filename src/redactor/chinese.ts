@@ -48,20 +48,26 @@ const ADDRESS_LABELS = [
   "办公地址",
   "联系地址",
   "通讯地址",
+  "送达地址",
   "住所",
   "住址",
   "地址",
   // Traditional / HK / TW aliases:
   "註冊地址",
+  "註冊辦公地址",
   "辦公地址",
   "聯絡地址",
   "通訊地址",
+  "通訊位址",
+  "送達地址",
 ];
 const PERSON_LABELS = [
   "法定代表人",
   "项目负责人",
   "签字会计师",
   "委托代理人",
+  "委托诉讼代理人",
+  "诉讼代理人",
   "经办律师",
   "授权代表",
   "联系人",
@@ -83,13 +89,31 @@ const PERSON_LABELS = [
   "记录人",
   "审判长",
   "审判员",
+  // Legal / arbitration / hearing role labels (introduce a named individual).
+  // These appear on HK arbitral orders, court paperwork, and hearing records
+  // as "獨任仲裁員：陳大文" / "仲裁庭秘書：李偉恒" / "法律顧問：黃議員".
+  "独任仲裁员",
+  "仲裁员",
+  "仲裁庭秘书",
+  "书记员",
+  "公诉人",
+  "法律顾问",
   // Traditional / HK / TW aliases:
   "法定代理人",
   "負責人",
   "聯絡人",
+  "聯係人", // HK variant of 聯絡人
   "經辦人",
   "見證人",
   "項目經理",
+  "獨任仲裁員",
+  "仲裁員",
+  "仲裁庭秘書",
+  "書記員",
+  "審判長",
+  "審判員",
+  "法律顧問",
+  "代表律師",
 ];
 const ORG_LABELS = [
   "代理机构",
@@ -509,6 +533,8 @@ export function detectChinese(doc: RedactionInput, add: AddCandidate): void {
   detectContextOrgs(doc, add);
   detectAgreementParties(doc, add);
   detectSignatureNames(doc, add);
+  detectCourtSignatureNames(doc, add);
+  detectHonorificNames(doc, add);
 }
 
 // Bare PRC direct identifiers (USCC + resident ID). Always runs regardless of
@@ -666,6 +692,8 @@ function detectChineseLabelValues(
     "Chinese address label",
     add,
     isPlausibleAddress,
+    (value) => [value],
+    trimAddressAtNextLabel,
   );
   applyLabelRules(
     doc,
@@ -850,6 +878,74 @@ function detectChineseAddressContinuations(
       );
     }
   }
+  detectInlineAddressWraps(doc, add, lines, offsets);
+}
+
+// Inline labeled addresses that wrap across a soft newline. PDF text extraction
+// commonly breaks a single address so that the street portion (ending in 號/号)
+// stays on the label line while the floor/room/building portion (樓/层/室/棟…)
+// spills onto the next line. The single-line label rule only captures up to the
+// newline and loses the continuation. This pass finds an inline
+// `<address-label>：<partial>` line whose partial value looks like an address,
+// then folds subsequent address-fragment continuation lines into one candidate.
+// Guards against FP:
+//   1. The label-line value must itself look like an address (has a 路/街/道/
+//      號/号/室… suffix or a digit + counter punctuation).
+//   2. Each continuation line must START with a building/floor/room marker so a
+//      following prose sentence ("本公司保留最終解釋權") is never swallowed.
+//   3. Stops at a blank line, a new label, an enumerated item, or any line that
+//      is not a plausible address fragment.
+const ADDRESS_CONTINUATION_START_RE =
+  /^(?:第?\d|[A-Za-z]|樓|楼|層|层|室|棟|栋|幢|座|期|區|区|号|號|大厦|大廈|广场|廣場|中心|工业区|工業區|开发区|開發區|园区|園區|号院|號院|附楼|附樓)/;
+
+function detectInlineAddressWraps(
+  doc: RedactionInput,
+  add: AddCandidate,
+  lines: string[],
+  offsets: number[],
+): void {
+  const labelInlineRe = new RegExp(
+    `^(?:${labelAlt(ADDRESS_LABELS)})${LABEL_SEP}([^\\r\\n。；;]+)$`,
+  );
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = lines[i].match(labelInlineRe);
+    if (!m) continue;
+    const head = cleanChineseValue(m[1] ?? "");
+    if (!head || !isPlausibleAddressFragment(head)) continue;
+    // Only fold when the captured head looks truncated: it should look like an
+    // address but a continuation exists. Require a digit so label-only or
+    // placeholder values (e.g. "見附件") do not trigger folding.
+    if (!/\d/.test(head)) continue;
+    const parts: string[] = [head];
+    const firstOffset =
+      (offsets[i] ?? 0) + (m[0].length - (m[1]?.length ?? 0));
+    for (let cursor = i + 1; cursor < lines.length; cursor += 1) {
+      // Truncate at the first hard stop so a sentence continuing on the same
+      // line (e.g. "20樓2000室。聯絡電話：") does not get swallowed: only the
+      // "20樓2000室" fragment before the period is an address continuation.
+      const candidate = lines[cursor]
+        .split(/[。；;]/)[0]
+        .trim();
+      if (!candidate) break;
+      if (chineseAddressContinuationStop(candidate)) break;
+      if (!ADDRESS_CONTINUATION_START_RE.test(candidate)) break;
+      if (!isPlausibleAddressFragment(candidate)) break;
+      parts.push(candidate);
+      if (parts.length >= 4) break;
+    }
+    if (parts.length <= 1) continue;
+    const collapsed = cleanChineseValue(parts.join(" "));
+    if (isPlausibleAddress(collapsed)) {
+      add(
+        collapsed,
+        "ADDRESS",
+        2,
+        "Chinese wrapped labeled address",
+        doc.name,
+        firstOffset,
+      );
+    }
+  }
 }
 
 function chineseAddressContinuationStop(line: string): boolean {
@@ -974,6 +1070,193 @@ function detectSignatureNames(doc: RedactionInput, add: AddCandidate): void {
   }
 }
 
+// Court judgment signature blocks: the role title is spaced out with full-width
+// spaces for alignment (审　判　长　　刘玉蓉 / 书　记　员　　朱健芳) and the role is
+// separated from the name by full-width spaces, not a colon. The colon-anchored
+// label rules cannot reach these, so presiding judges, judges, people's
+// assessors, law clerks, and judge's assistants leaked. The detection is line-
+// anchored (the spaced role title must START a line) and the name is a 2-4 Han
+// run, which keeps it from firing on prose such as "审判长主持庭审".
+const COURT_SIGNATURE_TITLES = [
+  "人民陪审员",
+  "审判长",
+  "审判员",
+  "书记员",
+  "法官助理",
+];
+// Build a pattern that allows an optional full-width/half-width space between
+// each character of a title, e.g. 审　判　长. Full-width space is U+3000.
+function spacedTitlePattern(title: string): string {
+  return title
+    .split("")
+    .map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("[\\s\\u3000]?");
+}
+const COURT_SIGNATURE_RE = new RegExp(
+  `(^|\\n)[\\s\\u3000]*(?:${COURT_SIGNATURE_TITLES.map(spacedTitlePattern).join("|")})[\\s\\u3000]+([\\u3400-\\u9fff·]{2,4})`,
+  "g",
+);
+function detectCourtSignatureNames(
+  doc: RedactionInput,
+  add: AddCandidate,
+): void {
+  for (const match of doc.text.matchAll(COURT_SIGNATURE_RE)) {
+    const name = match[2] ?? "";
+    if (SIGNATURE_NON_NAME.has(name)) continue;
+    const nameStart = (match.index ?? 0) + match[0].lastIndexOf(name);
+    add(
+      name,
+      "PERSON",
+      2,
+      "Chinese court signature name",
+      doc.name,
+      nameStart,
+    );
+  }
+}
+
+// Honorific-suffixed bare person names (X先生 / X女士 / X小姐) in running text.
+// Public company announcements, news, and meeting minutes introduce people this
+// way with NO label anchor, which is the single biggest source of unlabeled
+// PERSON spans. The 先生/女士/小姐 honorific almost exclusively follows a
+// personal name in business/legal Chinese, so a name-shaped prefix is a strong
+// signal. Two guards keep it readable:
+//   1. The match must start at a NON-Han boundary OR immediately after a
+//      role-introduction trigger (董事长/总经理/提名/聘任/…). This prevents the
+//      name from being sliced out of a longer word and lets names that follow a
+//      title (董事长李铁先生) be caught cleanly.
+//   2. A stoplist rejects common-noun prefixes that could appear in prose
+//      (各位先生, 两位女士), so generic address text is not redacted.
+const HONORIFIC_TRIGGERS = [
+  "副董事长",
+  "独立董事",
+  "董事长",
+  "总经理",
+  "副总经理",
+  "副总裁",
+  "总裁",
+  "监事长",
+  "监事",
+  "董事",
+  "提名",
+  "选举",
+  "聘任",
+  "任命",
+  "委派",
+  "委聘",
+  "代表",
+  "主持人",
+  "主持",
+  "介绍",
+  "邀请",
+  "感谢",
+  "请教",
+  "咨询",
+];
+// Common-noun prefixes that can directly precede 先生/女士 in prose but are NOT
+// personal names. Kept conservative: real two-character names that happen to be
+// listed here would be rare and the trade-off favours readability.
+const HONORIFIC_NON_NAME = new Set([
+  "各位",
+  "大家",
+  "所有",
+  "两位",
+  "几位",
+  "一名",
+  "这位",
+  "那位",
+  "本位",
+  "每位",
+  "某位",
+  "以上",
+  "以下",
+  "通过",
+  "关于",
+  "对于",
+  "先生",
+  "女士",
+  "小姐",
+]);
+// A captured "name" that STARTS with one of these is not a personal name: it
+// means a boundary-anchored match swallowed a preceding verb/trigger/greeting
+// (欢迎各位先生 -> "欢迎各位", 提名李四女士 -> "提名李四", 选举张三先生 ->
+// "选举张三"). Real names never begin with these tokens.
+const HONORIFIC_NAME_BAD_PREFIX =
+  /^(?:欢迎|感谢|提名|选举|聘任|任命|委派|委聘|介绍|邀请|请教|咨询|代表|主持|审查|关于|对于|通过|各位|大家|所有)/;
+const HONORIFIC_RE = /([\u3400-\u9fff·]{2,4}?)(先生|女士|小姐)/g;
+function detectHonorificNames(doc: RedactionInput, add: AddCandidate): void {
+  const text = doc.text;
+  // Scan each honorific with a NON-GREEDY 2-4 Han name so the shortest name run
+  // before the honorific is preferred (董事长李铁先生 -> "李铁"). Then clean and
+  // anchor the result.
+  for (const match of text.matchAll(HONORIFIC_RE)) {
+    let name = match[1] ?? "";
+    let nameStart = match.index ?? 0;
+    // The honorific begins right after the captured name run.
+    const honorificStart = nameStart + name.length;
+    // 1. If the name absorbed a preceding verb/trigger (提名李四女士 ->
+    //    "提名李四", 欢迎各位先生 -> "欢迎各位"), strip the leading token whole
+    //    until the remainder looks like a personal name.
+    let bad = name.match(HONORIFIC_NAME_BAD_PREFIX);
+    while (bad && name.length - bad[0].length >= 2) {
+      nameStart += bad[0].length;
+      name = name.slice(bad[0].length);
+      bad = name.match(HONORIFIC_NAME_BAD_PREFIX);
+    }
+    // 2. If a role title directly precedes the name, its last char may have leaked
+    //    into the captured name (董事长陈大文 -> "长陈大文"). When the text ending
+    //    one char into the name forms a full trigger, pull that char back into the
+    //    title so the title stays readable and the name is correct.
+    const snapped = snapHonorificNameStart(text, nameStart);
+    if (snapped !== nameStart) {
+      nameStart = snapped;
+      name = text.slice(nameStart, honorificStart);
+    }
+    if (name.length < 2 || name.length > 4) continue;
+    if (HONORIFIC_NON_NAME.has(name)) continue;
+    if (SIGNATURE_NON_NAME.has(name)) continue;
+    if (HONORIFIC_NAME_BAD_PREFIX.test(name)) continue;
+    // 3. Anchor: the char before the name must be a non-Han boundary OR a role-
+    //    introduction trigger must end there.
+    const before = text[nameStart - 1] ?? "";
+    const beforeWindow = text.slice(Math.max(0, nameStart - 6), nameStart);
+    const boundaryOk = before === "" || !HAN_RE.test(before);
+    const triggerOk = HONORIFIC_TRIGGER_AT_END_RE.test(beforeWindow);
+    if (!boundaryOk && !triggerOk) continue;
+    add(
+      name,
+      "PERSON",
+      2,
+      "Chinese honorific-suffixed name",
+      doc.name,
+      nameStart,
+    );
+  }
+}
+
+// If a role title's last char leaked into the captured name (董事长陈大文 ->
+// captured name starts at 长), return the index right after the title so the
+// title stays readable. `nameStart` is where the captured name begins; the leaked
+// char is text[nameStart]. We check whether text[nameStart - n + 1 .. nameStart]
+// equals a trigger of length n; if so the real name starts at nameStart+1.
+function snapHonorificNameStart(text: string, nameStart: number): number {
+  for (const trigger of HONORIFIC_TRIGGERS_SORTED) {
+    const seg = text.slice(nameStart - trigger.length + 1, nameStart + 1);
+    if (seg === trigger) {
+      return nameStart + 1;
+    }
+  }
+  return nameStart;
+}
+const HONORIFIC_TRIGGERS_SORTED = [...HONORIFIC_TRIGGERS].sort(
+  (a, b) => b.length - a.length,
+);
+const HONORIFIC_TRIGGER_AT_END_RE = new RegExp(
+  `(?:${[...HONORIFIC_TRIGGERS]
+    .sort((a, b) => b.length - a.length)
+    .join("|")})$`,
+);
+
 function applyLabelRules(
   doc: RedactionInput,
   labels: string[],
@@ -983,15 +1266,16 @@ function applyLabelRules(
   add: AddCandidate,
   validate: (value: string) => boolean,
   split: (value: string) => string[] = (value) => [value],
+  prepare: (rawValue: string) => string = (value) => value,
 ): void {
   const re = new RegExp(
     `(?:${labelAlt(labels)})${LABEL_SEP}${VALUE_UNTIL_HARD_STOP}`,
     "g",
   );
   for (const match of doc.text.matchAll(re)) {
-    const rawValue = match[1] ?? "";
+    const rawValue = prepare(match[1] ?? "");
     const rawValueStart =
-      (match.index ?? 0) + match[0].length - rawValue.length;
+      (match.index ?? 0) + match[0].length - (match[1] ?? "").length;
     for (const part of split(rawValue)) {
       const value = cleanChineseValue(part);
       if (isPlaceholder(value) || !validate(value)) continue;
@@ -1025,6 +1309,20 @@ function isPlausibleAddress(value: string): boolean {
     ADDRESS_SUFFIX_RE.test(value) &&
     !isPlaceholder(value)
   );
+}
+
+// Truncate a labeled address value at the next inline sub-label. Directory /
+// header lines commonly chain several labeled fields on one line, e.g.
+//   地址：北京市东城区虚构路27号 邮编：100000 总机：01000000000
+// Without this guard the address value swallows the 邮编/phone text. The guard
+// cuts at the first whitespace-prefixed contact/address sub-label so the
+// following fields stay readable (and are redacted by their own label rules).
+const ADDRESS_NEXT_LABEL_RE =
+  /\s+(?:邮编|邮政编码|编码|总机|电话|联系电话|传真|邮箱|电子邮箱|电邮|网址|网站|联系人|联系)\s*[：:]/;
+function trimAddressAtNextLabel(rawValue: string): string {
+  const m = rawValue.match(ADDRESS_NEXT_LABEL_RE);
+  if (!m || m.index === undefined) return rawValue;
+  return rawValue.slice(0, m.index);
 }
 
 // Bare USCC must pass the GB 32100-2015 checksum AND contain at least one
