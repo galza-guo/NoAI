@@ -1203,12 +1203,14 @@ function detectHonorificNames(doc: RedactionInput, add: AddCandidate): void {
       name = name.slice(bad[0].length);
       bad = name.match(HONORIFIC_NAME_BAD_PREFIX);
     }
-    // 2. If a role title directly precedes the name, its last char may have leaked
-    //    into the captured name (董事长陈大文 -> "长陈大文"). When the text ending
-    //    one char into the name forms a full trigger, pull that char back into the
-    //    title so the title stays readable and the name is correct.
-    const snapped = snapHonorificNameStart(text, nameStart);
-    if (snapped !== nameStart) {
+    // 2. If a role title directly precedes the name, one or more of its trailing
+    //    chars may have leaked into the captured name (董事长李铁先生 ->
+    //    "事长李铁"). Strip leading chars while the text ending at the new start
+    //    still forms a full trigger, so the title stays readable and the name is
+    //    correct.
+    while (name.length > 2) {
+      const snapped = snapHonorificNameStart(text, nameStart);
+      if (snapped === nameStart) break;
       nameStart = snapped;
       name = text.slice(nameStart, honorificStart);
     }

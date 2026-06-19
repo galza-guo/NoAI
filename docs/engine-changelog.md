@@ -3,6 +3,25 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.4 (general r2, chinese r4) - 2026-06-19
+
+Patch: Chinese development round 3 (public listed-company board announcements
+with executive bios). Deterministic rule changes only. No AI/LLM/backend/telemetry
+added.
+
+- Added an honorific-suffixed bare-person detector (X先生 / X女士 / X小姐). Public
+  company announcements, news, and meeting minutes introduce people this way with
+  no label anchor, which is the largest source of unlabeled PERSON spans. The
+  先生/女士/小姐 honorific almost exclusively follows a personal name in
+  business/legal Chinese, so a 2-4 Han-char name prefix is a strong signal.
+  Three guards keep prose readable: (1) the name must start at a non-Han boundary
+  or immediately after a role-introduction trigger (董事长/总经理/提名/聘任/…);
+  (2) a stoplist rejects common-noun prefixes (各位先生, 两位女士); (3) when a
+  role title's trailing chars leak into the captured name (董事长李铁 ->
+  "事长李铁"), they are pulled back into the title so the title stays readable
+  and the name is correct. Generic salutations ("各位先生女士请注意") are not
+  redacted.
+
 ## NoAI redaction engine 1.5.3 (general r2, chinese r3) - 2026-06-19
 
 Patch: Chinese development round 2 (public court judgments, procurement notices,
