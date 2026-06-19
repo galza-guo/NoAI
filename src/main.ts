@@ -17,7 +17,12 @@ import {
   ReplacementEntry,
   ReviewModel,
 } from "./redactor/types";
-import { ENGINE_VERSION, ENGINE_VERSION_DATE } from "./redactor/version";
+import {
+  CHINESE_RULES_VERSION,
+  ENGINE_VERSION_DATE,
+  ENGINE_VERSION_LABEL,
+  GENERAL_RULES_VERSION,
+} from "./redactor/version";
 import projectCatalog from "./data/public-project-catalog.json";
 import packageMeta from "../package.json";
 
@@ -1575,7 +1580,15 @@ function renderInfoPage(route: InfoRoute): void {
           </div>
           <div>
             <dt>Engine version</dt>
-            <dd>${escapeHtml(ENGINE_VERSION)}</dd>
+            <dd>${escapeHtml(ENGINE_VERSION_LABEL)}</dd>
+          </div>
+          <div>
+            <dt>General rules</dt>
+            <dd>r${GENERAL_RULES_VERSION}</dd>
+          </div>
+          <div>
+            <dt>Chinese rules</dt>
+            <dd>r${CHINESE_RULES_VERSION}</dd>
           </div>
           <div>
             <dt>Engine date</dt>
@@ -2470,7 +2483,7 @@ function renderInfoHeroSummary(route: InfoRoute, summary: string): string {
   }
   if (route !== "about") return "";
   return `
-    <p>App ${escapeHtml(APP_VERSION)} · Engine ${escapeHtml(ENGINE_VERSION)} · <a href="#/changelog">History</a></p>
+    <p>App ${escapeHtml(APP_VERSION)} · ${escapeHtml(ENGINE_VERSION_LABEL)} · <a href="#/changelog">History</a></p>
   `;
 }
 

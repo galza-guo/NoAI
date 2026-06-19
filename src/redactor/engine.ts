@@ -25,7 +25,11 @@ import {
   ReplacementEntry,
   ReviewModel,
 } from "./types";
-import { ENGINE_VERSION } from "./version";
+import {
+  ENGINE_VERSION,
+  ENGINE_VERSION_INFO,
+  ENGINE_VERSION_LABEL,
+} from "./version";
 
 const WORD_ANCHOR_RE = /<span\s+id="_Toc\d+"\s+class="anchor"\s*><\/span>/gi;
 const WORD_TOC_NESTED_LINK_RE =
@@ -3546,6 +3550,8 @@ export function redactDocuments(
 
   return {
     engineVersion: ENGINE_VERSION,
+    engineVersionLabel: ENGINE_VERSION_LABEL,
+    engineVersionInfo: ENGINE_VERSION_INFO,
     documents,
     combinedMarkdown,
     entries,

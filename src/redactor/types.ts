@@ -119,6 +119,15 @@ export interface ReviewDocument {
 /** Review model returned by the logic layer. */
 export interface ReviewModel {
   engineVersion: string;
+  engineVersionLabel: string;
+  engineVersionInfo: {
+    engine: string;
+    label: string;
+    rulesets: {
+      general: number;
+      chinese: number;
+    };
+  };
   documents: ReviewDocument[];
   combinedMarkdown: string;
   entries: ReplacementEntry[];

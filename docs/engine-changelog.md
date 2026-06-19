@@ -1,6 +1,23 @@
 # Redaction Engine Changelog
 
-The redaction engine uses semantic versioning independently from the app package.
+The redaction engine uses semantic versioning independently from the app package,
+plus split ruleset counters for English/general and Chinese deterministic rules.
+
+## NoAI redaction engine 1.5.0 (general r1, chinese r1) - 2026-06-19
+
+Minor: introduced split engine/ruleset version metadata for AI-maintained
+development loops.
+
+- Added machine-readable engine version info with a shared engine SemVer and
+  separate `general` and `chinese` ruleset counters.
+- Added the readable label format
+  `NoAI redaction engine <engine> (general rN, chinese rM)` to review output,
+  UI version display, dev-round reports, and benchmark score reports.
+- Updated score-history keys to use the combined label so a general-only and a
+  Chinese-only ruleset bump under the same shared engine SemVer do not
+  overwrite each other.
+- Updated the pre-commit engine-version hook to require the relevant ruleset
+  counter when `src/redactor/rules.ts` or `src/redactor/chinese.ts` changes.
 
 ## 1.4.2 - 2026-06-18
 
