@@ -27,6 +27,9 @@ const PRC_ID_LABELS = [
 const PHONE_LABELS = [
   "联系电话",
   "联系方式",
+  "项目联系电话",
+  "采购单位联系方式",
+  "代理机构联系方式",
   "手机号码",
   "电话",
   "手机",
@@ -35,6 +38,9 @@ const PHONE_LABELS = [
   "聯絡電話",
   "聯絡方式",
   "傳真",
+  "項目聯繫電話",
+  "採購單位聯繫方式",
+  "代理機構聯繫方式",
 ];
 const BANK_ACCOUNT_LABELS = [
   "银行账号",
@@ -52,6 +58,10 @@ const ADDRESS_LABELS = [
   "住所",
   "住址",
   "地址",
+  // Common procurement/corporate address labels:
+  "供应商地址",
+  "采购单位地址",
+  "代理机构地址",
   // Traditional / HK / TW aliases:
   "註冊地址",
   "註冊辦公地址",
@@ -60,6 +70,9 @@ const ADDRESS_LABELS = [
   "通訊地址",
   "通訊位址",
   "送達地址",
+  "供應商地址",
+  "採購單位地址",
+  "代理機構地址",
 ];
 const PERSON_LABELS = [
   "法定代表人",
@@ -71,6 +84,7 @@ const PERSON_LABELS = [
   "经办律师",
   "授权代表",
   "联系人",
+  "项目联系人",
   "负责人",
   "经办人",
   "姓名",
@@ -98,6 +112,12 @@ const PERSON_LABELS = [
   "书记员",
   "公诉人",
   "法律顾问",
+  // Procurement/project role labels:
+  "评审专家",
+  "评审专家名单",
+  "单一来源采购人员",
+  "采购人代表",
+  "用户代表",
   // Traditional / HK / TW aliases:
   "法定代理人",
   "負責人",
@@ -106,6 +126,7 @@ const PERSON_LABELS = [
   "經辦人",
   "見證人",
   "項目經理",
+  "項目聯繫人",
   "獨任仲裁員",
   "仲裁員",
   "仲裁庭秘書",
@@ -114,14 +135,20 @@ const PERSON_LABELS = [
   "審判員",
   "法律顧問",
   "代表律師",
+  "評審專家",
+  "評審專家名單",
 ];
 const ORG_LABELS = [
   "代理机构",
+  "采购代理机构",
+  "代理机构名称",
   "公司名称",
   "机构全称",
   "单位名称",
+  "采购单位",
   "供应商",
   "采购人",
+  "中标供应商",
   "当事人",
   "中标人",
   "投标人",
@@ -133,7 +160,10 @@ const ORG_LABELS = [
   // Traditional / HK / TW aliases:
   "供應商",
   "採購人",
+  "採購代理機構",
+  "採購單位",
   "代理機構",
+  "代理機構名稱",
   "當事人",
   "公司名稱",
   "機構全稱",
@@ -141,11 +171,13 @@ const ORG_LABELS = [
   "開戶行",
   "開戶銀行",
   "收款行",
+  "中標供應商",
 ];
 const PROJECT_REF_LABELS = [
   "项目编号",
   "采购编号",
   "招标编号",
+  "招标文件编号",
   "公告编号",
   "合同编号",
 ];
@@ -1290,10 +1322,20 @@ function applyLabelRules(
 }
 
 function splitChineseList(value: string): string[] {
-  return value
+  // Names delimited by 、, ，, ;, ；, or ／ → split on the first delimiter found.
+  const delimResult = value
     .split(/[、，,；;\/]/)
     .map(cleanChineseValue)
     .filter(Boolean);
+  if (delimResult.length > 1) return delimResult;
+  // Space-separated name lists (e.g. "齐海粟 胡萍 孙云飚 马贺 赵心怡" in
+  // 评审专家 lists). Only split when every fragment looks like a 2-3 char
+  // Chinese personal name so prose is not accidentally fragmented.
+  const spaceResult = value.split(/\s+/).map(cleanChineseValue).filter(Boolean);
+  if (spaceResult.length > 1 && spaceResult.every((v) => /^[㐀-鿿]{2,3}$/.test(v))) {
+    return spaceResult;
+  }
+  return delimResult;
 }
 
 function isPlausibleContextPerson(value: string): boolean {

@@ -3984,6 +3984,77 @@ Net 30. The Company and The Bank confirmed the terms.
       expect(output, `over-redacted: ${text}`).toContain(mustContain);
     }
   });
+  it("redacts procurement announcement org, person, address, and phone labels", () => {
+    // Labels common in Chinese procurement award notices (ccgp.gov.cn).
+    // All values are invented synthetic fixtures.
+    const output = redact(`
+采购代理机构：中央国家机关政府采购中心
+代理机构名称：东方国际招标有限责任公司
+采购单位：中国科学院国家天文台
+中标供应商：北京城乡建设集团有限责任公司
+供应商地址：北京市丰台区草桥东路8号院7号楼
+采购单位地址：北京市西城区阜内大街64号
+代理机构地址：北京市海淀区丹棱街1号互联网金融中心20层
+项目联系电话：010-68290509
+采购单位联系方式：秦老师0531-82169509
+代理机构联系方式：林运峰010-83084970
+招标文件编号：F0SG202500769
+评审专家：齐海粟 胡萍 孙云飚 马贺 赵心怡
+评审专家名单：何启勇、朱春侠、王广袤、薛壮圣、王海燕
+采购人代表：张杨
+用户代表：白建迎
+项目联系人：董晓璐、苗丰硕
+`, "balanced");
+    expect(output).not.toContain("中央国家机关政府采购中心");
+    expect(output).not.toContain("东方国际招标有限责任公司");
+    expect(output).not.toContain("中国科学院国家天文台");
+    expect(output).not.toContain("北京城乡建设集团有限责任公司");
+    expect(output).not.toContain("草桥东路8号院7号楼");
+    expect(output).not.toContain("阜内大街64号");
+    expect(output).not.toContain("丹棱街1号");
+    expect(output).not.toContain("010-68290509");
+    expect(output).not.toContain("0531-82169509");
+    expect(output).not.toContain("010-83084970");
+    expect(output).not.toContain("F0SG202500769");
+    expect(output).not.toContain("齐海粟");
+    expect(output).not.toContain("胡萍");
+    expect(output).not.toContain("孙云飚");
+    expect(output).not.toContain("马贺");
+    expect(output).not.toContain("赵心怡");
+    expect(output).not.toContain("何启勇");
+    expect(output).not.toContain("朱春侠");
+    expect(output).not.toContain("王广袤");
+    expect(output).not.toContain("薛壮圣");
+    expect(output).not.toContain("王海燕");
+    expect(output).not.toContain("张杨");
+    expect(output).not.toContain("白建迎");
+    expect(output).not.toContain("董晓璐");
+    expect(output).not.toContain("苗丰硕");
+  });
+
+  it("keeps procurement boilerplate and generic labels readable", () => {
+    // FP guard: generic procurement prose that should NOT be redacted.
+    const output = redact(`
+采购代理机构应当按照招标文件要求组织评审。
+代理机构名称应在公告中列明。
+采购单位对采购结果负责。
+中标供应商应在规定时间内签订合同。
+供应商地址变更需及时通知采购人。
+评审专家应独立客观公正地履行职责。
+采购人代表不得干预评审工作。
+用户代表对采购需求进行确认。
+项目联系人负责日常沟通协调。
+`, "balanced");
+    expect(output).toContain("采购代理机构应当按照");
+    expect(output).toContain("代理机构名称应在");
+    expect(output).toContain("采购单位对采购结果");
+    expect(output).toContain("中标供应商应在");
+    expect(output).toContain("供应商地址变更");
+    expect(output).toContain("评审专家应独立");
+    expect(output).toContain("采购人代表不得");
+    expect(output).toContain("用户代表对采购");
+    expect(output).toContain("项目联系人负责");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {

@@ -3,6 +3,27 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.5 (general r2, chinese r5) - 2026-06-19
+
+Patch: Chinese development round 4 (public procurement award notices from
+ccgp.gov.cn). Deterministic rule changes only. No AI/LLM/backend/telemetry
+added.
+
+- Added 14 procurement-specific labels to cover Chinese government procurement
+  award notice patterns: 采购代理机构, 代理机构名称, 采购单位, 中标供应商,
+  供应商地址, 采购单位地址, 代理机构地址, 项目联系电话, 采购单位联系方式,
+  代理机构联系方式, 招标文件编号, 评审专家, 评审专家名单, 项目联系人,
+  单一来源采购人员, 采购人代表, 用户代表, and their Traditional Chinese
+  (HK/TW) aliases.
+- Extended the Chinese name-list splitter to handle space-separated expert
+  rosters. 评审专家 sections commonly list names delimited by spaces rather than
+  punctuation (齐海粟 胡萍 孙云飚 马贺 赵心怡); the old splitter only handled
+  、/,/;/； delimiters. The new path only activates when every fragment is a
+  2-3 Han-char Chinese name, so prose is not accidentally split.
+- Added 2 synthetic tests: positive coverage of the new procurement labels
+  with invented values, and an FP guard where label-bearing procurement prose
+  stays readable.
+
 ## NoAI redaction engine 1.5.4 (general r2, chinese r4) - 2026-06-19
 
 Patch: Chinese development round 3 (public listed-company board announcements
