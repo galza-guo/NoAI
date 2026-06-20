@@ -2733,6 +2733,51 @@ The member portal is open daily.
     expect(output).toContain("member portal");
   });
 
+  it("redacts payment-card last-4 digits after the 'ending in' label", () => {
+    // Registrations and invoices print a payment card as "Visa ending in 4472"
+    // or "Mastercard ending in 1180". The last-4 is a sensitive payment
+    // identifier; there was no card detection at all, so it leaked. The label
+    // ("ending in" / "ending") is the trust anchor; a 3-4 digit run immediately
+    // after it is the card fragment. A bare year ("in 2024") must not match.
+    const output = redact(
+      `
+Payment: Visa ending in 4472, charged 02/28/2024.
+Backup card: Amex ending in 1009.
+Receipts filed in 2024 for review.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("4472");
+    expect(output).not.toContain("1009");
+    expect(output).toContain("BANK_ACCOUNT_");
+    // Counterexample: a bare year after "in" must stay readable.
+    expect(output).toContain("filed in 2024");
+  });
+
+  it("redacts confirmation and booking reference numbers from labels", () => {
+    // Event/travel/hotel confirmations label a reference as "Confirmation
+    // Number: EVT-2024-7741-2098" or "confirmation LH-4471822". The numeric core
+    // was swallowed by the phone regex but the alphanumeric/leading token
+    // ("EVT-2024", "LH-4471822") leaked, fragmenting the reference. The label
+    // anchor owns the whole token run.
+    const output = redact(
+      `
+Confirmation Number: EVT-2024-7741-2098
+Your booking confirmation is LH-4471822.
+This is a co-authored report due tomorrow.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("7741-2098");
+    expect(output).not.toContain("EVT-2024");
+    expect(output).not.toContain("LH-4471822");
+    expect(output).toContain("CASE_REF_");
+    // Counterexample: a hyphenated word with no reference label stays readable.
+    expect(output).toContain("co-authored report");
+  });
+
   it("preserves invoice table headers, boilerplate, and unlabeled line items", () => {
     // Counterexample: finance labels, boilerplate terms, manufacturer item
     // codes, table quantities, unit prices, totals, and version numbers must

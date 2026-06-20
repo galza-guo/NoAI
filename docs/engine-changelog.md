@@ -3,6 +3,35 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.17 (general r12, chinese r10) - 2026-06-20
+
+Property / event round: county property tax bills and conference registration
+confirmations. Synthetic representative documents only; no real documents
+committed. Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added payment-card last-4 detection (BANK_ACCOUNT, Light). Registrations and
+  invoices print a card as "Visa ending in 4472", "Amex ending in 1009". The
+  last-4 is a sensitive payment identifier; there was no card detection at all,
+  so it leaked. The "ending in" label (optionally preceded by a brand word and
+  "card[ number]") is the trust anchor; a 3-4 digit run after it is the card
+  fragment (group 1, so the brand word stays readable). A bare year after "in"
+  ("filed in 2024") is not matched.
+- Added event/travel confirmation reference detection (CASE_REF, Light). Event
+  and hotel confirmations label a reference as "Confirmation Number:
+  EVT-2024-7741-2098" or "booking confirmation is LH-4471822". The numeric core
+  was swallowed by the phone regex but the alphanumeric prefix leaked,
+  fragmenting the reference. The Confirmation/Booking/Reservation label (with
+  optional Number/ID/Code qualifier and colon, or a prose connector like "is")
+  anchors the whole value token run; a digit lookahead rejects prose.
+- Added 2 synthetic tests (card last-4; confirmation/booking reference), each
+  with a counterexample.
+- Benchmark-neutral on NAIR-v2 (recall 68.44%, 655 covered - unchanged).
+- Residual (deferred): "Owner of Record:" label names still leak (Owner is too
+  generic to bind safely); parcel/PIN numbers are mislabeled PHONE; credit-card
+  brand + full numbers and social handles (@IBESymposium) are not yet handled.
+  These need a broader property-owner label or Luhn-validated card detector and
+  are deferred.
+
 ## NoAI redaction engine 1.5.16 (general r11, chinese r10) - 2026-06-20
 
 Claims / citations round: insurance EOBs and regulatory press releases with

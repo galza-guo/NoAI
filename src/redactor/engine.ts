@@ -1412,6 +1412,26 @@ export class Detector {
         "DDA account number label",
       ],
       [
+        "BANK_ACCOUNT",
+        // Payment-card last-4 after the "ending in" / "ending" label, e.g.
+        // "Visa ending in 4472", "Amex ending in 1009". Registrations and
+        // invoices print a card this way; the last-4 is a sensitive payment
+        // identifier and there was no card detection at all, so it leaked. The
+        // label is the trust anchor; a 3-4 digit run immediately after it is the
+        // card fragment. Group 1 is the digit run so the brand word stays readable.
+        /\b(?:Visa|Mastercard|Amex|American\s+Express|Discover|Maestro|debit|credit)?\s*card(?:\s+number)?\s+ending\s+in\s+(\d{3,4})\b/gi,
+        1,
+        "payment card last-4",
+      ],
+      [
+        "BANK_ACCOUNT",
+        // Brand-led form with no "card" word: "Visa ending in 4472",
+        // "Mastercard ending in 1180". Same label anchor; brand optional.
+        /\b(?:Visa|Mastercard|Amex|Discover|Maestro)\s+ending\s+in\s+(\d{3,4})\b/gi,
+        1,
+        "payment card last-4",
+      ],
+      [
         "BUSINESS_ID",
         // HR / payroll identifiers, label-bound. Employee ID, Personnel No.,
         // Payroll ID, Employee Number, etc. identify a specific person or payroll
@@ -1498,6 +1518,28 @@ export class Detector {
       ["BUNDLE_REF", /\b[A-Z]\/\d{2,5}\/\d{2,6}\b/g, 2, "bundle reference"],
       ["EXHIBIT_REF", /\b[RCDEF]-\d{1,4}\b/g, 2, "exhibit reference"],
       ["EXHIBIT_REF", /\b[CR]L-\d{1,4}\b/g, 2, "legal authority reference"],
+      [
+        "CASE_REF",
+        // Event / travel confirmation references, label-bound. Event and hotel
+        // confirmations label a reference as "Confirmation Number:
+        // EVT-2024-7741-2098" or "booking confirmation is LH-4471822". The
+        // numeric core was swallowed by the phone regex but the alphanumeric
+        // prefix ("EVT-2024", "LH-4471822") leaked, fragmenting the reference.
+        // Group 1 is the value token run; the label anchor owns it. A digit
+        // lookahead rejects prose.
+        /\b(?:Confirmation|Booking|Reservation)\s+(?:Nos?|Numbers?|IDs?|Reference|Code)?\b\.?\s*[:#]?\s*((?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,})\b/gi,
+        1,
+        "confirmation reference label",
+      ],
+      [
+        "CASE_REF",
+        // Bare-label prose form: "booking confirmation is LH-4471822",
+        // "confirmation REF-88201". A connector word ("is", "=", "no.") may sit
+        // between the label and the value; the label word is the anchor.
+        /\b(?:confirmation|booking|reservation)\s+(?:is|are|=|nos?\.?|numbers?\.?|ids?\.?|reference|code)?\s*[:#]?\s*((?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,})\b/gi,
+        1,
+        "confirmation reference label",
+      ],
       [
         "PROCEDURAL_REF",
         /(?<![A-Za-z0-9])PO\s+No(?:\\\.|\.)?\s*\d+(?!\d)/gi,
