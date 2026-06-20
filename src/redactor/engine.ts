@@ -249,6 +249,18 @@ const GENERIC_ORGANIZATION_SUFFIX_TOKENS = new Set([
   "Associates",
 ]);
 
+// A regulator file/docket/matter/case number written as a short digit split
+// with a space or dash (e.g. "092 3184", "2024 567", "092-3184"). This is the
+// 7-digit zone that also matches the generic phone shape; context (the label
+// before it) decides phone vs case-ref.
+const REGULATOR_NUMBER_SPLIT_RE = /^\d{1,4}[\s-]\d{1,4}$/;
+
+// The label that, when it immediately precedes a split-digit run, marks that
+// run as a regulator reference number rather than a phone. Anchored at the
+// end of the look-back window so it must be the nearest label before the digits.
+const REGULATOR_NUMBER_LABEL_RE =
+  /\b(?:File|Docket|Matter|Case|Charge|Claim|Reference)\s+Nos?\b\.?\s*[:#]?\s*$/i;
+
 // Priority used to pick a single kind when the same exact surface string is
 // detected under multiple kinds (lower wins). Keeps replacement tokens consistent.
 const KIND_PRIORITY: Record<CandidateKind, number> = {
@@ -533,6 +545,24 @@ export class Detector {
       if (/^\d{1,3}-\d{5,6}$/.test(cleaned)) return;
     }
 
+    // US letterheads parenthesize the area code: "(650) 493-9300",
+    // "(212) 895.3500". The phone regexes start at the first digit and cleanValue
+    // strips the leading "(", so the stored value used to be "650) 493-9300"
+    // with a dangling close paren. The literal replacement then matched only
+    // from the "6", leaving a stray "(" visible in the redacted output. Restore
+    // the balanced "(AAA)" so the whole parenthesized number is one redacted
+    // token. This only fires when a close paren directly follows a 3-digit area
+    // code (the paren was stripped by cleanValue), so ordinary phones, ISINs,
+    // and other kinds are unaffected.
+    let storedValue = cleaned;
+    if (
+      kind === "PHONE" &&
+      /^\d{3}\)[\s.-]+\d/.test(cleaned) &&
+      value.trimStart().startsWith("(")
+    ) {
+      storedValue = `(${cleaned}`;
+    }
+
     if (kind === "PERSON") {
       const stripped = cleaned
         .replace(LEADING_PERSON_TITLE_RE, "")
@@ -545,7 +575,7 @@ export class Detector {
         return;
     }
 
-    const key = this.key(kind, cleaned);
+    const key = this.key(kind, storedValue);
     const existing = this.candidates.get(key);
     if (existing) {
       existing.minLevel = Math.min(existing.minLevel, minLevel);
@@ -554,14 +584,14 @@ export class Detector {
       return;
     }
     this.candidates.set(key, {
-      value: cleaned,
+      value: storedValue,
       kind,
       minLevel,
       reason,
       firstPos: pos,
       sources: new Set([source]),
     });
-    this.registerIndex(cleaned, kind);
+    this.registerIndex(storedValue, kind);
   }
 
   private registerIndex(value: string, kind: CandidateKind): void {
@@ -682,8 +712,9 @@ export class Detector {
         // HKIAC itself can be detected separately as an organization; keeping
         // the trailing A-number as its own case-ref candidate prevents overlap
         // replacement from leaving a stable matter ID visible in subjects and
-        // attachment filenames.
-        /\bHKIAC\/([A-Z]\d{5})\b/g,
+        // attachment filenames. HKIAC case codes use a 1- OR 2-letter prefix
+        // (e.g. A25088, PA25057), so allow 1-2 letters before the digits.
+        /\bHKIAC\/([A-Z]{1,2}\d{5})\b/g,
         1,
         "bare HKIAC arbitration number",
       ],
@@ -697,7 +728,7 @@ export class Detector {
         1,
         "procedural filename arbitration number",
       ],
-      ["CASE_REF", /\bHKIAC\/[A-Z]?\d+\b/g, 1, "case shorthand"],
+      ["CASE_REF", /\bHKIAC\/[A-Z]{1,2}\d+\b/g, 1, "case shorthand"],
       [
         "CASE_REF",
         // Bracketed law-firm / case-management matter tags in forwarded email
@@ -835,6 +866,21 @@ export class Detector {
         "Hong Kong court reference",
       ],
       [
+        "CASE_REF",
+        // USPTO patent grant / application bibliographic numbers, label-bound.
+        // The front page of a US patent lists the application, serial, related
+        // patent, and provisional numbers under the distinctive INID labels
+        // "Appl. No.", "Application No.", "Ser. No.", "Pat. No.", and
+        // "Provisional application No.". The label anchor is required because a
+        // bare slash/figure run (a date range, a figure, a section like
+        // "Section 16/810") is ambiguous. The value must contain a digit. The
+        // acronym forms are written with a trailing period ("Appl.", "Ser.",
+        // "Pat."), so an optional "." follows each.
+        /\b(?:Appl\.?|Application|Ser\.?|Patent|Pat\.?|Provisional\s+application)\s+Nos?\.?\s*[:#]?\s*(?=[A-Za-z0-9,/-]*\d)[A-Za-z0-9,/-]{3,}\b/gi,
+        1,
+        "patent application/serial number",
+      ],
+      [
         "BUSINESS_ID",
         // The value char class is case-insensitive (the `i` flag) so the label
         // matches regardless of case. To stop the class from swallowing an
@@ -911,9 +957,23 @@ export class Detector {
         // NOTE: the separator group must be NON-capturing (?:...) not (:?...);
         // otherwise match[1] holds the separator whitespace and the file number
         // is silently discarded by the `match[1] ?? match[0]` value rule.
-        /\b(?:Commission\s+File\s+Number|File\s+Nos?)\.?(?:\s*[:#]?)?\s*\d{1,3}-\d{1,6}(?:\s+(?:and|&)\s*\d{1,3}-\d{1,6})*/gi,
+        /\b(?:Commission\s+File\s+Number|File\s+Nos?)\.?(?:\s*[:#]?)?\s*\d{1,3}-\d{1,6}(?:\s+(?:and|&)\s+\d{1,3}-\d{1,6})*/gi,
         1,
         "SEC file number",
+      ],
+      [
+        "CASE_REF",
+        // Regulator file/docket/matter/case numbers written as a short digit
+        // split with a SPACE or DASH, e.g. FTC "FILE NO. 092 3184",
+        // "Docket No. 2024 567", "File No. 092-3184". These 3+4 / 4+3 splits
+        // match the generic phone shape and were mislabeled PHONE. The label
+        // anchor (File/Docket/Matter/Case/Charge/Reference/Claim No.) is the
+        // trust boundary: a bare "555 1234" in prose has no label and stays a
+        // phone. The split is bounded to a single short run so a normal US
+        // 7-digit local phone after a "Phone:" label is not caught here.
+        /\b(?:File|Docket|Matter|Case|Charge|Claim|Reference)\s+Nos?\.?(?:\s*[:#]?)?\s*\d{1,4}[\s-]\d{1,4}\b/gi,
+        1,
+        "regulator split file/docket number",
       ],
       [
         "BUSINESS_ID",
@@ -1088,6 +1148,114 @@ export class Detector {
         /\bVAT\s+(?:registration|reg\.?|number|no\.?|id)\b\.?\s*[:#]?\s*([A-Z]{2}\s?\d{3}\s?\d{4}\s?\d{2}|\d{9,12})\b/gi,
         1,
         "VAT registration label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Insurance policy and regulatory identifiers, label-bound. The policy
+        // number identifies the contract; NAIC Number identifies the insurer;
+        // NAICS Code identifies the insured's business; Producer NPN identifies
+        // the licensed producer. All are label-bound so bare figures/quantities
+        // stay readable. Several values (NAIC dd-ddd-dddd, NPN dddddddd) are
+        // phone-shaped and were previously mislabeled PHONE; the label-bound
+        // BUSINESS_ID candidate wins on KIND_PRIORITY, mirroring the HR/finance
+        // label fixes.
+        /\b(?:Policy|NAIC|NAICS|NPN)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "insurance policy/regulatory identifier label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Federal grant award identifiers, label-bound. Award Number, UEI
+        // (Unique Entity ID), DUNS Number, and the program/funding codes
+        // (NSF/NIH Program Code, CFDA/Assistance Number) identify the grant or
+        // the funded entity. Label-bound so bare figures stay readable. DUNS
+        // (dd-ddddddd) is phone-shaped and was mislabeled PHONE.
+        /\b(?:Award|UEI|DUNS|CFDA|Assistance)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "federal grant award identifier label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Federal entity identifiers written as bare acronyms followed directly
+        // by a colon, e.g. "UEI: X4QPM9F6RJ82", "DUNS: 07-445-1928", "NPN:
+        // 18442973". The colon anchor distinguishes these from prose ("the UEI
+        // is pending"); the digit requirement rejects placeholder values.
+        /\b(?:UEI|DUNS|NPN|EIN|FEIN|CAGE)\s*[:#]\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "federal entity identifier (bare acronym) label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Grant program / funding codes as bare compound labels, e.g.
+        // "NSF Program Code: 1761", "NIH Activity Code: R01". The agency prefix
+        // plus "Program/Activity Code" is the distinctive anchor.
+        /\b(?:NSF|NIH|DOE|NASA|USDA)\s+(?:Program|Activity)\s+Code\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
+        1,
+        "federal program code label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Deed / recorded-instrument identifiers, label-bound. Instrument No.
+        // and the County Clerk's File No. identify a recorded document; Property
+        // Identification Number (Tax ID) identifies the parcel; Notary ID and
+        // the Bar No. identify the officer. Label-bound so bare figures and
+        // statute/section citations stay readable. Several values are
+        // phone-shaped and were mislabeled PHONE.
+        /\b(?:Instrument|Notary)\s+(?:Number|No\.?|ID)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "deed/notary identifier label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Property Identification Number (Tax ID), label-bound. Recorded deeds
+        // print the parcel number under this label. The "(Tax ID)" qualifier is
+        // optional. Label-bound so a bare parcel-shaped string is not caught.
+        /\bProperty\s+Identification\s+Number(?:\s*\([^)]*\))?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        1,
+        "property identification number label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Attorney / notary bar number, label-bound. Court papers print the
+        // signing attorney's bar number as "Bar No.", "State Bar No.", or with a
+        // dotted state code ("N.C. Bar No.", "NY. Bar No."). The full label +
+        // "No." qualifier is the trust anchor because "bar" alone is a common
+        // word; the dotted/[A-Z]{2} prefix is captured so the whole label
+        // redacts as one reference. The value must contain a digit.
+        /\b(?:(?:[A-Z]{2}\.|[A-Z]\.[A-Z]\.|State\s+)\s*)?Bar\s+Nos?\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "state bar number label",
+      ],
+      [
+        "CASE_REF",
+        // Recorded-instrument file number, label-bound. County clerks record
+        // instruments under "File No." / "Clerk's File No." with a longer digit
+        // run than the SEC short shape (e.g. "File No. 2026-0448719"). The label
+        // anchor is required so bare figures stay readable; the value must
+        // contain a digit.
+        /\b(?:Clerk'?s\s+)?File\s+Nos?\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        1,
+        "recorded-instrument file number label",
+      ],
+      [
+        "CASE_REF",
+        // ECF / bankruptcy document number, label-bound. Court filings print the
+        // clerk's document number as "Document No.: 26-30847 (ECF Doc. #18)".
+        // Label-bound so bare figures stay readable.
+        /\bDocument\s+No\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "court document number label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Debtor / entity Tax ID, label-bound. "Tax ID: 47-2209184" identifies
+        // the debtor on a bankruptcy notice. This is a bare two-word label
+        // (no "No./Number" qualifier) the existing tax-identifier rule misses;
+        // the value must contain a digit. The EIN shape dd-ddddddd is
+        // phone-shaped and was mislabeled PHONE.
+        /\bTax\s+ID\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        1,
+        "tax identifier (bare) label",
       ],
       [
         "BANK_ACCOUNT",
@@ -1291,14 +1459,20 @@ export class Detector {
 
     for (const [kind, regex, level, reason] of patterns) {
       for (const match of doc.text.matchAll(regex)) {
-        this.add(
-          match[1] ?? match[0],
-          kind,
-          level,
-          reason,
-          doc.name,
-          match.index ?? 0,
-        );
+        const value = match[1] ?? match[0];
+        const pos = match.index ?? 0;
+        // Regulator file/docket/matter/case numbers are sometimes written as a
+        // short digit split with a space or dash ("FILE NO. 092 3184",
+        // "Docket No. 2024 567"). That 7-digit split matches the generic phone
+        // shape and would be mislabeled PHONE; the label-bound CASE_REF
+        // detector owns these. When a phone-shaped match directly follows one
+        // of those labels, skip it so the labeled phrase is the only candidate.
+        // A bare local phone ("Call 555 1234") has no such label and is kept.
+        if (kind === "PHONE" && REGULATOR_NUMBER_SPLIT_RE.test(value)) {
+          const before = doc.text.slice(Math.max(0, pos - 30), pos);
+          if (REGULATOR_NUMBER_LABEL_RE.test(before)) continue;
+        }
+        this.add(value, kind, level, reason, doc.name, pos);
       }
     }
   }
@@ -1458,6 +1632,66 @@ export class Detector {
         "BUSINESS_ID",
         1,
         "tax identifier label",
+      ],
+      // Insurance policy / regulatory identifier labels (commercial general
+      // liability declarations, producer records). Line-anchored companions to
+      // the inline BUSINESS_ID rules; the digit guard rejects prose values.
+      [
+        /^\s*(?:Policy|NAIC|NAICS|NPN)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "insurance policy/regulatory identifier label",
+      ],
+      // Federal grant award identifier labels (NSF/NIH/federal notices).
+      // Line-anchored companions to the inline BUSINESS_ID rules.
+      [
+        /^\s*(?:Award|UEI|DUNS|CFDA|Assistance)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "federal grant award identifier label",
+      ],
+      [
+        /^\s*(?:UEI|DUNS|NPN|EIN|FEIN|CAGE)\s*[:：]\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "federal entity identifier (bare acronym) label",
+      ],
+      [
+        /^\s*(?:NSF|NIH|DOE|NASA|USDA)\s+(?:Program|Activity)\s+Code\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "federal program code label",
+      ],
+      // Deed / recorded-instrument identifier labels.
+      [
+        /^\s*(?:Instrument|Notary)\s+(?:Number|No\.?|ID)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "deed/notary identifier label",
+      ],
+      [
+        /^\s*Property\s+Identification\s+Number(?:\s*\([^)]*\))?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "property identification number label",
+      ],
+      [
+        /^\s*(?:(?:[A-Z]{2}\.|[A-Z]\.[A-Z]\.|State\s+)\s*)?Bar\s+Nos?\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "state bar number label",
+      ],
+      [
+        /^\s*Document\s+No\.?\s*[:：]?\s*(.+)$/i,
+        "CASE_REF",
+        1,
+        "court document number label",
+      ],
+      [
+        /^\s*Tax\s+ID\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "tax identifier (bare) label",
       ],
       [
         /^\s*Bank\s+Account\s+(?:Nos?|Numbers?)\b\.?\s*[:：]?\s*(.+)$/i,
@@ -1825,8 +2059,18 @@ export class Detector {
       [
         // Litigation role label followed by a person name, e.g.
         // "Defendant Sergei Polevikov", "Relief Defendant Maryna Arystava".
-        /\b(?:Defendant|Plaintiff|Respondent|Petitioner|Relief\s+Defendant|Intervenor|Relator|Decedent|Co-?Defendant|Co-?Plaintiff)\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})\b/g,
+        /\b(?:Defendant|Plaintiff|Respondent|Petitioner|Relief\s+Defendant|Intervenor|Relator|Decedent|Co-?Defendant|Co-?Plaintiff)\s+([A-Z][A-Za-z’’-]+(?:\s+[A-Z][A-Za-z’’-]+){1,3})\b/g,
         "litigation role plus name",
+      ],
+      [
+        // Patent examining official after the role label, e.g.
+        // "Primary Examiner — Daniel K. Weinstein",
+        // "Assistant Examiner — Priya Nadkarni". USPTO grant front pages print
+        // the examiner’s name after the role and an em/en dash. The role label
+        // is the trust anchor; bare "examiner" prose has no dash+name shape.
+        // The name allows a single-letter middle initial ("Daniel K. Weinstein").
+        /\b(?:Primary|Assistant|Associate)?\s*Examiner\s*[—–-]\s*([A-Z][A-Za-z’’-]+(?:[^\S\r\n]+(?:[A-Z]\.?|[A-Z][A-Za-z’’-]+)){1,3})\b/g,
+        "patent examiner plus name",
       ],
     ];
 
@@ -1933,6 +2177,7 @@ export class Detector {
     this.detectCaptionPersonnel(doc);
     this.detectCaptionPartyNames(doc);
     this.detectSignatureNames(doc);
+    this.detectPatentInventors(doc);
 
     for (const match of doc.text.matchAll(
       /\bBetween\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})\s+and\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,3})/g,
@@ -2025,6 +2270,36 @@ export class Detector {
           doc.name,
           match.index ?? 0,
         );
+    }
+  }
+
+  // Patent inventor / applicant names. USPTO grant front pages list one or
+  // more inventors after the INID "(75) Inventors:" / "Applicant:" label, each
+  // written as "Name, City, ST (XX)" and separated by ";" (often wrapping
+  // across lines). The generic context patterns catch only the first name; this
+  // captures every TitleCase name on the labelled line. The label anchor keeps
+  // ordinary "the inventor of..." prose readable.
+  private detectPatentInventors(doc: RedactionInput): void {
+    const labelRe =
+      /(?:Inventors?|Applicant)s?\s*[:：]\s*([^\n]*(?:\n[A-Z][^\n:]*)?)/gi;
+    const nameRe =
+      /\b([A-Z][A-Za-z'’-]+(?:[^\S\r\n]+(?:[A-Z]\.?|[A-Z][A-Za-z'’-]+)){1,3})\b/g;
+    for (const labelMatch of doc.text.matchAll(labelRe)) {
+      const blockStart = (labelMatch.index ?? 0) + labelMatch[0].indexOf(labelMatch[1]);
+      const block = labelMatch[1];
+      for (const nameMatch of block.matchAll(nameRe)) {
+        const name = cleanValue(nameMatch[1]);
+        if (!this.looksLikePersonName(name)) continue;
+        const relIndex = nameMatch.index ?? 0;
+        this.add(
+          name,
+          "PERSON",
+          1,
+          "patent inventor name",
+          doc.name,
+          blockStart + relIndex,
+        );
+      }
     }
   }
 
@@ -2716,6 +2991,25 @@ export class Detector {
           this.add(match[0], "LOCATION", 2, group.reason, doc.name, start);
         }
       }
+    }
+
+    // Patent inventor / assignee residence. USPTO grant front pages list each
+    // inventor's residence as "City, ST (US)" and the assignee's address as
+    // "City, ST (US)" on the "(75) Inventors:" / "(73) Assignee:" line. This is
+    // identifying residence data tied to the patent-party context, not an
+    // ordinary city mention. The context anchor (Inventors:/Applicant:/Assignee:
+    // on the same line, or the preceding INID label) is required so that prose
+    // such as "relocated to Palo Alto, CA" stays readable. Capture the
+    // "City, ST" US form and the "City (XX)" country form.
+    const patentLocRe =
+      /\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2}),\s*(?:${US_STATE_ALT})\s*\([A-Z]{2}\)|\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})\s*\([A-Z]{2}\)/g;
+    for (const match of doc.text.matchAll(patentLocRe)) {
+      const pos = match.index ?? 0;
+      const before = doc.text.slice(Math.max(0, pos - 120), pos).replace(/\s+/g, " ");
+      if (!/\b(?:Inventors?|Applicant|Assignee)s?\s*[:：]/i.test(before)) continue;
+      const value = cleanValue(match[1] ?? match[2]);
+      if (!value) continue;
+      this.add(value, "LOCATION", 2, "patent inventor/assignee residence", doc.name, pos);
     }
   }
 

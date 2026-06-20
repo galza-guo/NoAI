@@ -12,6 +12,15 @@ export type AddCandidate = (
 const HAN_RE = /[\u3400-\u9fff]/;
 const LABEL_SEP = String.raw`\s*[：:#]\s*`;
 const VALUE_UNTIL_HARD_STOP = String.raw`([^\r\n。；;]+)`;
+// Formal Chinese paperwork (SAMR penalty decisions, court filings, contracts)
+// frequently qualifies a field label with a parenthetical synonym BEFORE the
+// colon: 住所（住址）, 法定代表人（负责人、经营者）, 统一社会信用代码（注册号）.
+// The synonym sits between the label and LABEL_SEP, so the label rule must
+// allow an optional full parenthetical there. Only a REAL label immediately
+// preceding the parenthetical triggers detection (the alternation still
+// requires one of the label terms), so prose such as 本通知（盖章后生效）
+// does not fire. Both （）and () brackets are accepted.
+const LABEL_SYNONYM_PARENS = String.raw`(?:\s*[（(][^）)]*[）)])?`;
 
 const USCC_LABELS = ["统一社会信用代码", "社会信用代码"];
 const PRC_ID_LABELS = [
@@ -72,6 +81,14 @@ const ADDRESS_LABELS = [
   "供应商地址",
   "采购单位地址",
   "代理机构地址",
+  // Shareholder-meeting / conference venue labels (listed-company notices,
+  // AGM convening notices). These carry the on-site address the same way an
+  // address label does. Bare prose use ("会议地点尚未确定") is protected by
+  // LABEL_SEP requiring a colon-value structure.
+  "现场会议地点",
+  "会议地点",
+  "登记地点",
+  "会议地址",
   // Traditional / HK / TW aliases:
   "註冊地址",
   "註冊辦公地址",
@@ -461,8 +478,19 @@ const PROJECT_REF_RE = /^(?=[A-Za-z0-9._/-]*\d)[A-Za-z0-9._/-]{4,50}$/;
 // WeChat IDs: must start with a letter, 6-20 chars, letters/digits/_/-.
 const WECHAT_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{5,19}$/;
 // Passport numbers: a letter followed by 8 digits (PRC E/G shape) is the most
-// common, but accept letter+6-9 digits for other issuers.
-const PASSPORT_RE = /^[A-Za-z]\d{6,9}$/;
+// common, but accept letter+6-9 digits for other issuers. Some Chinese
+// e-passports and many foreign passports use a 2-letter prefix (e.g. EM, KJ)
+// before 6-9 digits, so allow a 1- or 2-letter prefix.
+const PASSPORT_RE = /^[A-Za-z]{1,2}\d{6,9}$/;
+// Masked (asterisked) PRC national IDs as published by courts and credit
+// platforms: 6-10 leading digits (the visible birth-date/region segment), a
+// run of 4-8 asterisks, then a 4-digit suffix (e.g. 41112119******1010,
+// 3201151988****0022). These are not valid checksum IDs but are still
+// identifying; catching the WHOLE masked string as NATIONAL_ID also shadows
+// the leading digit run that the generic phone regex would otherwise split
+// off as a phone. Requiring a run of asterisks makes this high-precision (no
+// real ID, amount, or date contains asterisks).
+const MASKED_PRC_ID_RE = /\b\d{6,10}\*{4,8}\d{4}\b/g;
 // PRC vehicle plates: province Han char + letter + 5-6 alphanumerics, or new-
 // energy (8 chars). e.g. 京A12345 / 粤B12345D.
 const VEHICLE_PLATE_RE = /^[\u3400-\u9fff][A-Za-z][A-Za-z0-9]{4,6}$/;
@@ -607,7 +635,7 @@ function cleanChineseValue(raw: string): string {
   return raw
     .trim()
     .replace(
-      /^[\s,.;:()[\]{}<>"'“”‘’、，。；：]+|[\s,.;:()[\]{}<>"'“”‘’、，。；：]+$/g,
+      /^[\s,.;:()[\]{}<>"'“”‘’、，。；：（）《》【】]+|[\s,.;:()[\]{}<>"'“”‘’、，。；：（）《》【】]+$/g,
       "",
     )
     .replace(/\s+/g, " ");
@@ -672,7 +700,116 @@ function detectChineseDirectPatterns(
     "Chinese court case number",
     add,
   );
+  // Standalone bracketed Chinese document/case reference numbers. The
+  // REGULATORY_DOC_NO_RE pattern already catches forms like
+  // 沪〔2025〕56号 when preceded by 2-8 Han chars, and COURT_CASE_NO_RE
+  // catches parenthesized-year court case forms. This covers the remaining
+  // standalone 〔YYYY〕NN号 and [YYYY]NN-{1,2}NN号 forms that appear in
+  // regulator penalty titles (中国证监会〔2025〕76号, 汕市监处罚[2025]21-102号).
+  // The year must be 19xx-20xx and followed by 〕/] and a digit, so ordinary
+  // bracketed legislative citations and ranges stay readable.
+  // Use two separate regexes: one for the fullwidth-bracket form, one for the
+  // ASCII-bracket form [YYYY], so the bracket character classes don't overlap.
+  applyRegex(
+    doc,
+    /[\u300C\u300D（(]?(?:19|20)\d{2}[\u300D\u300E）)][^\r\n。；;]{1,30}号/g,
+    "CASE_REF",
+    1,
+    "Chinese standalone bracketed case/document reference",
+    add,
+    isPlausibleDqCaseRef,
+  );
+  // Cover ASCII-bracket form: [2025]21-102号 (common in local regulator penalties).
+  applyRegex(
+    doc,
+    /\[(?:19|20)\d{2}\][^\r\n。；;]{1,30}号/g,
+    "CASE_REF",
+    1,
+    "Chinese ASCII-bracket case reference [YYYY]NN-NN号",
+    add,
+    isPlausibleDqCaseRef,
+  );
+  // 国市监处罚 / 证监许可 / 沪市监处罚 等 agency-prefixed reference forms.
+  // These appear on SAMR/CSRC/local regulator penalty headers and must be
+  // caught even when the full body-string prefix characters are more than the
+  // 8 chars allowed by REGULATORY_DOC_NO_RE.
+  applyRegex(
+    doc,
+    /[\u3400-\u9fff]{2,10}[〔［[][(]?(?:19|20)\d{2}[)）]?[〕］\]]\d{1,5}号/g,
+    "CASE_REF",
+    1,
+    "Chinese agency-prefixed bracketed case reference",
+    add,
+    (match) => isPlausibleRefValue(match.text),
+  );
+  // Birth year context: 年X月出生 or 年X日出生. These appear in regulatory
+  // penalty decisions as highly identifying personal data. The pattern
+  // requires 出生 immediately after the month segment, so generic year-month
+  // prose (2026年6月期间经营业绩) stays readable. The digit class also
+  // accepts X as a legal anonymization placeholder (196X年X月出生).
+  applyRegex(
+    doc,
+    /(?:19|20)[\dX]{2}[年]\s*[\dX]{1,2}[月日](?:\s*[\dX]{1,2}[日])?\s*出生/g,
+    "DATE",
+    1,
+    "Chinese birth date (年X月出生 pattern)",
+    add,
+  );
+  // Chinese legal anonymized personal names (某-pattern). Regulatory penalty
+  // decisions, court judgments, and administrative rulings mask personal names
+  // as 李某廷 / 王某鹏 / 陈某 / 赵某华 — a single Han surname followed by 某
+  // and an optional 1-2 Han given-name character. The 某 infix is distinctive
+  // to legal anonymization and does not appear in ordinary names or prose.
+  // Minimally, 2 chars (李+某); maximally, 4 chars (欧阳+某+华). The pattern
+  // only fires in Han text, so standalone 某 in mixed-language docs is safe.
+  // Boundary check (no Han char before the surname) is done in the allow()
+  // filter to avoid lookbehind compatibility issues.
+  applyRegex(
+    doc,
+    // 某-pattern name: surname + 某 + 0-2 given chars, must NOT be followed by
+    // another Han char (prevents greedily swallowing following text).
+    // At Balanced this is a trade-off: names embedded mid-sentence in Han text
+    // (王某鹏参与...) may leak, but names at boundary or followed by punctuation
+    // are caught cleanly. Heavy level catches via NON_LATIN_TEXT.
+    /[\u3400-\u9fff]某[\u3400-\u9fff]{0,2}(?![\u3400-\u9fff])/g,
+    "PERSON",
+    2,
+    "Chinese anonymized legal personal name (某-pattern)",
+    add,
+    (match) => isPlausibleMouName(cleanChineseValue(match.text)),
+  );
   detectAgreementParties(doc, add);
+}
+
+// 某-pattern name validator: must be a Han surname + 某 + optional given name.
+// Rejects common prose uses: 某些 (some), 某年/某月 (indefinite time), 某人
+// (someone), 某某 (placeholder). The anonymous name MUST start with a real Han
+// char that is a surname (any single Han char except 某 itself), so 某某集团
+// and bare 某 are rejected. Also rejects matches where the char before the
+// match is a Han character (to prevent slicing from longer words like 董事长).
+function isPlausibleMouName(value: string): boolean {
+  if (typeof value !== "string" || value.length < 2 || value.length > 4)
+    return false;
+  // 某人/某些/某种/某件/某地 – indefinite pronouns, not names.
+  if (/^某[人些种件地]/u.test(value)) return false;
+  // 某年/某月/某日 – indefinite time expressions.
+  if (/^某[年月日]/u.test(value)) return false;
+  // 某某 – placeholder, not a name.
+  if (value.startsWith("某某")) return false;
+  // If the char immediately after 某 is 年/月/日/人/件 etc, not a name.
+  if (/某[年月日人些种件地时]/u.test(value)) return false;
+  // Must start with a non-某 Han char (the surname).
+  return /^[\u3400-\u9fff]某[\u3400-\u9fff]*$/.test(value);
+}
+
+// Standalone bracketed case-reference guard: the value after the bracket must
+// contain a digit (the case number), and the bracket must not enclose a plain
+// year range or legislative article citation.
+function isPlausibleDqCaseRef(match: { text: string; index: number }): boolean {
+  // The regex already requires the year bracket followed by content ending in 号,
+  // so the shape is inherently specific. The allow() filter just ensures digit
+  // content so bare 号 with no case number is not caught.
+  return /\d/.test(match.text);
 }
 
 function applyRegex(
@@ -898,7 +1035,7 @@ function detectChineseAddressContinuations(
     searchPos = pos + line.length + 1;
   }
   const labelSoloRe = new RegExp(
-    `^\\s*(?:${labelAlt(ADDRESS_LABELS)})${LABEL_SEP}$`,
+    `^\\s*(?:${labelAlt(ADDRESS_LABELS)})${LABEL_SYNONYM_PARENS}${LABEL_SEP}$`,
   );
   for (let i = 0; i < lines.length; i += 1) {
     if (!labelSoloRe.test(lines[i])) continue;
@@ -957,7 +1094,7 @@ function detectInlineAddressWraps(
   offsets: number[],
 ): void {
   const labelInlineRe = new RegExp(
-    `^(?:${labelAlt(ADDRESS_LABELS)})${LABEL_SEP}([^\\r\\n。；;]+)$`,
+    `^(?:${labelAlt(ADDRESS_LABELS)})${LABEL_SYNONYM_PARENS}${LABEL_SEP}([^\\r\\n。；;]+)$`,
   );
   for (let i = 0; i < lines.length; i += 1) {
     const m = lines[i].match(labelInlineRe);
@@ -1323,7 +1460,7 @@ function applyLabelRules(
   prepare: (rawValue: string) => string = (value) => value,
 ): void {
   const re = new RegExp(
-    `(?:${labelAlt(labels)})${LABEL_SEP}${VALUE_UNTIL_HARD_STOP}`,
+    `(?:${labelAlt(labels)})${LABEL_SYNONYM_PARENS}${LABEL_SEP}${VALUE_UNTIL_HARD_STOP}`,
     "g",
   );
   for (const match of doc.text.matchAll(re)) {

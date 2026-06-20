@@ -3,6 +3,172 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.10 (general r5, chinese r9) - 2026-06-20
+
+Patch: English/general development round covering document types not previously
+exercised by the English ruleset — USPTO patent grant front pages, an NSF-style
+federal grant award notice, a commercial general liability insurance
+declarations page, a Texas special warranty deed, and a Chapter 11 bankruptcy
+notice. Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added patent bibliographic reference detection (`CASE_REF`, Light) for the
+  USPTO INID labels `Appl. No.`, `Application No.`, `Ser. No.`, `Pat. No.`,
+  and `Provisional application No.`. These application/serial/related-patent
+  numbers are label-bound and require a digit-bearing value, so bare figures,
+  patent classification codes (`G01N 35/10`), and statute/section citations
+  stay readable. The label is consumed within the redacted reference, consistent
+  with how SEC file numbers and procurement IDs are handled.
+- Added label-bound identifier coverage for new document types (`BUSINESS_ID`/
+  `CASE_REF`, Light), each requiring a label + qualifier/colon anchor and a
+  digit-bearing value so prose and placeholder values stay readable:
+  - Insurance: `Policy Number`, `NAIC Number`, `NAICS Code`, `NPN`.
+  - Federal grant: `Award Number`, `UEI`, `DUNS Number`, bare-acronym
+    `UEI:`/`DUNS:`/`NPN:`/`EIN:`/`FEIN:`/`CAGE:`, and `NSF/NIH/DOE/NASA/USDA
+    Program Code`.
+  - Deed/recording: `Instrument No.`, recorded `File No.`/`Clerk's File No.`,
+    `Property Identification Number (Tax ID)`, `Notary ID`, and `Bar No.`/
+    `State Bar No.`/`N.C. Bar No.`.
+  - Bankruptcy/court: `Document No.` (ECF) and bare `Tax ID:`.
+- Several of these values are phone-shaped (`DUNS 07-445-1928`, `NPN 18442973`,
+  `Instrument No. 2026-0449173`, `Notary ID 1329984-7`, debtor `Tax ID
+  47-2209184`) and were previously mislabeled `PHONE`. Adding the label-bound
+  `BUSINESS_ID`/`CASE_REF` candidate makes the correct kind win at finalize,
+  mirroring the Round 9 HR/payroll fix.
+- Added patent inventor-name detection (`PERSON`, Light). The `(75) Inventors:`/
+  `Applicant:` line lists multiple inventors separated by `;` and often wrapped
+  across lines; the generic context patterns caught only the first. A dedicated
+  detector captures every TitleCase name on the labelled line, validated by
+  `looksLikePersonName`. Ordinary "the inventor of..." prose has no INID label
+  and stays readable.
+- Added patent examiner-name detection (`PERSON`, Balanced) after the role
+  label `Primary Examiner —`/`Assistant Examiner —`, allowing a single-letter
+  middle initial (`Daniel K. Weinstein`). Mirrors the litigation `Defendant X`
+  role pattern.
+- Added patent inventor/assignee residence detection (`LOCATION`, Balanced):
+  the `City, ST (US)` / `City (XX)` tail on the `(75) Inventors:`/`(73)
+  Assignee:` line. The INID-label context anchor is required, so ordinary city
+  mentions in prose stay readable (no city dictionary is used).
+- Added 11 synthetic regression tests covering each new label group plus
+  counterexamples (bare unlabeled figures, classification codes, ordinary
+  examiner/role prose, ordinary city prose, and `not.toMatch(/Label: PHONE_/)`
+  mislabel guards).
+
+On this round's six-document development corpus, redaction recall against the
+annotator union (claude web + codex/gpt-5, independent) improved from 57.3% to
+70.3% at balanced (135/192 spans), with by-label gains: BUSINESS_ID 36.4% →
+86.4%, CASE_REF 35.0% → 65.0%, PERSON 22.7% → 45.5%, NATIONAL_ID 66.7% → 100%.
+Keep-clean moved from 94.6% to 89.2% (33/37); the 4 violated keep spans are 2
+pre-existing all-caps PERSON false positives newly surfaced by the new corpus
+(`SPECIAL WARRANTY DEED`, `Technical Abstract`) and 2 `Appl. No.:` labels
+consumed within the reference phrase under the engine's documented convention
+for reference labels. No new false positives were introduced on existing
+document patterns.
+
+Known limitation (pre-existing, unrelated to this round): the masked-PRC-ID
+detector constant `MASKED_PRC_ID_RE` in `chinese.ts` was added by the prior
+Chinese round but is not yet wired into `detectChinese`, so asterisk-masked
+national IDs (`3201151988****0022`) still leak their leading digit run as a
+stray `PHONE`. This is a Chinese-ruleset gap to address in a separate round;
+this English round does not touch `chinese.ts`.
+
+## NoAI redaction engine 1.5.9 (general r4, chinese r8) - 2026-06-19
+
+Patch: Chinese/mixed development round 8 (HKIAC & SCIA arbitration set-aside
+application, arbitration Notice-of-Arbitration service summary, arbitration
+applicant letter, a listed-company equity-change report, a filled residential
+lease, and a court dishonest-debtor notice). Deterministic rule changes only.
+No AI/LLM/backend/telemetry added.
+
+- Broadened the HKIAC arbitral case-reference regex (general engine) to accept
+  a 1- OR 2-letter prefix before the digits. HKIAC case codes use both single-
+  and double-letter prefixes (e.g. `HKIAC/A25088` and `HKIAC/PA25057`), so the
+  previous single-letter-only regex left every PA/AR-style code unredacted.
+- Broadened the Chinese label-bound passport regex to accept a 1- OR 2-letter
+  prefix before 6-9 digits. Chinese e-passports and many foreign passports use
+  a 2-letter prefix (e.g. `EM3983934`), which the previous single-letter regex
+  rejected outright. Label-anchored, so a non-passport labelled value still
+  stays readable.
+- Added a direct masked-PRC-ID detector (`NATIONAL_ID`, level 1). Courts and
+  credit-disclosure platforms publish asterisk-masked national IDs shaped
+  `dddddd******dddd` (6-10 leading digits, an asterisk run, a 4-digit suffix).
+  These are not checksum-valid but are still identifying, and the leading digit
+  run was being split off by the generic phone regex as a stray PHONE. Matching
+  the WHOLE masked string as NATIONAL_ID shadows that phone fragment at render.
+  Requiring an asterisk run makes this high-precision (no real ID, amount, or
+  date contains asterisks).
+- `cleanChineseValue` now also strips fullwidth brackets `（）《》【】` (in addition
+  to the halfwidth set) from the ends of label-bound values, so a value that
+  sits inside a parenthetical label such as `（中国护照号码：EM3983934）` is not
+  left with a dangling `）` that fails validation.
+- Added 6 synthetic tests: passport 1/2-letter-prefix coverage + its
+  non-passport counterexample, HKIAC 1/2-letter-prefix coverage + its
+  non-case-code counterexample, and masked-ID coverage + its non-id-asterisk
+  counterexample. On this round's six-document development corpus, redaction
+  recall against the annotator union improved from 51.6% to 53.5% at balanced,
+  keep-clean unchanged.
+
+## NoAI redaction engine 1.5.8 (general r3, chinese r7) - 2026-06-19
+
+Patch: English/general development round (public SEC correspondence, FTC consent
+agreement, and state-AG consent order). Deterministic rule changes only. No
+AI/LLM/backend/telemetry added.
+
+- Fixed a parenthesized-area-code US phone leak. US business letterheads write
+  the area code in parentheses (`(650) 493-9300`, `(212) 895.3500`). The phone
+  regexes start at the first digit and `cleanValue` strips the leading `(`, so
+  the stored value was `650) 493-9300` with a dangling close paren. The literal
+  replacement then matched only from the `6`, leaving a stray `(` visible in the
+  redacted output (`Tel (PHONE_001.`). When a phone value has a close paren
+  directly after a 3-digit area code (the open paren was stripped) AND the raw
+  match began with `(`, the balanced `(AAA)` form is restored so the whole
+  parenthesized number is one redacted token. This only fires on the
+  paren-area-code shape, so ordinary separator phones, ISINs, and other kinds are
+  unaffected.
+- Added a label-bound CASE_REF detector for regulator file/docket/matter/case
+  numbers written as a short digit split with a space or dash: FTC
+  `FILE NO. 092 3184`, `Docket No. 2024 567`, `File No. 092-3184`. These
+  3+4 / 4+3 splits match the generic phone shape and were mislabeled PHONE. The
+  label anchor (`File`/`Docket`/`Matter`/`Case`/`Charge`/`Claim`/`Reference`
+  followed by `No.`) is the trust boundary, so a bare local phone
+  (`Call 555 1234`) keeps its PHONE label. A matching context guard in the direct
+  phone detector skips a split-digit run when it directly follows one of those
+  labels, so the labeled phrase is the only candidate (no stray PHONE fragment).
+- Added 4 synthetic tests: paren-area-code phone coverage, its non-parenthesized
+  counterexample, split file/docket number CASE_REF coverage, and its bare-phone
+  counterexample. On this round's three-document public development corpus
+  (SEC correspondence, FTC consent, state-AG consent), redaction recall against
+  the annotator union improved from 62.8% to 64.1%. The sealed
+  `benchmark-v1.0` Balanced score was unchanged at 59.8% span recall / 64.4%
+  char recall / 50.7% precision proxy / 88.7% keep-clean, confirming the change
+  is recall-neutral on documents without these patterns (no regression).
+
+## NoAI redaction engine 1.5.7 (general r2, chinese r7) - 2026-06-19
+
+Patch: Chinese development round 7 (SAMR penalty decisions, procurement award
+notices, listed-company shareholder-meeting notices). Deterministic rule changes
+only. No AI/LLM/backend/telemetry added.
+
+- Generalized every colon-anchored Chinese label rule to see through a
+  parenthetical synonym between the label and the colon. Formal Chinese
+  paperwork (SAMR/administrative penalty decisions, court filings, contracts)
+  standardizes on `住所（住址）`, `法定代表人（负责人、经营者）`,
+  `统一社会信用代码（注册号）` — a field label qualified by a parenthetical
+  synonym BEFORE the colon. The old rule required the colon immediately after
+  the label, so these labeled ADDRESS/PERSON/BUSINESS_ID values leaked
+  entirely. A new `LABEL_SYNONYM_PARENS` optional segment sits between the label
+  and `LABEL_SEP` for `applyLabelRules` and both ADDRESS multi-line detectors.
+  It is anchored by the label alternation (a real label must precede the
+  parenthetical), so ordinary prose such as `本通知（盖章后生效）` stays
+  readable.
+- Added 4 shareholder-meeting / conference venue labels to ADDRESS_LABELS:
+  现场会议地点, 会议地点, 登记地点, 会议地址. Listed-company AGM convening
+  notices announce the on-site venue under these labels, which the generic
+  address-label set did not cover. Bare prose use (`会议地点尚未确定`) is still
+  protected because `LABEL_SEP` requires a colon-value structure.
+- Added 4 synthetic tests: parenthetical-synonym label coverage + its
+  not-a-label-synonym counterexample, and meeting/registration venue label
+  coverage + its prose-without-colon counterexample.
+
 ## NoAI redaction engine 1.5.6 (general r2, chinese r6) - 2026-06-19
 
 Patch: Chinese postcode label detection and label guard hardening.

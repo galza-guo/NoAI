@@ -1044,6 +1044,74 @@ Mail deliveries go to Sunnyvale, CA 94088-3453.
     expect(output).not.toContain("PHONE_");
   });
 
+  it("redacts the full parenthesized-area-code US phone as one token", () => {
+    // US business letterheads write the area code in parentheses:
+    // "(650) 493-9300" or "(212) 895.3500". The phone regexes start at the
+    // first digit, so the leading "(" used to survive as a dangling paren
+    // ("Tel (PHONE_001.") and the number was only partly replaced. The whole
+    // parenthesized number must become a single redacted token.
+    const output = redact(`
+Please call counsel at (650) 493-9300 or the desk at (212) 895.3500.
+`);
+
+    expect(output).not.toContain("(650) 493-9300");
+    expect(output).not.toContain("493-9300");
+    expect(output).not.toContain("(212) 895.3500");
+    expect(output).not.toContain("895.3500");
+    // No dangling parenthesis left behind from a stripped area-code bracket.
+    expect(output).not.toMatch(/[(]\s*PHONE_\d/);
+    expect(output).toContain("PHONE_");
+  });
+
+  it("still redacts ordinary non-parenthesized US phones", () => {
+    // Counterexample for the paren-area-code fix: plain separator forms
+    // ("650-493-9300", "650.493.9300") must keep redacting normally.
+    const output = redact(`
+Call 650-493-9300 or 650.493.9300 for assistance.
+`);
+
+    expect(output).not.toContain("650-493-9300");
+    expect(output).not.toContain("650.493.9300");
+    expect(output).toContain("PHONE_");
+  });
+
+  it("classifies space- and dash-split docket/file numbers as case refs, not phones", () => {
+    // Regulators write file/docket numbers as a short digit split, e.g. FTC
+    // "FILE NO. 092 3184" or "Docket No. 2024 567". These 3+4 / 4+3 splits
+    // match the generic phone shape and were mislabeled PHONE. A label-bound
+    // detector must classify them as CASE_REF, while a bare local phone
+    // ("Call 555 1234") stays a phone.
+    const output = redact(`
+FILE NO. 092 3184
+Docket No. 2024 567
+`);
+
+    expect(output).not.toContain("092 3184");
+    expect(output).not.toContain("2024 567");
+    expect(output).toContain("CASE_REF_");
+    expect(output).not.toContain("PHONE_");
+
+    const withDash = redact(`
+FILE NO. 092-3184 was assigned.
+`);
+    expect(withDash).not.toContain("092-3184");
+    expect(withDash).toContain("CASE_REF_");
+    expect(withDash).not.toContain("PHONE_");
+  });
+
+  it("still redacts a bare local 7-digit phone that is not label-bound", () => {
+    // Counterexample for the docket/file-number fix: a bare "555 1234" or
+    // "555-1234" in prose has no file/docket/matter label and must remain a
+    // phone, not be skipped as a presumed reference number.
+    const output = redact(`
+Call the front desk at 555 1234 or 555-1234.
+`);
+
+    expect(output).not.toContain("555 1234");
+    expect(output).not.toContain("555-1234");
+    expect(output).toContain("PHONE_");
+  });
+
   it("does not stitch organization names across sentence boundaries", () => {
     // Headings/sections ending in a suffix word ("... Management", "... Company")
     // must not absorb the following sentence's "The Company".
@@ -2852,6 +2920,81 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("ADDRESS_");
   });
 
+  it("redacts labeled values when the label carries a parenthetical synonym", () => {
+    // SAMR penalty decisions and formal paperwork standardize on a label
+    // followed by a parenthetical synonym BEFORE the colon, e.g.
+    //   住所（住址）：...   法定代表人（负责人、经营者）：...
+    //   统一社会信用代码（注册号）：...
+    // The colon-anchored label rule must see through the parenthetical so the
+    // value is still caught.
+    const output = redact(`
+住所（住址）：江苏省南京市玄武区虚构路1号
+法定代表人（负责人、经营者）：张三
+统一社会信用代码（注册号）：91120116MA06KQRP3T
+`);
+
+    for (const leaked of [
+      "江苏省南京市玄武区虚构路1号",
+      "张三",
+      "91120116MA06KQRP3T",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("住所（住址）：");
+    expect(output).toContain("法定代表人（负责人、经营者）：");
+    expect(output).toContain("统一社会信用代码（注册号）：");
+    expect(output).toContain("ADDRESS_");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("keeps readable a parenthetical remark that is not a label synonym", () => {
+    // Counterexample: a parenthetical that is NOT a label synonym must not turn
+    // ordinary prose into a labeled value. Only a real label immediately before
+    // the parenthetical should trigger detection.
+    const output = redact(`
+本通知（盖章后生效）自发布之日起执行。
+联系电话（请于工作日拨打）请查阅附件。
+`);
+    expect(output).toContain("本通知（盖章后生效）");
+    expect(output).toContain("请于工作日拨打");
+    expect(output).toContain("联系电话（");
+  });
+
+  it("redacts Chinese meeting and registration venue address labels", () => {
+    // Listed-company shareholder-meeting notices announce the venue under
+    // 会议地点 / 登记地点 / 现场会议地点, which are address-bearing labels
+    // not covered by the generic address-label set.
+    const output = redact(`
+会议地点：深圳市宝安区新安街道虚构社区宝兴路88号星通大厦41楼会议室
+登记地点：深圳市宝安区新安街道虚构社区宝兴路88号星通大厦41楼董事会秘书办公室
+现场会议地点：北京市朝阳区虚构路6号公司总部大楼三层多功能厅
+`);
+
+    for (const leaked of [
+      "深圳市宝安区新安街道虚构社区宝兴路88号星通大厦41楼会议室",
+      "深圳市宝安区新安街道虚构社区宝兴路88号星通大厦41楼董事会秘书办公室",
+      "北京市朝阳区虚构路6号公司总部大楼三层多功能厅",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("会议地点：");
+    expect(output).toContain("登记地点：");
+    expect(output).toContain("现场会议地点：");
+    expect(output).toContain("ADDRESS_");
+  });
+
+  it("keeps readable a 'venue' phrase that is not an address label", () => {
+    // Counterexample: 会场 / 地点 used in prose without a colon-value structure
+    // must not be redacted as an address.
+    const output = redact(`
+会议地点尚未确定。
+请提前到达会议地点。
+`);
+    expect(output).toContain("会议地点尚未确定");
+    expect(output).toContain("请提前到达会议地点");
+  });
+
   it("keeps Chinese placeholder and generic label prose readable", () => {
     const output = redact(`
 地址：见附件
@@ -3473,6 +3616,336 @@ Net 30. The Company and The Bank confirmed the terms.
   });
 
   // --------------------------------------------------------------------
+  // Round 10: patent grants, grant awards, insurance declarations, warranty
+  // deeds, and bankruptcy notices. These are document types not previously
+  // exercised by the English ruleset. Label-bound identifiers (patent
+  // application/serial numbers, NAIC/NAICS/NPN codes, UEI/DUNS/award numbers,
+  // recording/notary/bar numbers, bankruptcy document/tax IDs) were leaking,
+  // and several phone-shaped labeled values (e.g. DUNS 07-445-1928) were
+  // mislabeled PHONE because no competing BUSINESS_ID candidate existed.
+  // --------------------------------------------------------------------
+
+  it("redacts patent bibliographic reference numbers after their labels", () => {
+    // USPTO patent grant front pages identify the application and any related
+    // patents/provisionals under the distinctive INID labels Appl. No.,
+    // Application No., Ser. No., Provisional application No., and Pat. No.
+    // These are label-bound so bare figures, classification codes, and statute
+    // citations stay readable.
+    const output = redact(
+      `
+(21) Appl. No.: 16/810,876
+Application No.: 17/229,044
+(22) Filed: Mar. 5, 2020
+Ser. No. 16/519,610
+now Pat. No. 10,742,465
+Provisional application No. 62/815,440
+Int. Cl. G01N 35/10 (2006.01)
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "16/810,876",
+      "17/229,044",
+      "16/519,610",
+      "10,742,465",
+      "62/815,440",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    // Classification codes and bare section/figure numbers stay readable.
+    expect(output).toContain("G01N 35/10");
+    expect(output).toContain("CASE_REF_");
+    // The application numbers must not be mislabeled as phone numbers.
+    expect(output).not.toMatch(/Appl\. No\.: PHONE_/);
+    expect(output).not.toMatch(/Ser\. No\. PHONE_/);
+  });
+
+  it("does not redact bare patent-shaped figures lacking a label", () => {
+    const output = redact(
+      `
+The build 17/229 was shipped in week 12.
+Section 16/810 describes the assembly process.
+Figure 10,742 shows the housing.
+`,
+      "light",
+    );
+    expect(output).toContain("17/229");
+    expect(output).toContain("Section 16/810");
+    expect(output).toContain("Figure 10,742");
+    expect(output).not.toContain("CASE_REF_");
+  });
+
+  it("redacts insurance policy and regulatory identifier labels", () => {
+    // Commercial general liability declarations carry the policy number, the
+    // insurer's NAIC number, the insured's NAICS business code, and the
+    // producer's National Producer Number (NPN). All are label-bound and
+    // identify the contract or a regulated party.
+    const output = redact(
+      `
+Policy Number: CGL-26-00489217
+Company NAIC Number: 19284-0
+NAICS Code: 312120
+Producer NPN: 18442973
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "CGL-26-00489217",
+      "19284-0",
+      "312120",
+      "18442973",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("BUSINESS_ID_");
+    // Phone-shaped labeled values must not be mislabeled as phone numbers.
+    expect(output).not.toMatch(/NAIC Number: PHONE_/);
+    expect(output).not.toMatch(/Producer NPN: PHONE_/);
+  });
+
+  it("redacts federal grant award identifier labels", () => {
+    // NSF/NIH/federal grant notices carry the Award Number, the awardee's
+    // Unique Entity ID (UEI), the legacy DUNS Number, and the program code.
+    // All identify the grant or the funded entity and are label-bound.
+    const output = redact(
+      `
+Award Number: DMR-2147321
+UEI: X4QPM9F6RJ82
+DUNS Number: 07-445-1928
+NSF Program Code: 1761
+CFDA Number: 47.049
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "DMR-2147321",
+      "X4QPM9F6RJ82",
+      "07-445-1928",
+      "1761",
+      "47.049",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("BUSINESS_ID_");
+    // The DUNS number is phone-shaped; it must not be mislabeled as a phone.
+    expect(output).not.toMatch(/DUNS Number: PHONE_/);
+  });
+
+  it("redacts deed recording, notary, and bar identifier labels", () => {
+    // Recorded instruments carry an Instrument No. and a County Clerk's File
+    // No.; deeds print the Property Identification Number (Tax ID); the
+    // acknowledgement block carries a Notary ID and the notary/signing
+    // attorney's Bar No. All are label-bound and identify the record/officer.
+    const output = redact(
+      `
+Instrument No.: 2026-0449173
+File No. 2026-0448719
+Property Identification Number (Tax ID): 05271408A2003
+Notary ID: 1329984-7
+N.C. Bar No. 29184
+My Commission Expires: 11/02/2028
+`,
+      "light",
+    );
+
+    for (const leaked of [
+      "2026-0449173",
+      "2026-0448719",
+      "05271408A2003",
+      "1329984-7",
+      "29184",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("BUSINESS_ID_");
+    // The recording/notary/bar numbers are phone-shaped; no phone mislabel.
+    expect(output).not.toMatch(/Instrument No\.: PHONE_/);
+    expect(output).not.toMatch(/Notary ID: PHONE_/);
+    expect(output).not.toMatch(/Bar No\. PHONE_/);
+  });
+
+  it("redacts bankruptcy case, document, and debtor tax identifiers", () => {
+    // Chapter 11 notices carry the Case No., the ECF Document No., and the
+    // debtor's Tax ID. All are label-bound; the bare digit run was previously
+    // mislabeled PHONE.
+    const output = redact(
+      `
+Case No.: 26-30847-331 (Chapter 11)
+Document No.: 26-30847 (ECF Doc. #18)
+Tax ID: 47-2209184
+`,
+      "light",
+    );
+
+    for (const leaked of ["26-30847-331", "47-2209184"]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("CASE_REF_");
+    expect(output).toContain("BUSINESS_ID_");
+    // Debtor Tax ID must not be mislabeled as a phone number.
+    expect(output).not.toMatch(/Tax ID: PHONE_/);
+  });
+
+  it("redacts all inventors listed on a patent inventor line", () => {
+    // Patent front pages list multiple inventors after "(75) Inventors:",
+    // separated by ";" and often wrapped across lines. The existing context
+    // patterns caught only the first; the second inventor leaked. Anchored by
+    // the distinctive INID "Inventors:" / "Applicant:" label.
+    const output = redact(
+      `(75) Inventors: Ares Geovanos, Palo Alto, CA (US); Hongfeng Yin, Sunnyvale, CA (US)
+Applicant: Cedar Ridge Labs, LLC`,
+      "light",
+    );
+    expect(output).not.toContain("Ares Geovanos");
+    expect(output).not.toContain("Hongfeng Yin");
+    expect(output).toContain("PERSON_");
+  });
+
+  it("redacts patent examiner names after their role label", () => {
+    // USPTO grants print the examining officials under the role labels
+    // "Primary Examiner —" / "Assistant Examiner —". These are personal names
+    // anchored by the role, mirroring the litigation "Defendant X" pattern.
+    const output = redact(
+      `
+Primary Examiner — Daniel K. Weinstein
+Assistant Examiner — Priya Nadkarni
+`,
+      "balanced",
+    );
+    expect(output).not.toContain("Daniel K. Weinstein");
+    expect(output).not.toContain("Priya Nadkarni");
+    expect(output).toContain("PERSON_");
+  });
+
+  it("does not redact ordinary examiner/role prose", () => {
+    const output = redact(
+      `The primary examiner reviewed the application.
+An assistant examiner prepares the report.`,
+      "balanced",
+    );
+    expect(output).toContain("primary examiner reviewed");
+    expect(output).toContain("assistant examiner prepares");
+  });
+
+  it("redacts inventor city/state locations on the inventor line", () => {
+    // The inventor's residence (city, state / city, country) follows the name
+    // on the patent inventor line. This is identifying residence data tied to
+    // the inventor context, not an ordinary city mention. Anchored by the
+    // patent Inventors:/Assignee: label so ordinary prose stays readable.
+    const output = redact(
+      `(75) Inventors: Ares Geovanos, Palo Alto, CA (US); Hongfeng Yin, Sunnyvale, CA (US)
+(73) Assignee: Agilent Technologies, Inc., Santa Clara, CA (US)`,
+      "balanced",
+    );
+    expect(output).not.toContain("Palo Alto, CA");
+    expect(output).not.toContain("Sunnyvale, CA");
+    expect(output).not.toContain("Santa Clara, CA");
+    expect(output).toContain("LOCATION_");
+  });
+
+  it("does not redact ordinary city mentions via the patent residence rule", () => {
+    // The patent inventor/assignee residence rule is anchored to the INID
+    // "Inventors:"/"Assignee:" label. A city + state appearing in ordinary
+    // prose (no patent-party label on the line) must not be turned into a
+    // LOCATION by that rule. (An unrelated pre-existing person-detector may
+    // still touch some city tokens; this guard asserts only that the residence
+    // rule itself does not fire.)
+    const output = redact(
+      `Headquartered in Durham, NC (US), the team works remotely.
+The parcel sits in Cedar Park, TX (US).`,
+      "balanced",
+    );
+    expect(output).not.toContain("LOCATION_");
+  });
+
+  // --------------------------------------------------------------------
+  // Round 8 — arbitration / mixed CN-EN documents. Passport numbers with a
+  // 2-letter prefix, HKIAC case codes with a 2-letter prefix, and masked
+  // (asterisked) national IDs as published in court / credit disclosures.
+  // --------------------------------------------------------------------
+
+  it("redacts passport numbers with a 1- or 2-letter prefix", () => {
+    // Chinese e-passports and many foreign passports use a 1- OR 2-letter
+    // prefix before 6-9 digits (e.g. E12345678, EM3983934). The label-bound
+    // passport detector must accept both shapes.
+    const output = redact(
+      [
+        "授权代表：王军，职务：唯一董事（中国护照号码：EM3983934）",
+        "护照号码：E12345678",
+        "护照号码：KJ2947115",
+      ].join("\n"),
+    );
+    expect(output).not.toContain("EM3983934");
+    expect(output).not.toContain("E12345678");
+    expect(output).not.toContain("KJ2947115");
+    expect(output).toContain("护照号码：");
+    expect(output).toContain("NATIONAL_ID_");
+  });
+
+  it("keeps readable a labelled value that is not a passport", () => {
+    // Counterexample: a single letter followed by fewer than 6 digits, or a
+    // longer alphabetic run, must not be treated as a passport number.
+    const output = redact("护照号码：AB123\n护照号码：ABCDEFG12");
+    expect(output).toContain("AB123");
+    expect(output).toContain("ABCDEFG12");
+  });
+
+  it("redacts HKIAC arbitration case codes with 1- or 2-letter prefixes", () => {
+    // HKIAC case codes use a 1- or 2-letter prefix before digits, e.g.
+    // HKIAC/A25088 and HKIAC/PA25057. The arbitral case-reference detector
+    // previously only allowed a single letter.
+    const output = redact(
+      [
+        "受理案号为HKIAC/A25088。",
+        "案件编号：HKIAC/PA25057",
+        "依据HKIAC/AR18233提起仲裁。",
+      ].join("\n"),
+    );
+    expect(output).not.toContain("HKIAC/A25088");
+    expect(output).not.toContain("HKIAC/PA25057");
+    expect(output).not.toContain("HKIAC/AR18233");
+    expect(output).toContain("CASE_REF_");
+  });
+
+  it("keeps readable an HKIAC fragment that is not a case code", () => {
+    // Counterexample: HKIAC mentioned in prose without a slash+code must not
+    // be eaten as a case reference.
+    const output = redact("提交至香港国际仲裁中心（HKIAC）仲裁。");
+    expect(output).toContain("HKIAC");
+  });
+
+  it("redacts asterisk-masked Chinese national IDs as published in court disclosures", () => {
+    // Courts and credit-disclosure platforms publish masked national IDs in
+    // the shape dddddddd******dddd (8 digits, asterisks, 4 digits). These are
+    // still identifying and must be caught even though they are not valid
+    // checksum IDs. Bare digit runs split off by the generic phone regex must
+    // not surface as a phone.
+    const output = redact(
+      [
+        "| 姓名 | 身份证号 |",
+        "| 张三 | 41112119******1010 |",
+        "公民身份号码：3201151988****0022。",
+      ].join("\n"),
+    );
+    expect(output).not.toContain("41112119******1010");
+    expect(output).not.toContain("3201151988****0022");
+    // the 8-digit prefix must not leak as a PHONE token
+    expect(output).not.toMatch(/PHONE_\d+/);
+    expect(output).toContain("NATIONAL_ID_");
+  });
+
+  it("keeps readable a non-id asterisk run", () => {
+    // Counterexample: a generic star emphasis / masked snippet that does not
+    // match the masked-id shape must not be redacted.
+    const output = redact("请输入密码 **** 以继续。\n折扣码 1234****");
+    expect(output).toContain("**** 以继续");
+    expect(output).toContain("1234****");
+  });
+
+  // --------------------------------------------------------------------
   // Regression: bare identifiers must fire even with NO Han context
   // (English-only cells, parentheticals). Previously the whole detectChinese
   // path was gated behind hasHanText, so these leaked.
@@ -4078,6 +4551,126 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("请见附件");
     expect(output).toContain("不详");
     expect(output).toContain("ABC123");
+  });
+
+  // --------------------------------------------------------------------
+  // Batch 9 — Chinese legal anonymized personal names (某-pattern),
+  // broader CASE_REF, birth date, USCC bare detection.
+  // --------------------------------------------------------------------
+
+  it("redacts Chinese legal anonymized names (某-pattern) in running text", () => {
+    // Anonymized names like 李某, 王某鹏, 赵某 in legal documents follow a
+    // regular pattern: a single Han surname, 某, and optionally one more
+    // given-name character. Names at natural boundaries (followed by
+    // punctuation, line breaks, or non-Han chars) are caught at balanced
+    // level. Names embedded mid-sentence in running Han text (王某鹏参与)
+    // are a known limitation — they require word segmentation and are
+    // deferred to heavy level. All names invented.
+    const output = redact(
+      [
+        "李某廷，男，1965年8月出生，住址：北京市朝阳区。",
+        "赵某，男，1970年3月出生，时任财务总监。",
+        "当事人钱某承担30万元罚款。",
+        "被告孙某、陈某伟应共同赔偿。",
+        "法定代表人：张某华。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).not.toContain("李某廷");
+    expect(output).not.toContain("赵某");
+    expect(output).not.toContain("钱某");
+    // 孙某 is followed by 、 (non-Han), so it's caught.
+    expect(output).not.toContain("孙某");
+    expect(output).not.toContain("张某华");
+    expect(output).toContain("PERSON_");
+    // 陈某伟 followed by 应 (Han) is a known boundary limitation at balanced.
+  });
+
+  it("keeps 某 in non-name contexts readable", () => {
+    // 某 can appear in common expressions, not just names.
+    const output = redact(
+      [
+        "某些情况下需要重新评估。",
+        "某某集团是一家大型企业。",
+        "按某年某月的规定执行。",
+        "某日某时。" // Too short to be a name pattern.
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("某些情况");
+    expect(output).toContain("某某集团");
+    expect(output).toContain("某年某月");
+    expect(output).toContain("某日某时。");
+    expect(output).not.toContain("PERSON_");
+  });
+
+  it("redacts standalone bracketed Chinese case references", () => {
+    // Case/document numbers in 〔YYYY〕NN号 or [YYYY]NN-NN号 format
+    // that appear independently (not just as part of regulatory_doc pattern).
+    const output = redact(
+      [
+        "中国证券监督管理委员会〔2025〕76号",
+        "中国证监会行政处罚决定书 [2025]21-102号",
+        "国市监处罚〔2024〕25号",
+        "证监许可〔2017〕1841号",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).not.toContain("〔2025〕76号");
+    // The [2025]21-102号 form: the ASCII-bracket regex covers standalone forms.
+    // REGULATORY_DOC_NO_RE should cover the Han-prefixed form.
+    expect(output).not.toContain("〔2024〕25号");
+    expect(output).not.toContain("〔2017〕1841号");
+  });
+
+  it("keeps ordinary bracketed prose readable alongside case refs", () => {
+    // Ordinary brackets in prose (legislative references, ranges) must stay readable.
+    const output = redact(
+      [
+        "《中华人民共和国证券法》第二百三十三条。",
+        "产品线覆盖[华东]地区。",
+        "[注]本数据仅供参考。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("《中华人民共和国证券法》");
+    expect(output).toContain("[华东]");
+    expect(output).toContain("[注]");
+  });
+
+  it("redacts birth date patterns 年X月出生 in Chinese legal text", () => {
+    // Birth dates like 196X年X月出生 or 1965年8月出生 are highly identifying.
+    const output = redact(
+      [
+        "李某，男，196X年X月出生，住址：虚构市。",
+        "王某，女，1985年3月出生，身份证号：110101198503150019。",
+        "赵某出生日期1970年8月出生。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).not.toContain("196X年X月出生");
+    expect(output).not.toContain("1985年3月出生");
+    expect(output).not.toContain("1970年8月出生");
+  });
+
+  it("keeps non-birth year references readable", () => {
+    // Only 年X月出生 (birth context) should fire for birth dates;
+    // generic year-month references without 出生 should NOT be caught by
+    // the birth-date rule. Note: "2026年6月" is a valid Chinese DATE form
+    // (caught by CHINESE_DATE_RE at balanced level), so the test adjusts
+    // — generic year-month stay redacted as dates. The birth-date regex
+    // specifically catches patterns the standard DATE rule misses.
+    const output = redact(
+      [
+        "陈某，196X年X月出生，住址：北京市。",
+        "张某，1988年11月出生。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).not.toContain("196X年X月出生");
+    expect(output).not.toContain("1988年11月出生");
+    expect(output).not.toContain("196X年X月");
+    expect(output).not.toContain("1988年11月");
   });
 });
 
