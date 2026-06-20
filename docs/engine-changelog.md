@@ -3,6 +3,35 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.16 (general r11, chinese r10) - 2026-06-20
+
+Claims / citations round: insurance EOBs and regulatory press releases with
+academic citations. Synthetic representative documents only; no real documents
+committed. Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Document-section headings are no longer over-redacted as PERSON. Press
+  releases, reports, and reference lists print section headings on their own line
+  ("Citation Reference", "Methodology Overview", "Background Summary",
+  "Disclosure Notes"). `looksLikePersonName` now rejects a multiword candidate
+  whose final token is a section-heading noun (Reference(s), Overview, Summary,
+  Background, Introduction, Appendix, Index, Notes, Disclosure(s), Methodology,
+  Findings, Conclusions, Acknowledgments) - these never appear as surnames.
+- Added form/benefits label person detection (PERSON, Light). Insurance EOBs and
+  HR/benefits forms introduce the named individual with a fixed label and a
+  colon or dash: "Member: Jordan A. Bellweather", "Patient: Maria Lopez",
+  "Insured: Robert Albright". These labels are not person titles, so the names
+  were missed entirely. The label (Member/Patient/Insured/Employee/Subscriber/
+  Beneficiary/Dependent/Policyholder/Claimant/Applicant/Registrant/Cardholder)
+  is the trust anchor; the name may carry a middle initial.
+- Added 2 synthetic tests (section-heading over-redaction; form/benefits label
+  name), each with a counterexample.
+- Benchmark-neutral on NAIR-v2 (recall 68.44%, 655 covered - unchanged).
+- Residual (deferred): medical procedure/diagnosis codes (CPT/ICD), member IDs,
+  and share quantities in tables are treated as plain numbers; `.example`
+  reserved-TLD URLs are not matched by the URL validator (production docs use
+  real TLDs). These need code/quantity-context or TLD-list handling and are
+  deferred.
+
 ## NoAI redaction engine 1.5.15 (general r10, chinese r10) - 2026-06-20
 
 Insider-filing / grant-notice round: SEC Form 4 filings and U.S. federal grant

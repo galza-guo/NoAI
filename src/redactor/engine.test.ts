@@ -2681,6 +2681,58 @@ The matter was referred to (Margaret Holloway) for review.
     expect(output).toContain("PERSON_");
   });
 
+  it("does not redact document-section headings as person names", () => {
+    // Press releases, reports, and academic reference lists print section
+    // headings on their own line ("Citation Reference", "Methodology Overview",
+    // "Background Summary"). The standalone title-case person detector carved
+    // these out as PERSON. A section-heading noun as the final token never
+    // appears as a personal surname, so it is safe to reject.
+    const output = redact(
+      `
+Academic Citation Reference
+Methodology Overview
+Background Summary
+Disclosure Notes
+Diane Pemberton
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("Citation Reference");
+    expect(output).toContain("Methodology Overview");
+    expect(output).toContain("Background Summary");
+    expect(output).toContain("Disclosure Notes");
+    // Counterexample: a real standalone person line is still redacted.
+    expect(output).not.toContain("Diane Pemberton");
+    expect(output).toContain("PERSON_");
+  });
+
+  it("redacts person names after form and benefits labels", () => {
+    // Insurance EOBs and HR/benefits forms introduce the named individual with a
+    // fixed label and a colon/dash: "Member: Jordan A. Bellweather",
+    // "Patient: Maria Lopez", "Insured: Robert Albright". These labels are not
+    // person titles, so the title-led name detector missed the names entirely.
+    // The label is the trust anchor; the name may carry a middle initial.
+    const output = redact(
+      `
+Member: Jordan A. Bellweather
+Patient: Maria Lopez
+Insured: Robert Albright
+Subscriber: Helen Park
+The member portal is open daily.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("Bellweather");
+    expect(output).not.toContain("Maria Lopez");
+    expect(output).not.toContain("Robert Albright");
+    expect(output).not.toContain("Helen Park");
+    expect(output).toContain("PERSON_");
+    // Counterexample: the generic label word in prose must stay readable.
+    expect(output).toContain("member portal");
+  });
+
   it("preserves invoice table headers, boilerplate, and unlabeled line items", () => {
     // Counterexample: finance labels, boilerplate terms, manufacturer item
     // codes, table quantities, unit prices, totals, and version numbers must

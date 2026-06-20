@@ -1,8 +1,8 @@
-export const ENGINE_VERSION = "1.5.15";
+export const ENGINE_VERSION = "1.5.16";
 
 export const ENGINE_VERSION_DATE = "2026-06-20";
 
-export const GENERAL_RULES_VERSION = 10;
+export const GENERAL_RULES_VERSION = 11;
 
 export const CHINESE_RULES_VERSION = 10;
 

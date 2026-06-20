@@ -2291,6 +2291,15 @@ export class Detector {
         /\b(?:Primary|Assistant|Associate)?\s*Examiner\s*[—–-]\s*([A-Z][A-Za-z’’-]+(?:[^\S\r\n]+(?:[A-Z]\.?|[A-Z][A-Za-z’’-]+)){1,3})\b/g,
         "patent examiner plus name",
       ],
+      [
+        // Form / benefits label followed by the named individual, e.g. EOB and
+        // insurance/HR forms print "Member: Jordan A. Bellweather",
+        // "Patient: Maria Lopez", "Insured: Robert Albright". The label is the
+        // trust anchor; the name may carry a single-letter middle initial. These
+        // names were missed entirely because the labels are not person titles.
+        /\b(?:Member|Patient|Insured|Employee|Subscriber|Beneficiary|Dependent|Policyholder|Claimant|Applicant|Registrant|Cardholder)\s*[:\-]\s*([A-Z][A-Za-z'’-]+(?:[^\S\r\n]+(?:[A-Z]\.?|[A-Z][A-Za-z'’-]+)){1,3})\b/g,
+        "form/benefits label plus name",
+      ],
     ];
 
     for (const [regex, reason] of contextPatterns) {
@@ -3678,6 +3687,24 @@ export class Detector {
       "Services",
       "Schedule",
       "Schedules",
+      // Document section headings caught by the standalone-line person detector
+      // ("Citation Reference", "Methodology Overview", "Background Summary",
+      // "Disclosure Notes"). These section nouns never appear as surnames.
+      "Reference",
+      "References",
+      "Overview",
+      "Summary",
+      "Background",
+      "Introduction",
+      "Appendix",
+      "Index",
+      "Notes",
+      "Disclosures",
+      "Disclosure",
+      "Methodology",
+      "Findings",
+      "Conclusions",
+      "Acknowledgments",
     ]);
     if (tokens.length >= 2 && PRODUCT_HEADING_ENDINGS.has(lastToken)) return false;
     // Reject corporate-governance role / officer phrases that the contextual
