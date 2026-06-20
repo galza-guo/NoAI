@@ -3,6 +3,32 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.15 (general r10, chinese r10) - 2026-06-20
+
+Insider-filing / grant-notice round: SEC Form 4 filings and U.S. federal grant
+award notices. Synthetic representative documents only; no real documents
+committed. Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Regulation citations and parenthetical statute names are no longer
+  over-redacted as PERSON. Federal grant notices and contracts cite regulations
+  as "2 CFR 200 (Uniform Administrative Requirements)", "48 CFR 9903 (Cost
+  Accounting Standards)", and "...Transparency Act of 2006". Two changes:
+  (1) the parenthetical-person detector now skips when the text before the "("
+  ends in a citation indicator (CFR, U.S.C., USC, FR, Section, Sec., Article,
+  Rule, Part, Title, Chapter, Regulation, Act) — the parenthetical phrase is the
+  regulation NAME; (2) `looksLikePersonName` rejects a multiword candidate whose
+  final token is a statute/act indicator (Act, Acts, Code, Rules,
+  Regulation(s)) — these never appear as surnames. Benchmark-neutral on NAIR-v2
+  (recall 68.44%, 655 covered — unchanged; precision 55.5% -> 55.6%).
+- Added 1 synthetic test (regulation citations + parenthetical statute names)
+  with a real-parenthetical-person counterexample.
+- Residual (deferred): share-quantity columns in Form 4 transaction tables and
+  award budget tables are treated as plain numbers (not redacted); percentage
+  values in structural labels (e.g. Form 4 "10% Owner") still redact as AMOUNT.
+  Awardee orgs without Inc/LLC suffixes (e.g. "...Research Institute") still
+  leak; UEI identifiers leak. These need quantity-context and abbreviation-aware
+  handling and are deferred.
+
 ## NoAI redaction engine 1.5.14 (general r9, chinese r10) - 2026-06-20
 
 Employment/credit/lease round: executive employment agreements and credit-

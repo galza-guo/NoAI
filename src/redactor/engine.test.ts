@@ -2653,6 +2653,34 @@ Helena Brandt
     expect(output).toContain("PERSON_");
   });
 
+  it("keeps regulation citations and parenthetical statute names readable", () => {
+    // Federal grant notices and contracts cite regulations as
+    // "2 CFR 200 (Uniform Administrative Requirements)", "48 CFR 9903 (Cost
+    // Accounting Standards)", and "Federal Funding Accountability and
+    // Transparency Act of 2006". The parenthetical title-case phrase is the NAME
+    // of the regulation, but the parenthetical-person detector carved it out as
+    // PERSON, fragmenting the citation. A parenthetical that follows a
+    // regulation/citation indicator (CFR, U.S.C., Section, Act, Code) is a
+    // regulation name and must stay readable.
+    const output = redact(
+      `
+comply with all applicable terms and conditions, including 2 CFR 200 (Uniform Administrative Requirements), 48 CFR 9903 (Cost Accounting Standards), and the Federal Funding Accountability and Transparency Act of 2006.
+The matter was referred to (Margaret Holloway) for review.
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("2 CFR 200");
+    expect(output).toContain("Uniform Administrative Requirements");
+    expect(output).toContain("48 CFR 9903");
+    expect(output).toContain("Cost Accounting Standards");
+    expect(output).toContain("Transparency Act of 2006");
+    // Counterexample: a real parenthetical person (no regulation citation) is
+    // still redacted.
+    expect(output).not.toContain("Margaret Holloway");
+    expect(output).toContain("PERSON_");
+  });
+
   it("preserves invoice table headers, boilerplate, and unlabeled line items", () => {
     // Counterexample: finance labels, boilerplate terms, manufacturer item
     // codes, table quantities, unit prices, totals, and version numbers must

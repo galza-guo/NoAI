@@ -2296,6 +2296,23 @@ export class Detector {
     for (const [regex, reason] of contextPatterns) {
       for (const match of doc.text.matchAll(regex)) {
         const name = cleanValue(match[1]);
+        // A parenthetical title-case phrase that follows a regulation/citation
+        // indicator is the NAME of the cited regulation, not a person, e.g.
+        // "2 CFR 200 (Uniform Administrative Requirements)",
+        // "48 CFR 9903 (Cost Accounting Standards)",
+        // "Section 16 (Short-Swing Profit Recovery)". The parenthetical-person
+        // pattern matches any 2-4 capitalized words in parens, so without this
+        // context guard it fragments the citation into a PERSON token. Skip when
+        // the text immediately before the "(" ends in a citation/title indicator.
+        if (reason === "parenthetical person") {
+          const before = doc.text.slice(0, match.index ?? 0);
+          if (
+            /\b(?:CFR|C\.F\.R\.|U\.S\.C\.|USC|FR|F\.R\.|Section|Sec\.?|Article|Rule|Part|Title|Chapter|Regulation|Act)\s*(?:\d[\dA-Za-z.\-]*\s*)*$/i.test(
+              before,
+            )
+          )
+            continue;
+        }
         // The communication-context pattern (from/to/between/and/by ...) can
         // catch a company/agency fragment when a conjunction sits inside an
         // entity name (e.g. "and Clearing Limited" from "Hong Kong Exchanges and
@@ -3687,6 +3704,22 @@ export class Detector {
       "Signatory",
     ]);
     if (tokens.length >= 2 && ROLE_ENDINGS.has(lastToken)) return false;
+    // A multiword candidate whose final token is a statute/act indicator is a
+    // law name, not a person: "Securities Act", "Transparency Act", "Banking
+    // Code", "Arbitration Rules". These were carved out as PERSON by the
+    // communication-context detector (the "and" inside "Funding Accountability
+    // and Transparency Act") and by standalone-line detection. "Act", "Code",
+    // "Rules", and "Regulation(s)" never appear as a personal surname, so this
+    // is safe globally; a real person line ("Maria Lopez") is unaffected.
+    const STATUTE_NAME_ENDINGS = new Set([
+      "Act",
+      "Acts",
+      "Code",
+      "Rules",
+      "Regulation",
+      "Regulations",
+    ]);
+    if (tokens.length >= 2 && STATUTE_NAME_ENDINGS.has(lastToken)) return false;
     // Reject finance/operations document-section headings caught by the
     // standalone-line or list detectors on invoices, remittance advice, and
     // accounts-payable forms (e.g. "Remittance Advice", "Bank Details",
