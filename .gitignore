@@ -24,3 +24,4 @@ benchmarking/suites/*/gold/
 benchmarking/suites/*/reports/
 benchmarking/suites/*/engine-output/
 .vercel
+.worktrees/
