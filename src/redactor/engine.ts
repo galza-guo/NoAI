@@ -311,6 +311,69 @@ function cleanValue(raw: string): string {
     .replace(/\s+/g, " ");
 }
 
+/**
+ * Split a joined email-header recipient string into individual recipients.
+ * Recipients are separated by commas, but a comma inside an angle-bracket
+ * group ("<...>") or parenthesis group ("(Firm, LLP)") must not split, so
+ * "Douglas Clark (Tanner De Witt, LLP) <d@example.com>" stays whole.
+ */
+function splitEmailRecipients(joined: string): string[] {
+  const segments: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of joined) {
+    if (ch === "<" || ch === "(") depth += 1;
+    if (ch === ">" || ch === ")") depth = Math.max(0, depth - 1);
+    if (ch === "," && depth === 0) {
+      segments.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) segments.push(current);
+  return segments.map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Given a single recipient segment ("Display Name <email>" or
+ * "Display Name (Firm) <email>"), return the display-name portion with the
+ * angle-bracket email and any trailing parenthetical firm annotation removed.
+ * The firm annotation (e.g. "(Northbridge LLP)") is handled separately by the
+ * ORG detector, so stripping it keeps this candidate from being fragmented
+ * when the firm name is redacted. Returns "" when the segment is just an email.
+ */
+function displayNameOfRecipient(recipient: string): string {
+  // Strip the angle-bracket email group, if present.
+  const withoutEmail = recipient
+    .replace(/<[^>]*>\s*$/, "")
+    .replace(/\s*<[^>]*>\s*/g, " ")
+    .trim();
+  // A bare email (no display name) is handled by the EMAIL rule; nothing to add.
+  if (/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(withoutEmail))
+    return "";
+  // Drop a trailing parenthetical firm annotation; the firm is redacted by the
+  // ORG detector on its own.
+  const withoutFirm = withoutEmail.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return cleanValue(withoutFirm || withoutEmail);
+}
+
+/**
+ * A recipient display name is name-like: an optional leading honorific, then
+ * one or more capitalized/upper tokens, optionally followed by a parenthesized
+ * firm annotation. Used to anchor PERSON_OR_ORG candidates so prose fragments
+ * are not pulled into the recipient split.
+ */
+function looksLikeRecipientDisplayName(name: string): boolean {
+  const stripped = name
+    .replace(/\s*\([^)]*\)\s*$/, "")
+    .trim();
+  if (!stripped) return false;
+  return /^(?:[A-Z][A-Za-z.'’-]+(?:\s*,\s*[A-Z][A-Za-z.'’-]+)?)(?:\s+[A-Z][A-Za-z.'’-]+){0,5}$/.test(
+    stripped,
+  );
+}
+
 function meaningful(value: string): boolean {
   const cleaned = cleanValue(value);
   return (
@@ -483,6 +546,7 @@ export class Detector {
       this.detectDirectPatterns(doc);
       detectChinese(doc, this.add.bind(this));
       this.detectLabelValues(doc);
+      this.detectEmailRecipientLists(doc);
       this.detectLabelContinuationValues(doc);
       this.detectAddressContinuations(doc);
       this.detectStandaloneAddressLines(doc);
@@ -620,6 +684,19 @@ export class Detector {
       ],
       ["EMAIL", OCR_SPACED_EMAIL_RE, 1, "OCR-spaced email address"],
       [
+        "EMAIL",
+        // Extraction/PDF artifacts occasionally insert a SINGLE internal
+        // whitespace right after the "@"", e.g. "Bho@ biodegradablefilter.com".
+        // The standard email regex requires the domain to touch the "@", so this
+        // shape leaked. Allow exactly one optional space after the "@" only; the
+        // local part is still a single email token and the domain must end in a
+        // real 2+ letter TLD. A bare "word @ word.tld" in prose is rare and the
+        // TLD anchor keeps it from matching ordinary "at @ home" phrasing.
+        /\b[A-Za-z0-9._%+-]+@\s[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/g,
+        1,
+        "email address with internal whitespace",
+      ],
+      [
         "PHONE",
         /(?<![\w/])(?:\+?\d[\d ()-]{6,}\d)(?![\w/])/g,
         1,
@@ -689,6 +766,26 @@ export class Detector {
       ],
       [
         "ADDRESS",
+        // Numbered building / place address with NO street suffix, e.g.
+        // "3 Bryant Park", "5 Times Square", "1 Presidential Plaza". Credit-
+        // agreement and redress notice blocks write the recipient street this
+        // way; the numbered-street rule above requires a street suffix, so the
+        // building line leaked while the city/ZIP line redacted. The shape is a
+        // number + at least one Capitalized name token + a Capitalized building/
+        // place suffix as the FINAL token. The suffix list is deliberately the
+        // set of words that, when capitalized and final after a number + name,
+        // identify a property and never appear as the end of an ordinary
+        // numbered sentence. Case-sensitive (capitalized) so lowercase prose
+        // ("3 park benches", "5 towers of equipment") is never matched.
+        new RegExp(
+          String.raw`(?<![A-Za-z0-9])\d{1,6}[A-Za-z]?\s+(?:(?:[NSEW]\.?|[NS][EW])\s+)?[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,4}\s+(?:Park|Plaza|Square|Gardens|Tower|Towers|Center|Centre|House|Estate|Point|Mall|Complex|Block)\b(?!\s+[a-z])`,
+          "g",
+        ),
+        1,
+        "numbered building/plaza address",
+      ],
+      [
+        "ADDRESS",
         // UK business correspondence often writes the whole address on one
         // line: "Suite 400, 77 King William Street, London EC4N 7BL". The
         // postcode anchor keeps this from swallowing ordinary numbered prose.
@@ -753,6 +850,16 @@ export class Detector {
         "passport number",
       ],
       [
+        "NATIONAL_ID",
+        // US Drug Enforcement Administration registration number: a registrant
+        // type letter, a surname-initial letter, then seven digits (e.g.
+        // "BB8471936"). Label-bound to avoid catching arbitrary letter+digit
+        // runs; the DEA anchor is required.
+        /\bDEA\s*(?:no\.?|number|registration)?\s*[:#]?\s*([A-Z]{2}\d{7})\b/gi,
+        1,
+        "US DEA registration number",
+      ],
+      [
         "BUSINESS_ID",
         /\b\d{2}-\d{7}\b/g,
         1,
@@ -760,7 +867,7 @@ export class Detector {
       ],
       [
         "BANK_ACCOUNT",
-        /\b(?:SWIFT|BIC)(?:\s*(?:code|address))?\s*[:#]?\s*([A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b/gi,
+        /\b(?:SWIFT|BIC)(?:\s*(?:code|address))?\s*[:#\u2010-\u2015-]?\s*([A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b/gi,
         2,
         "SWIFT/BIC code",
       ],
@@ -1269,6 +1376,40 @@ export class Detector {
         /\b(?:Bank\s+Account\s+(?:Nos?|Numbers?)|Account\s+Number)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "bank account number label",
+      ],
+      [
+        "BANK_ACCOUNT",
+        // US ABA wire/ACH routing numbers, label-bound. Bank wire and ACH
+        // instructions label the routing value as "Wire payment ABA routing
+        // number", "ACH ABA routing number", or the abbreviated "Routing No." /
+        // "Wire/ACH Routing No." with a separator (":", "#", em-dash, hyphen)
+        // and a 9-digit run (optionally space-grouped as "026 009 593"). The
+        // value is phone-shaped and was mislabeled PHONE; the label anchor is
+        // the trust boundary. A bare 9-digit figure with no label stays readable.
+        /\b(?:Wire(?:\s+payment)?|ACH)\s+ABA\s+routing\s+number\b\s*[:#\u2010-\u2015-]?\s*((?:\d\s?){8,9}\d)\b/gi,
+        1,
+        "ABA routing number label",
+      ],
+      [
+        "BANK_ACCOUNT",
+        // Abbreviated "Routing No." / "Wire Routing No." / "ACH Routing No."
+        // fields on subscription agreements and remittance advice. The label +
+        // "No." qualifier is the anchor; the value must contain a digit so prose
+        // such as "the routing number is pending" stays readable. The digit run
+        // is phone-shaped and was mislabeled PHONE.
+        /\b(?:Wire|ACH)?\s*Routing\s+Nos?\.?\s*[:#\u2010-\u2015]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        1,
+        "routing number label",
+      ],
+      [
+        "BANK_ACCOUNT",
+        // Demand-deposit account (DDA) number, label-bound. Bank wire
+        // instructions label the payee account as "DDA account number" with an
+        // em-dash/hyphen/colon separator and a long digit run. The value is
+        // phone-shaped and was mislabeled PHONE; the label anchor owns it.
+        /\bDDA\s+account\s+number\b\s*[:#\u2010-\u2015-]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        1,
+        "DDA account number label",
       ],
       [
         "BUSINESS_ID",
@@ -1799,6 +1940,20 @@ export class Detector {
             this.isExchangeEntityFragment(part)
           )
             continue;
+          // From/To/Cc/Bcc values that contain an angle-bracket recipient
+          // ("Display Name <email>") are handled by the dedicated email-recipient
+          // detector, which joins wrapped lines, splits per recipient, and skips
+          // role/department boilerplate. Defer to it so the whole-line value
+          // does not win the overlap and swallow a department name. The closing
+          // ">" may be missing because cleanValue strips trailing punctuation,
+          // so match an open-bracket email fragment too.
+          if (
+            (reason === "from label" ||
+              reason === "to label" ||
+              reason === "cc label") &&
+            /<[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(part)
+          )
+            continue;
           this.add(part, kind, level, reason, doc.name, pos);
         }
       }
@@ -1826,6 +1981,70 @@ export class Detector {
       .split(/\s*\/\s*|；|;|,|\s+and\s+/i)
       .map(cleanValue)
       .filter(Boolean);
+  }
+
+  private detectEmailRecipientLists(doc: RedactionInput): void {
+    // Forwarded-email To/Cc/Bcc headers commonly list several recipients and
+    // wrap across several physical lines. The generic From/To/Cc label rule
+    // captures only the value on the label's own line, so wrapped continuation
+    // recipients (and display names whose email is redacted first) leak. This
+    // detector joins the label value with its wrapped continuation lines and
+    // emits one PERSON_OR_ORG candidate per "Display Name <email>" recipient.
+    const lines = doc.text.split(/\r?\n/);
+    const offsets: number[] = [];
+    let searchPos = 0;
+    for (const line of lines) {
+      const pos = doc.text.indexOf(line, searchPos);
+      offsets.push(pos);
+      searchPos = pos + line.length + 1;
+    }
+
+    const labelRe = /^\s*(?:To|Cc|CC|Bcc|BCC)\s*[:：]\s*(.*)$/i;
+    // Continuation stops at the next correspondence header, a blank line, or a
+    // salutation/sign-off so we never swallow body prose.
+    const stopRe = /^\s*(?:From|To|Cc|CC|Bcc|BCC|Subject|Re|Date|Via|Sent|Reply-To|Attachments?)\s*[:：]/i;
+    const salutationRe = /^\s*(?:Dear|Hi|Hello|Yours|Thank|Thanks|Regards|Best|Sincerely|Cordially)\b/i;
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const match = lines[index].match(labelRe);
+      if (!match) continue;
+      // Only treat this as a recipient list when the label line itself contains
+      // at least one email-ish token; otherwise plain "To: Counsel" stays with
+      // the generic label rule and there is nothing to split.
+      if (!/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(match[1]))
+        continue;
+
+      const segments: string[] = [];
+      if (match[1].trim()) segments.push(match[1]);
+      for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+        const next = lines[cursor];
+        if (!next.trim()) break;
+        if (stopRe.test(next) || salutationRe.test(next)) break;
+        segments.push(next);
+      }
+      const joined = segments.join(" ");
+      // Split recipients on commas, but keep "<...>" angle-bracket groups whole
+      // so "Firm, Inc. <a@b>" is not broken at the org-name comma.
+      for (const recipient of splitEmailRecipients(joined)) {
+        const name = displayNameOfRecipient(recipient);
+        if (!name) continue;
+        // Skip role/department boilerplate ("Compliance Department") and
+        // contract defined-term-shaped fragments so labels stay readable.
+        if (this.looksLikeDepartmentOrRole(name)) continue;
+        if (looksLikeContractDefinedTermCandidate(name)) continue;
+        // Require a name-like shape anchored by the email address so arbitrary
+        // prose fragments are not pulled in.
+        if (!looksLikeRecipientDisplayName(name)) continue;
+        this.add(
+          name,
+          "PERSON_OR_ORG",
+          1,
+          "email recipient display name",
+          doc.name,
+          offsets[index],
+        );
+      }
+    }
   }
 
   private detectLabelContinuationValues(doc: RedactionInput): void {
@@ -2576,7 +2795,7 @@ export class Detector {
     // titles ("Dr. Shirish Phulgaonkar") that the general detector misses, and
     // they may be printed in ALL CAPS. Capture and validate them here.
     const markerRe =
-      /(?:\/s\/|\/S\/|\bName\s*:|\bPrinted Name\b\s*:|\bBy\s*:)/g;
+      /(?:\/s\/|\/S\/|\bName\s*:|\bPrinted Name\b\s*:|\bBy\s*:|_{3,})/g;
     // A name token is a capitalized word/initial(s) cluster, or a lowercase
     // surname particle (de, van, von, ...). Tokens are separated by spaces/tabs
     // only (never newlines) so unrelated capitalized words are not stitched.
@@ -2596,20 +2815,28 @@ export class Detector {
     for (const marker of text.matchAll(markerRe)) {
       let start = (marker.index ?? 0) + marker[0].length;
       const isSignatureSlash = /^\/s\//i.test(marker[0]);
+      // An underscore signature rule ("________") is the printed-name analogue
+      // of "/s/": the signatory's name and credentials are printed on the line
+      // below the rule. Treat it the same way for newline-crossing.
+      const isUnderscoreRule = /^_{3,}$/.test(marker[0]);
+      const crossNewline = isSignatureSlash || isUnderscoreRule;
       // Skip separators (spaces, table pipes, underscores, slashes) that often
       // sit between a marker and the name, e.g. "| By: | /s/ Kirk Blosch |".
       if (/^[^\S\r\n]*\/s\//i.test(text.slice(start))) {
         start += text.slice(start).match(/^[^\S\r\n]*\/s\//i)?.[0].length ?? 0;
       }
-      // For a "/s/" marker, regulator letter signature blocks frequently put
+      // For a "/s/" or underscore-rule marker, signature blocks frequently put
       // the printed name on the line immediately below the marker:
       //   /s/
       //   Judith A. Whitfield
       //   District Director
+      // or:
+      //   _______________________________
+      //   Helena V. Brandt, MD, FACS
       // Allow crossing a single newline boundary (and surrounding horizontal
       // whitespace) in that case so the name is captured. Other markers
       // (Name:, By:, Printed Name:) keep the same-line behaviour.
-      if (isSignatureSlash) {
+      if (crossNewline) {
         const nlMatch = text.slice(start).match(/^[^\S\r\n]*\r?\n[^\S\r\n]*/);
         if (nlMatch) {
           const nlEnd = start + nlMatch[0].length;
@@ -3333,6 +3560,29 @@ export class Detector {
       "Deputy Chief Financial Officer",
       "Chief Operating Officer",
       "Proxy Form",
+      // Clinical-note section headings. These are a bounded, standardized
+      // vocabulary that appears verbatim (often ALL CAPS) at the top of medical
+      // record sections; they were being swallowed by the all-caps/line person
+      // heuristic.
+      "Chief Complaint",
+      "History of Present Illness",
+      "Past Medical History",
+      "Past Surgical History",
+      "Social History",
+      "Family History",
+      "Review of Systems",
+      "Physical Exam",
+      "Discharge Medications",
+      "Discharge Disposition",
+      "Discharge Diagnosis",
+      "Hospital Course",
+      "Emergency Department",
+      "Operative Report",
+      "Progress Note",
+      "Consultation Note",
+      "Procedure Note",
+      "Plan",
+      "Assessment",
     ];
     if (badTerms.some((term) => name.includes(term))) return false;
     if (this.isExchangeEntityFragment(name)) return false;
@@ -3377,6 +3627,42 @@ export class Detector {
     // surnames are deliberately excluded from ORG_NAME_TAIL_TOKENS.
     const lastToken = tokens.at(-1)?.replace(/\.$/, "") ?? "";
     if (tokens.length >= 2 && ORG_NAME_TAIL_TOKENS.has(lastToken)) return false;
+    // Reject product / service / module catalog names and RFP section headings
+    // caught by the standalone title-case person detector. These appear on their
+    // own line in service lists and feature tables ("Card Activity Interface",
+    // "Club Accounts", "Mass Maintenance Automation", "Phone Types Needed",
+    // "Evaluation Criteria", "Paging Integration Support"). Their final token is
+    // a product/section noun that never appears as a personal surname.
+    const PRODUCT_HEADING_ENDINGS = new Set([
+      "Interface",
+      "Interfaces",
+      "Accounts",
+      "Account",
+      "Module",
+      "Modules",
+      "Processing",
+      "Automation",
+      "Connection",
+      "Maintenance",
+      "Origination",
+      "Reporting",
+      "Capture",
+      "Analytics",
+      "Banking",
+      "Manager",
+      "Needed",
+      "Criteria",
+      "Included",
+      "Support",
+      "Integration",
+      "System",
+      "Systems",
+      "Service",
+      "Services",
+      "Schedule",
+      "Schedules",
+    ]);
+    if (tokens.length >= 2 && PRODUCT_HEADING_ENDINGS.has(lastToken)) return false;
     // Reject corporate-governance role / officer phrases that the contextual
     // detectors catch in listed-issuer filings ("Independent Non-executive
     // Directors", "Authorised Representative", "Chief Executive Officer",
@@ -3398,6 +3684,7 @@ export class Detector {
       "Auditor",
       "Registrar",
       "Proxy",
+      "Signatory",
     ]);
     if (tokens.length >= 2 && ROLE_ENDINGS.has(lastToken)) return false;
     // Reject finance/operations document-section headings caught by the

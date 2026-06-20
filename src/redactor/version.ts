@@ -1,10 +1,10 @@
-export const ENGINE_VERSION = "1.5.10";
+export const ENGINE_VERSION = "1.5.14";
 
 export const ENGINE_VERSION_DATE = "2026-06-20";
 
-export const GENERAL_RULES_VERSION = 5;
+export const GENERAL_RULES_VERSION = 9;
 
-export const CHINESE_RULES_VERSION = 9;
+export const CHINESE_RULES_VERSION = 10;
 
 export const ENGINE_VERSION_LABEL = `NoAI redaction engine ${ENGINE_VERSION} (general r${GENERAL_RULES_VERSION}, chinese r${CHINESE_RULES_VERSION})`;
 

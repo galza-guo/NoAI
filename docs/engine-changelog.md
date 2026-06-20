@@ -3,11 +3,174 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.14 (general r9, chinese r10) - 2026-06-20
+
+Employment/credit/lease round: executive employment agreements and credit-
+agreement notice blocks. Synthetic tests only; no real documents committed.
+Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added numbered building/plaza address detection (ADDRESS, Light). Credit-
+  agreement and redress notice blocks write the recipient street as a building
+  name with NO street suffix, e.g. "3 Bryant Park", "5 Times Square",
+  "1 Presidential Plaza". The numbered-street rule required a Street/Avenue
+  suffix, so the building line leaked while the following city/ZIP line
+  redacted. The new rule matches a number + at least one Capitalized name token
+  + a Capitalized building/place suffix (Park, Plaza, Square, Gardens,
+  Tower(s), Center/Centre, House, Estate, Point, Mall, Complex, Block) as the
+  final token. It is case-sensitive (capitalized) so lowercase prose ("3 park
+  benches", "5 towers of equipment") is never matched. Benchmark-neutral on
+  NAIR-v2 (recall 68.44%, 655 covered — unchanged).
+- Added 1 synthetic test (numbered building/plaza address) with a lowercase-
+  prose counterexample.
+- Residual (deferred): named banks/parties ending in "National Association"
+  (e.g. "U.S. Bank National Association") are not caught as ORG because the
+  "U.S." abbreviation breaks the capitalized-name matcher; an abbreviation-aware
+  ORG fix is deferred. Statute-name fragmentation and the multi-line notice-
+  address street leak from the prior round remain open.
+
+## NoAI redaction engine 1.5.13 (general r8, chinese r10) - 2026-06-20
+
+Public-payments-and-contacts round: bank/payment instructions, procurement
+contacts, and enforcement redress pages. Synthetic tests only; no real documents
+committed. Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- SWIFT/BIC codes now redact after an em-dash, en-dash, or hyphen separator
+  (BANK_ACCOUNT, Balanced). Public wire instructions commonly write the value as
+  "SWIFT code—BOFAUS3N" or "BIC - CHASUS33"; the original rule only accepted ":"
+  / "#" separators, so the em-dash form leaked the code entirely. The separator
+  class is widened to `[:#-–—]`. A bare "SWIFT" mention with no following code
+  stays readable.
+- Added US ABA routing number detection (BANK_ACCOUNT, Light). Wire/ACH
+  instructions label the routing value as "Wire payment ABA routing number",
+  "ACH ABA routing number", and the abbreviated "Wire/ACH Routing No." / "Routing
+  No." with a separator and a 9-digit run (optionally space-grouped as
+  "026 009 593"). The run is phone-shaped and was previously mislabeled PHONE.
+  The label + qualifier anchor owns the value; a bare 9-digit figure with no
+  label stays readable.
+- Added DDA (demand-deposit account) number detection (BANK_ACCOUNT, Light).
+  Bank wire instructions label the payee account as "DDA account number" with an
+  em-dash/hyphen/colon separator and a long digit run. The run is phone-shaped
+  and was mislabeled PHONE; the label anchor owns it.
+- Added single-internal-whitespace email detection (EMAIL, Light). PDF/extraction
+  artifacts occasionally insert one space right after the "@" (e.g.
+  "Bho@ biodegradablefilter.com"); the standard email regex requires the domain
+  to touch the "@", so this shape leaked. The rule allows exactly one optional
+  space after the "@" with a real 2+ letter TLD anchor; prose "at @ home" is not
+  matched.
+- Standalone title-case person lines no longer over-redact product/service
+  module names and section headings. `looksLikePersonName` now rejects a 2+ token
+  candidate whose final token is a product/section noun (Interface, Accounts,
+  Module, Automation, Processing, Needed, Criteria, Included, Support,
+  Integration, Service(s), Schedule, ...), and adds "Signatory" to the
+  role-ending stoplist. These were carved out as PERSON from service catalogs and
+  RFP feature tables. (A street-suffix final-token guard was tried and reverted:
+  street-suffix words like Place/Court/Park are also genuine surnames, and the
+  guard cost 5 real PERSON spans on the sealed NAIR-v2 benchmark. Bare
+  street-name standalone lines therefore remain a known residual over-redaction;
+  full numbered street addresses are still handled by the ADDRESS rule.)
+- Added 5 synthetic tests (SWIFT em-dash, ABA/DDA labels, internal-space email,
+  product/service headings), each with a counterexample.
+- Residual (deferred): multi-line redress street addresses (street + suite on one
+  line, city/ZIP masked but street left readable), statute-name fragmentation
+  ("Electronic Fund" matched as ORG, leaving "Transfer Act"), bare street-name
+  standalone-line over-redaction, and contextual brand/location/person-role-list
+  detection. These need broader address-joining, statute-name, or context-based
+  handling and are deferred to keep this round focused and benchmark-neutral.
+
+## NoAI redaction engine 1.5.12 (general r7, chinese r10) - 2026-06-20
+
+Email-thread round: forwarded-email recipient headers. Synthetic tests only;
+no real documents committed. Deterministic rule changes only. No
+AI/LLM/backend/telemetry added.
+
+- Added email-header recipient-list detection (PERSON_OR_ORG, Light).
+  Forwarded-email `To:`/`Cc:`/`Bcc:` headers frequently list several
+  recipients of the form "Display Name <email>" and wrap across several
+  physical lines. The legacy From/To/Cc label rule captured only the value on
+  the label's own line, so wrapped continuation recipients (and display names
+  whose `<email>` was redacted first) leaked. A new detector joins the label
+  value with its wrapped continuation lines (stopping at the next header,
+  blank line, or salutation), splits per recipient while keeping angle-bracket
+  and parenthetical groups whole, and emits a PERSON_OR_ORG candidate for each
+  display name. Role/department boilerplate ("Compliance Department") and
+  contract-defined-term fragments are skipped so labels stay readable. The
+  trailing parenthetical firm annotation ("(Northbridge LLP)") is dropped from
+  the display-name candidate so it is not fragmented when the ORG detector
+  redacts the firm separately.
+- Adjusted the From/To/Cc legacy label rule to defer to the dedicated detector
+  when the value contains an angle-bracket recipient, so the whole-line
+  candidate no longer wins the overlap and swallows a department name.
+- Added 2 synthetic tests: wrapped multi-line To/Cc recipient display names
+  (positive) and department-shaped recipient boilerplate stays readable
+  (counterexample).
+- Residual: lowercase functional mailbox aliases (e.g. "project_k") inside
+  recipient lists are not redacted as person names; the EMAIL rule still
+  redacts the address itself. Generalizing lowercase-alias capture was
+  rejected as too false-positive-prone (info/support/admin mailboxes).
+
+## NoAI redaction engine 1.5.11 (general r6, chinese r10) - 2026-06-20
+
+Clinical-notes round: first coverage of the clinical-document family
+(discharge summary, ICU progress note, operative report, nephrology consult,
+emergency-department note). Synthetic documents only; no real PHI committed.
+Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added underscore-rule signature detection (PERSON, Light). Clinical note
+  signature blocks print an underscore rule (_____) followed directly by the
+  signatory's name and credentials, with no "/s/", "By:", or "Name:" marker.
+  The underscore rule is now treated as a signature marker that crosses a
+  single newline to capture the printed name below it, matching the existing
+  "/s/" behavior. This catches names like "Helena V. Brandt, MD, FACS" printed
+  under a signature line.
+- Added US DEA registration number detection (NATIONAL_ID, Light). Format is
+  two registrant letters followed by seven digits (e.g. BB8471936), anchored
+  by a "DEA" label so arbitrary letter+digit runs stay readable.
+- Added masked PRC national ID detection (NATIONAL_ID, Balanced). Courts and
+  credit-disclosure platforms publish masked IDs as dddddddd******dddd. The
+  previously-defined MASKED_PRC_ID_RE regex was not wired into detectChinese,
+  so the leading digit run leaked as a PHONE token. It is now applied as a
+  NATIONAL_ID candidate, fixing the recall hole and the phone-leak side effect.
+- Added clinical section-heading boilerplate to the person-name stoplist so
+  all-caps headings (PAST MEDICAL HISTORY, DISCHARGE MEDICATIONS, HISTORY OF
+  PRESENT ILLNESS, etc.) are no longer swallowed by the all-caps/line person
+  heuristic. These are a bounded, standardized clinical vocabulary, analogous
+  to the existing "Table Contents" / "Expert Report" stops.
+- Added 5 synthetic tests: titled names with single-letter middle initials,
+  underscore-rule signature names, DEA number positive, clinical-heading
+  over-redaction guard, and the masked PRC ID test that was previously red.
+
 ## NoAI redaction engine 1.5.10 (general r5, chinese r9) - 2026-06-20
 
-Patch: English/general development round covering document types not previously
-exercised by the English ruleset — USPTO patent grant front pages, an NSF-style
-federal grant award notice, a commercial general liability insurance
+Chinese patch (round 8): CSRC penalty decisions, SAMR anti-monopoly penalty,
+market regulation bulk penalty notice. Deterministic rule changes only.
+No AI/LLM/backend/telemetry added.
+
+- Added 某-pattern anonymized legal personal name detector (PERSON, Balanced).
+  Regulatory penalty decisions, court judgments, and administrative rulings mask
+  personal names as 李某廷 / 王某鹏 / 陈某 — a single Han surname followed by
+  某 and an optional 1-2 given-name characters. The detector uses regex
+  `[Han]某[Han]{0,2}(?![Han])` to catch names at natural boundaries (followed
+  by punctuation, line breaks, or non-Han chars). A validator rejects indefinite
+  pronouns (某人/某些/某种), time expressions (某年/某月/某时), and
+  placeholders (某某). Names embedded mid-sentence in running Han text
+  (王某鹏参与) are a known balanced-level boundary limitation deferred to Heavy.
+- Added standalone bracketed Chinese case/document reference detection (CASE_REF,
+  Light). The existing REGULATORY_DOC_NO_RE pattern (2-8 Han prefix) missed
+  forms like 中国证监会〔2025〕76号 and [2025]21-102号. Two new regexes cover
+  the fullwidth-bracket and ASCII-bracket standalone forms with year-bracket
+  anchoring and digit-content validation.
+- Added agency-prefixed bracketed reference detection (CASE_REF, Light) for
+  forms like 国市监处罚〔2024〕25号 and 证监许可〔2017〕1841号 where the Han
+  prefix exceeds the 8-char limit of REGULATORY_DOC_NO_RE.
+- Added birth date detection (DATE, Light) for 年X月出生 and 年X日出生
+  patterns common in regulatory penalty decisions. The regex accepts X as a
+  legal anonymization placeholder (196X年X月出生) and requires 出生 as anchor
+  so generic year-month prose stays readable.
+- Added 7 synthetic tests: 某-pattern positive coverage + counterexample,
+  standalone bracketed CASE_REF positive + counterexample, birth date positive
+  + counterexample, and non-birth guard.
+
+English/general patch:
 declarations page, a Texas special warranty deed, and a Chapter 11 bankruptcy
 notice. Deterministic rule changes only. No AI/LLM/backend/telemetry added.
 

@@ -664,6 +664,18 @@ function detectChineseDirectPatterns(
     "Chinese numeral date",
     add,
   );
+  // Asterisk-masked PRC national IDs published in court disclosures and credit
+  // reports (dddddddd******dddd). These are identifying even though invalid
+  // checksums; catching them here also prevents the leading digit run from
+  // leaking as a PHONE token via the generic phone regex.
+  applyRegex(
+    doc,
+    MASKED_PRC_ID_RE,
+    "NATIONAL_ID",
+    1,
+    "masked PRC national ID",
+    add,
+  );
   applyRegex(doc, RMB_WAN_YUAN_RE, "AMOUNT", 2, "RMB wan-yuan amount", add);
   applyRegex(doc, RMB_YI_YUAN_RE, "AMOUNT", 2, "RMB yi-yuan amount", add);
   applyRegex(doc, FULLWIDTH_YEN_RE, "AMOUNT", 2, "fullwidth-yen amount", add);

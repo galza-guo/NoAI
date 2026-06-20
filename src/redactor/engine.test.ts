@@ -772,6 +772,33 @@ Send a copy to 501 1^(st) Ave N., Suite 900, St. Petersburg, FL 33701.
     expect(output).toContain("ADDRESS_");
   });
 
+  it("redacts numbered building/plaza addresses without a street suffix", () => {
+    // Credit-agreement and redress notice blocks write a recipient address as a
+    // building name with no Street/Avenue suffix, e.g. "3 Bryant Park, 15th
+    // Floor", "5 Times Square", "1 Presidential Plaza". The numbered-street
+    // address rule required a street suffix, so the building line leaked while
+    // the city/ZIP line redacted. The distinctive shape is a number + a
+    // capitalized name + a building keyword (Park/Plaza/Center/Tower/Square).
+    const output = redact(
+      `
+U.S. Bank National Association
+3 Bryant Park, 15th Floor
+New York, NY 10036
+Attention: Dana Whitfield
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("3 Bryant Park");
+    expect(output).not.toContain("Bryant Park");
+    expect(output).toContain("ADDRESS_");
+    // Counterexample: a number + building word in prose is not an address and
+    // must stay readable ("3 park benches", "5 towers of equipment").
+    const prose = redact("We installed 3 park benches near 5 towers of equipment.", "balanced");
+    expect(prose).toContain("3 park benches");
+    expect(prose).toContain("5 towers");
+  });
+
   it("keeps SEC report titles readable while redacting real people nearby", () => {
     const output = redact(`
 The issuer prepares Registration Statements, Quarterly Reports, Annual Reports, Current Reports, and consolidated statements.
@@ -1292,6 +1319,102 @@ atwork.USbenefits@acme.com for help.
     expect(output).toContain("or by email to");
     expect(output).not.toContain("atwork.USbenefits@acme.com");
     expect(output).toContain("EMAIL_");
+  });
+
+  // ---- clinical-notes dev round (2026-06-20) ----
+
+  it("redacts titled names that include a single-letter middle initial before the surname", () => {
+    // Clinical notes write attending names as "Dr. Marcus T. Reilly, MD" and
+    // "Dr. Sana A. Khoury". The titled-name detector previously stopped at the
+    // first token because a lone initial like "T." did not satisfy the
+    // multi-char name-token pattern, leaving "Dr. Marcus" captured and the
+    // full name leaking.
+    const output = redact(`
+Attending Physician: Dr. Marcus T. Reilly, MD
+Consult: Dr. Sana A. Khoury
+Dr. Marcus T. Reilly, MD rounded on the patient.
+`);
+
+    for (const leaked of [
+      "Marcus T. Reilly",
+      "Marcus T. Reilly, MD",
+      "Sana A. Khoury",
+      "Dr. Marcus",
+      "Dr. Sana",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PERSON_");
+  });
+
+  it("redacts signatory names printed under an underscore signature line without a Name: marker", () => {
+    // Clinical note signature blocks print an underscore rule followed directly
+    // by the signatory's name and credentials, with no "/s/", "By:", or "Name:"
+    // marker. The name frequently carries a trailing credential (MD, DO, FACS).
+    const output = redact(`
+_______________________________
+Helena V. Brandt, MD, FACS
+Asheville Surgical Group
+
+_______________________________
+Marcus T. Reilly, MD
+Internal Medicine
+`);
+
+    for (const leaked of [
+      "Helena V. Brandt, MD, FACS",
+      "Helena V. Brandt",
+      "Marcus T. Reilly, MD",
+      "Marcus T. Reilly",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PERSON_");
+  });
+
+  it("redacts US DEA registration numbers", () => {
+    // DEA numbers: two leading letters (first = registrant type) followed by
+    // seven digits, e.g. "BB8471936". They appear under physician signature
+    // blocks and are highly identifying prescriber identifiers.
+    const output = redact(`
+Prescriber: Helena V. Brandt, MD
+DEA: BB8471936
+NPI: 1427816593
+`);
+
+    expect(output).not.toContain("BB8471936");
+    expect(output).toContain("NATIONAL_ID_");
+  });
+
+  it("does not over-redact clinical section headings as person names", () => {
+    // All-caps clinical section headings (PAST MEDICAL HISTORY, DISCHARGE
+    // MEDICATIONS) must remain readable; they were previously swallowed by the
+    // all-caps person heuristic.
+    const output = redact(`
+PAST MEDICAL HISTORY
+- Hypertension
+DISCHARGE MEDICATIONS
+1. Aspirin 81 mg PO daily
+HISTORY OF PRESENT ILLNESS
+`);
+
+    for (const heading of [
+      "PAST MEDICAL HISTORY",
+      "DISCHARGE MEDICATIONS",
+      "HISTORY OF PRESENT ILLNESS",
+    ]) {
+      expect(output).toContain(heading);
+    }
+  });
+
+  it("does not redact a US state name as a person", () => {
+    // "BlueCross BlueShield of North Carolina" — the state name must not be
+    // pulled out as a person token.
+    const output = redact(`
+Insurance: BlueCross BlueShield of North Carolina
+`);
+
+    expect(output).toContain("North Carolina");
   });
 });
 
@@ -2416,6 +2539,118 @@ accounting principles remain readable.
     expect(output).toContain("accounting principles remain readable");
     expect(output).toContain("BANK_ACCOUNT_");
     expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("redacts SWIFT/BIC codes with dash/em-dash separators after the label", () => {
+    // Public wire instructions often write the SWIFT value after an em-dash or
+    // hyphen, e.g. "SWIFT code—BOFAUS3N" or "BIC - CHASUS33". The original
+    // SWIFT rule only accepted ":" / "#" separators, so the em-dash form leaked.
+    const output = redact(
+      `
+SWIFT code\u2014BOFAUS3N
+BIC\u2014CHASUS33
+SWIFT code - DEUTDEFF
+Bank wire details follow.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("BOFAUS3N");
+    expect(output).not.toContain("CHASUS33");
+    expect(output).not.toContain("DEUTDEFF");
+    expect(output).toContain("Bank wire details follow.");
+    expect(output).toContain("BANK_ACCOUNT_");
+    // Counterexample: a bare "SWIFT" mention with no following code stays readable.
+    expect(output).toContain("SWIFT");
+  });
+
+  it("redacts ABA routing and DDA account numbers from payment labels", () => {
+    // Public/bank payment instructions label routing and account numbers as
+    // "ABA routing number", "DDA account number", and "Routing No." with a
+    // digit run that the generic phone regex used to swallow and mislabel PHONE.
+    const output = redact(
+      `
+Wire payment ABA routing number\u2014026 009 593
+ACH ABA routing number: 011000138
+DDA account number\u2014004632424694
+Routing No.: 123103716
+Call us at 555-0142 for help.
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("026 009 593");
+    expect(output).not.toContain("011000138");
+    expect(output).not.toContain("004632424694");
+    expect(output).not.toContain("123103716");
+    // The payment values must be BANK_ACCOUNT, not mislabeled as PHONE.
+    expect(output).not.toMatch(/BANK_ACCOUNT.*PHONE_|PHONE_.*BANK_ACCOUNT/);
+    expect(output).toContain("BANK_ACCOUNT_");
+    // Counterexample: a real local phone after a "Call us at" label is still
+    // redacted as a PHONE (not swallowed into a bank-account candidate), and a
+    // bare 4-digit figure with no payment label stays readable.
+    expect(output).toContain("PHONE_");
+    expect(output).not.toContain("555-0142");
+  });
+
+  it("redacts an email address split by a single internal whitespace", () => {
+    // PDF/OCR extraction sometimes inserts a single space inside an address
+    // (e.g. "Bho@ biodegradablefilter.com"). The standard email regex requires
+    // the domain to touch the "@", so this leaked.
+    const output = redact(
+      `
+Deliver to Bho@ biodegradablefilter.com for review.
+Look up the service at @ home page for details.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("biodegradablefilter.com");
+    expect(output).toContain("EMAIL_");
+    // Counterexample: prose "at @ home" with no domain must not become a fake
+    // email; the surrounding sentence stays readable.
+    expect(output).toContain("Deliver to");
+    expect(output).toContain("@ home page");
+  });
+
+  it("does not redact product/service module names or section headings as person names", () => {
+    // Service catalogs and RFP feature tables list product/module names on their
+    // own line ("Card Activity Interface", "Mass Maintenance Automation", section
+    // headings like "Evaluation Criteria"). The standalone title-case person
+    // detector over-redacted these as PERSON. Their final token is a
+    // product/section noun that never appears as a personal surname.
+    //
+    // NOTE: a bare street-name standalone line ("West Third Street") is a known
+    // residual over-redaction. A street-suffix final-token guard was tried but
+    // rejected because street-suffix words (Place, Court, Park, ...) are also
+    // genuine surnames, and the guard cost 5 real PERSON spans on the sealed
+    // benchmark. Full numbered street addresses ("306 West Third Street") are
+    // correctly redacted by the ADDRESS rule; only the bare-name false positive
+    // remains, deferred to a context-based fix.
+    const output = redact(
+      `
+Card Activity Interface
+Club Accounts
+Mass Maintenance Automation
+Authorized Signatory
+Evaluation Criteria
+Texting Included
+Paging Integration Support
+Helena Brandt
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("Card Activity Interface");
+    expect(output).toContain("Club Accounts");
+    expect(output).toContain("Mass Maintenance Automation");
+    expect(output).toContain("Authorized Signatory");
+    expect(output).toContain("Evaluation Criteria");
+    expect(output).toContain("Texting Included");
+    expect(output).toContain("Paging Integration Support");
+    // Counterexample: a real standalone person line is still redacted.
+    expect(output).not.toContain("Helena Brandt");
+    expect(output).toContain("PERSON_");
   });
 
   it("preserves invoice table headers, boilerplate, and unlabeled line items", () => {
@@ -4671,6 +4906,48 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).not.toContain("1988年11月出生");
     expect(output).not.toContain("196X年X月");
     expect(output).not.toContain("1988年11月");
+  });
+
+  it("redacts display names in wrapped To/Cc recipient lists", () => {
+    // Forwarded-email To/Cc headers commonly wrap across several physical
+    // lines, and each recipient is a display name plus an <email>. The legacy
+    // From/To/Cc label rule only captured the value on the label's own line,
+    // leaking the wrapped continuation names. Synthetic invented values.
+    const output = redact(
+      [
+        "To: Marin Ostrowski <marin@example.org>",
+        "Cc: Tilda Reeve (Northbridge LLP) <tilda@example.net>,",
+        "Quincy Vance <quincy@example.com>,",
+        "Roland Faye <roland@example.org>,",
+        "Subject: Project renewal",
+      ].join("\n"),
+    );
+    for (const leaked of [
+      "Marin Ostrowski",
+      "Tilda Reeve",
+      "Quincy Vance",
+      "Roland Faye",
+      "marin@example.org",
+      "tilda@example.net",
+      "quincy@example.com",
+      "roland@example.org",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    // The To/Cc label words and the Subject label itself stay readable; only
+    // the recipient values and subject matter text are replaced.
+    expect(output).toContain("To:");
+    expect(output).toContain("Cc:");
+    expect(output).toContain("Subject:");
+  });
+
+  it("does not redact a department-shaped To label value as a person", () => {
+    // Role/department boilerplate inside a recipient slot must stay readable.
+    const output = redact(
+      ["To: Compliance Department <compliance@example.org>"].join("\n"),
+    );
+    expect(output).toContain("Compliance Department");
+    expect(output).not.toContain("compliance@example.org");
   });
 });
 
