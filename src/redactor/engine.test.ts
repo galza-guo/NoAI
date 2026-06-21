@@ -4360,6 +4360,58 @@ Acme.io, Inc. filed the form.`,
     expect(output).not.toContain("www.sample.org");
   });
 
+  it("redacts contract preamble parties named before a parenthetical defined-term role", () => {
+    // Commercial contracts introduce the parties in the preamble as
+    // "by and between <ORG>, a <State> corporation (the 'Company')" or
+    // "...and <NAME> (the 'Employee')". The party name preceding the
+    // parenthetical defined-term role leaks because it sits inline in prose,
+    // not on its own caption line. The (the "Role") / ("Role") anchor with a
+    // contract party role (Company/Tenant/Landlord/Employee/Consultant/...) is
+    // the trust anchor. Generic defined terms such as (the "Agreement") on
+    // their own do not carry a party name and stay readable.
+    const output = redact(
+      `THIS LEASE AGREEMENT (this "Lease") is made by and between JONES SODA CO., a Washington corporation ("Tenant") and EDWARD J. MACK ("Landlord").
+
+THIS EMPLOYMENT AGREEMENT (the "Agreement") is dated as of December 12, 2011, by and between REGENECO BIOSCIENCES, INC., a Delaware corporation (the "Company") and THOMAS E. MILLS (the "Employee").
+
+This Consulting Agreement (this "Agreement") is entered into by Meridian Advisory Partners, LLC (the "Consultant").`,
+      "balanced",
+    );
+    expect(output).not.toContain("JONES SODA CO.");
+    expect(output).not.toContain("EDWARD J. MACK");
+    expect(output).not.toContain("REGENECO BIOSCIENCES");
+    expect(output).not.toContain("THOMAS E. MILLS");
+    expect(output).not.toContain("Meridian Advisory Partners, LLC");
+    expect(output).toMatch(/(ORG|PERSON_OR_ORG|PERSON)_\d+/);
+    // The bare defined-term "(this \"Agreement\")" carries no party name and
+    // must remain readable.
+    expect(output).toContain('"Agreement")');
+    expect(output).toContain('"Lease")');
+  });
+
+  it("redacts pharma product-candidate codes after a product/candidate anchor", () => {
+    // Pharma license and consulting agreements name the lead product candidate
+    // with a sponsor prefix + dash + number ("SSP-625", "LY-3895", "BMS-986016")
+    // after an anchor such as "product candidate", "lead product",
+    // "investigational compound", or "compound". The code is a project/product
+    // codename that should be redacted. The anchor is required so a bare
+    // "SSP-625" in unrelated prose is not swept up; generic phrases such as
+    // "the candidate" stay readable.
+    const output = redact(
+      `The Company's lead product candidate, SSP-625 (the "Product"), is in Phase 2.
+Consultant shall support development of investigational compound LY-3895.
+Reference compound ABC-12 was used in the assay.
+The candidate will advance next year.`,
+      "balanced",
+    );
+    expect(output).not.toContain("SSP-625");
+    expect(output).not.toContain("LY-3895");
+    expect(output).toContain("PROJECT_");
+    // A bare alnum-dash token with no product/candidate anchor stays readable.
+    expect(output).toContain("ABC-12");
+    expect(output).toContain("The candidate will advance");
+  });
+
   it("redacts bankruptcy case, document, and debtor tax identifiers", () => {
     // Chapter 11 notices carry the Case No., the ECF Document No., and the
     // debtor's Tax ID. All are label-bound; the bare digit run was previously

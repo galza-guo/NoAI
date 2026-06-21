@@ -554,6 +554,7 @@ export class Detector {
       this.detectPeople(doc);
       this.detectOrganizations(doc);
       this.detectMatterTerms(doc);
+      this.detectProductCandidateCodes(doc);
       this.detectLocations(doc);
       this.detectHeavyProperNouns(doc);
       this.detectCustomTerms(doc);
@@ -2709,6 +2710,7 @@ export class Detector {
     this.detectAttentionBlocks(doc);
     this.detectCaptionPersonnel(doc);
     this.detectCaptionPartyNames(doc);
+    this.detectContractPreambleParties(doc);
     this.detectSignatureNames(doc);
     this.detectPatentInventors(doc);
 
@@ -3071,6 +3073,46 @@ export class Detector {
       ) {
         this.registerCaptionPartyName(match[1], match, doc);
       }
+    }
+  }
+
+  // Contract preamble parties. Commercial agreements introduce the parties in
+  // the preamble as "by and between <Party>, a <State> <entity> (the
+  // 'Company')" / "...and <Party> ('Employee')". The party name sits inline in
+  // prose (not on its own caption line), so the caption detectors miss it. The
+  // parenthetical defined-term role with a contract party role word
+  // (Company/Tenant/Landlord/Employee/Consultant/Borrower/Lessor/Lessee/
+  // Purchaser/Seller/Licensor/Licensee/Partner/Client/Vendor/Supplier) is the
+  // trust anchor. The captured name is the title-cased or all-caps proper phrase
+  // immediately preceding "(the 'Role')" / "('Role')". Bare defined terms such
+  // as (the "Agreement") carry no party name and do not match.
+  private detectContractPreambleParties(doc: RedactionInput): void {
+    const roleAlt =
+      "Company|Tenant|Landlord|Employee|Employer|Consultant|Borrower|Lender|Lessor|Lessee|Purchaser|Seller|Licensor|Licensee|Partner|Client|Vendor|Supplier|Franchisee|Franchisor|Assignor|Assignee";
+    // Match a proper-name/org phrase ending right before "(the 'Role')" or
+    // "('Role')". The phrase may be all-caps ("JONES SODA CO.") or title-case
+    // ("Meridian Advisory Partners, LLC"). It must start with a capital letter
+    // and contain at least one space-separated capitalized token (single
+    // capitalized words like "This" are excluded by the {1,} repeat).
+    const re = new RegExp(
+      String.raw`(?<![A-Za-z0-9])([A-Z][A-Za-z.'&-]+(?:[^\S\r\n]+(?:[A-Z][A-Za-z.'&-]*|and|a|of|the|Inc\.|LLC|Ltd\.|Co\.|Corp\.|LLP|LP|Limited|Corporation|Company)){1,8}[A-Za-z.'&-]*)\s*[^\S\r\n]*\((?:the\s+)?"(?:${roleAlt})"\)`,
+      "g",
+    );
+    for (const match of doc.text.matchAll(re)) {
+      let name = match[1].trim();
+      // Trim a leading connector such as a trailing "and " left from "X and Y".
+      name = name.replace(/^(?:and|of|the)\s+/i, "").trim();
+      if (!name) continue;
+      // Skip address-like and purely generic fragments.
+      if (/^\d/.test(name)) continue;
+      this.add(
+        name,
+        "PERSON_OR_ORG",
+        2,
+        "contract preamble party",
+        doc.name,
+        (match.index ?? 0) + match[0].indexOf(match[1]),
+      );
     }
   }
 
@@ -3529,6 +3571,41 @@ export class Detector {
           match.index ?? 0,
         );
       }
+    }
+  }
+
+  // Pharma / biotech product-candidate codes. License, consulting, and
+  // development agreements name the lead product candidate with a sponsor
+  // prefix + dash + number ("SSP-625", "LY-3895", "BMS-986016") after an
+  // anchor such as "product candidate", "lead product", "investigational
+  // compound", or "compound". The code is a project/product codename. The
+  // anchor is required so a bare alnum-dash token in unrelated prose is not
+  // swept up; generic phrases such as "the candidate" stay readable.
+  private detectProductCandidateCodes(doc: RedactionInput): void {
+    const anchorRe =
+      /\b(?:lead\s+product(?:\s+candidate)?|product\s+candidate|investigational\s+(?:product|compound|drug)|study\s+drug|development\s+compound|development\s+candidate)\b[^.\n;]{0,40}?\b([A-Z]{2,5}-\d{2,6}[A-Za-z]*)\b/gi;
+    for (const match of doc.text.matchAll(anchorRe)) {
+      this.add(
+        match[1],
+        "PROJECT",
+        2,
+        "product-candidate code",
+        doc.name,
+        (match.index ?? 0) + match[0].indexOf(match[1]),
+      );
+    }
+    // Reverse order: "SSP-625 (... lead product candidate)".
+    const reverseRe =
+      /\b([A-Z]{2,5}-\d{2,6}[A-Za-z]*)\b[^.\n;]{0,40}?\b(?:lead\s+product(?:\s+candidate)?|product\s+candidate|investigational\s+(?:product|compound|drug)|study\s+drug|development\s+compound|development\s+candidate)\b/gi;
+    for (const match of doc.text.matchAll(reverseRe)) {
+      this.add(
+        match[1],
+        "PROJECT",
+        2,
+        "product-candidate code",
+        doc.name,
+        (match.index ?? 0) + match[0].indexOf(match[1]),
+      );
     }
   }
 

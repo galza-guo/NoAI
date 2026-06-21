@@ -3,6 +3,35 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.22 (general r17, chinese r10) - 2026-06-21
+
+Commercial contracts round: a commercial lease, an employment agreement, and a
+consulting agreement. Synthetic representative documents only; fabricated test
+values, no real party/employer/candidate identifiers committed. Deterministic
+rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added contract preamble party detection (PERSON_OR_ORG, Balanced). Commercial
+  agreements introduce parties inline in the preamble as "by and between <Party>,
+  a <State> corporation (the 'Company')" / "...and <Party> ('Employee')". The
+  party name sits inline in prose (not on its own caption line), so it leaked
+  until the signature block. The parenthetical defined-term role with a contract
+  party role word (Company/Tenant/Landlord/Employee/Employer/Consultant/Borrower/
+  Lender/Lessor/Lessee/Purchaser/Seller/Licensor/Licensee/Partner/Client/Vendor/
+  Supplier/Franchisee/Franchisor/Assignor/Assignee) is the trust anchor; bare
+  defined terms such as (the "Agreement") carry no party name and stay readable.
+- Added pharma product-candidate code detection (PROJECT, Balanced). License,
+  consulting, and development agreements name the lead product candidate with a
+  sponsor prefix + dash + number ("SSP-625", "LY-3895", "BMS-986016") after an
+  anchor such as "product candidate", "lead product", "investigational compound",
+  or "development compound". The anchor is required so a bare alnum-dash token
+  in unrelated prose is not swept up; generic "the candidate" stays readable.
+- Added 2 synthetic tests (contract preamble parties; product-candidate codes),
+  each with counterexamples.
+- Residual (deferred): the collective form "X and Y (collectively, 'Landlord')"
+  still leaks the individual names — the (collectively, ...) insert breaks the
+  immediate-preceding-name anchor. These names are still caught in signature
+  blocks; the collective-preamble form is left for a future refinement.
+
 ## NoAI redaction engine 1.5.21 (general r16, chinese r10) - 2026-06-21
 
 Litigation / regulatory filing round: SEC civil complaints and an FTC complaint
