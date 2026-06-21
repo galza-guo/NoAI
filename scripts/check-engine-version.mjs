@@ -70,9 +70,11 @@ function fail(message) {
   console.error(`- ${VERSION_FILE}`);
   console.error(`- ${CHANGELOG_FILE}`);
   console.error("\nVersioning rules:");
-  console.error("- ENGINE_VERSION: shared engine/API/review-metadata changes");
-  console.error("- GENERAL_RULES_VERSION: English/general deterministic rule changes");
-  console.error("- CHINESE_RULES_VERSION: Chinese deterministic rule changes");
+  console.error(
+    "- ENGINE_VERSION: shared engine/API/review-metadata changes, not ruleset-only changes",
+  );
+  console.error("- GENERAL_RULES_VERSION: English/general ruleset-only changes");
+  console.error("- CHINESE_RULES_VERSION: Chinese ruleset-only changes");
   console.error(
     '- Changelog heading: "## NoAI redaction engine X.Y.Z (general rN, chinese rM) - YYYY-MM-DD"\n',
   );
@@ -119,7 +121,7 @@ const chineseRulesChanged = nextVersion.chinese !== previousVersion.chinese;
 
 if (previousVersion.engine && sameVersionState(nextVersion, previousVersion)) {
   fail(
-    `Version identity is still ${nextVersion.label}; bump ENGINE_VERSION, GENERAL_RULES_VERSION, or CHINESE_RULES_VERSION for this engine change.`,
+    `Version identity is still ${nextVersion.label}; bump the relevant ruleset counter for ruleset-only changes, or ENGINE_VERSION for non-ruleset shared engine/API/review-metadata changes.`,
   );
 }
 
@@ -138,7 +140,7 @@ if (
   !chineseRulesChanged
 ) {
   fail(
-    "Shared engine source changed; bump ENGINE_VERSION or the affected ruleset version.",
+    "Shared engine source changed; bump the affected ruleset version for ruleset-only plumbing, or ENGINE_VERSION for non-ruleset shared engine/API/review-metadata changes.",
   );
 }
 

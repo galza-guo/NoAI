@@ -107,6 +107,40 @@ describe("engine version pre-commit check", () => {
     expect(result.status).toBe(0);
   });
 
+  it("allows shared engine plumbing for a ruleset-only change without bumping engine semver", () => {
+    const cwd = writeFixtureRepo();
+    writeFileSync(join(cwd, "src/redactor/engine.ts"), "export const engine = 'rule plumbing';\n");
+    writeFileSync(
+      join(cwd, "src/redactor/version.ts"),
+      [
+        'export const ENGINE_VERSION = "1.4.6";',
+        "export const GENERAL_RULES_VERSION = 2;",
+        "export const CHINESE_RULES_VERSION = 1;",
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(cwd, "docs/engine-changelog.md"),
+      [
+        "# Redaction Engine Changelog",
+        "",
+        "## NoAI redaction engine 1.4.6 (general r2, chinese r1) - 2026-06-19",
+        "",
+        "- General ruleset plumbing.",
+        "",
+        "## NoAI redaction engine 1.4.6 (general r1, chinese r1) - 2026-06-19",
+        "",
+        "- Baseline.",
+        "",
+      ].join("\n"),
+    );
+    runGit(cwd, ["add", "."]);
+
+    const result = runCheck(cwd);
+
+    expect(result.status).toBe(0);
+  });
+
   it("rejects a Chinese source change that does not bump the Chinese rules version", () => {
     const cwd = writeFixtureRepo();
     writeFileSync(join(cwd, "src/redactor/chinese.ts"), "export const chinese = 'changed';\n");

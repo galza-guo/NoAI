@@ -79,13 +79,19 @@ npm run build
 - Dependency audit: `npm audit --audit-level=moderate`
 - During early development, the detector was also tested against private English legal/business documents (not included in this repository). Public regression tests use synthetic examples that preserve patterns without exposing private facts.
 
-### Engine Versioning
-The redaction engine is versioned separately from the app package. The current engine version lives in `src/redactor/version.ts`, and changes are summarized in `docs/engine-changelog.md`.
+### Redaction Versioning
+The app package version is separate from redaction behavior. Redaction behavior
+is tracked in `src/redactor/version.ts` with separate English/general and
+Chinese ruleset counters, and changes are summarized in
+`docs/engine-changelog.md`.
 
-We use semantic versioning for the engine:
-- **Patch:** narrow false-positive/false-negative fixes or small rule tuning.
-- **Minor:** new document family coverage, new detector category, or compatible review metadata.
-- **Major:** incompatible output, API, replacement-token, or redaction-level semantics changes.
+Ruleset-only improvements bump only the relevant ruleset counter:
+
+- `GENERAL_RULES_VERSION`: English/general ruleset changes.
+- `CHINESE_RULES_VERSION`: Chinese ruleset changes.
+
+The shared `ENGINE_VERSION` changes only for non-ruleset shared engine/API/review
+metadata changes. Most detector work should not change it.
 
 To enable the local commit guard to ensure changelogs are updated:
 ```bash

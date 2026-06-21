@@ -224,8 +224,11 @@ Give a tight implementation order for a developer:
 4. Move `NON_LATIN_TEXT` to Heavy.
 5. Run tests.
 6. Update `src/redactor/version.ts`: bump `CHINESE_RULES_VERSION` for
-   Chinese-rule behavior changes, and bump `ENGINE_VERSION` only for shared
-   engine/API/review-metadata changes.
+   Chinese ruleset-only behavior changes. Do not bump `ENGINE_VERSION` for a
+   Chinese ruleset-only patch, even if narrow rule plumbing touches
+   `src/redactor/engine.ts`. Bump `ENGINE_VERSION` only for shared
+   engine/API/review-metadata changes that are not just the Chinese ruleset
+   changing.
 7. Update changelog.
 
 Include exact commands:

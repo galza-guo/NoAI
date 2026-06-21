@@ -281,9 +281,12 @@ Minimum adoption checklist:
 - The change is general, not tied to one real document's exact fact pattern.
 - Synthetic tests use invented values and include counterexamples.
 - `src/redactor/version.ts` is bumped correctly:
-  - `GENERAL_RULES_VERSION` for English/general rule changes.
-  - `CHINESE_RULES_VERSION` for Chinese rule changes.
-  - `ENGINE_VERSION` for shared engine/API/review metadata changes.
+  - `GENERAL_RULES_VERSION` for English/general ruleset-only changes.
+  - `CHINESE_RULES_VERSION` for Chinese ruleset-only changes.
+  - Do not bump `ENGINE_VERSION` for a ruleset-only change, even if narrow rule
+    plumbing touches `src/redactor/engine.ts`.
+  - Bump `ENGINE_VERSION` only for shared engine/API/review metadata changes
+    that are not just one language ruleset changing.
 - `docs/engine-changelog.md` has a matching version heading.
 - `npm test` passes.
 - `npm run build` passes for meaningful shipped changes.
