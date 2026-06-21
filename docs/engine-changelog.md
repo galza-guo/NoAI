@@ -3,6 +3,12 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.25 (general r20, chinese r17) - 2026-06-21
+
+Chinese Loop 17: Hong Kong & Traditional Chinese (Tencent). Synthetic tests only.
+
+- Added Traditional Chinese address suffixes (區, 縣, 鎮, 鄉, 號, 樓, 棟, 大廈, 廣場) to `ADDRESS_SUFFIX_RE` to properly support HK address labels and Traditional Chinese address prefix aliasing.
+
 ## NoAI redaction engine 1.5.25 (general r20, chinese r16) - 2026-06-21
 
 Chinese Loop 16: SAMR Penalties & Multiple Respondents. Synthetic tests only.

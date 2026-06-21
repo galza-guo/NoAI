@@ -572,7 +572,7 @@ const POSTCODE_RE = /^\d{6}$/;
 const PERSON_RE = /^[\u3400-\u9fff·]{2,6}$/;
 const ORG_RE = /^[\u3400-\u9fffA-Za-z0-9()（）·.&' -]{2,60}$/;
 const ADDRESS_SUFFIX_RE =
-  /省|市|区|县|镇|乡|村|路|街|道|号|室|楼|栋|幢|大厦|广场|中心|工业区|开发区|园区/;
+  /省|市|区|县|镇|乡|村|路|街|道|号|室|楼|栋|幢|大厦|广场|中心|工业区|开发区|园区|區|縣|鎮|鄉|號|樓|棟|大廈|廣場|工業區|開發區|園區/;
 
 // --- PRC identifier checksum validators (GB 32100-2015 USCC, GB 11643-1999
 //     resident ID). Deterministic, browser-only, no backend/AI. Exported so they

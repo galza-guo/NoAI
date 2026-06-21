@@ -5759,6 +5759,26 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).toContain("我局执法人员对北京某某科技有限公司位于");
     expect(output).toContain("的经营场所进行现场检查。");
   });
+
+  // Loop 17 — Hong Kong & Traditional Chinese
+  it("redacts Traditional Chinese addresses, org aliases, and roles", () => {
+    const output = redact(
+      [
+        "騰訊控股有限公司（於開曼群島註冊成立的有限公司）董事會宣佈以下變更：",
+        "李嘉誠先生辭任本公司獨立非執行董事，自2026年6月21日起生效。",
+        "通訊地址：香港銅鑼灣時代廣場辦公大樓1座29樓",
+        "傳真：+852 2810 1235",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("騰訊控股有限公司");
+    expect(output).not.toContain("李嘉誠");
+    expect(output).not.toContain("香港銅鑼灣時代廣場辦公大樓1座29樓");
+    expect(output).not.toContain("+852 2810 1235");
+
+    expect(output).toContain("董事會宣佈以下變更：");
+    expect(output).toContain("先生辭任本公司獨立非執行董事");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {

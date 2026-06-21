@@ -4024,7 +4024,7 @@ export class Detector {
       if (!/[\u3400-\u9fff]/.test(candidate.value)) continue;
       addresses.add(candidate.value);
     }
-    const suffixes = new Set(["号", "楼", "层", "室", "院", "路", "街", "道"]);
+    const suffixes = new Set(["号", "楼", "层", "室", "院", "路", "街", "道", "號", "樓", "層", "區", "鎮", "鄉", "縣", "棟", "大廈", "廣場"]);
     for (const doc of this.docs) {
       for (const addr of addresses) {
         const prefixes = [];
