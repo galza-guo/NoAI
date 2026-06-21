@@ -3,7 +3,7 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
-## NoAI redaction engine 1.5.25 (general r20, chinese r10) - 2026-06-21
+## NoAI redaction engine 1.5.25 (general r20, chinese r13) - 2026-06-21
 
 Clinical correspondence round: an explanation of benefits (EOB), a clinical
 referral letter, and a disability certification letter. Synthetic representative
@@ -271,6 +271,56 @@ AI/LLM/backend/telemetry added.
   and Hancock" surname-only mentions after the greeting still leak (surname-only
   without a first name is too ambiguous to bind safely); bare federal Treasury
   account codes ("11-3400-0-7-0503") are still mislabeled PHONE.
+
+## NoAI redaction engine 1.5.17 (general r12, chinese r13) - 2026-06-21
+
+Chinese ruleset round: expanded honorific role triggers (chinese r13).
+
+- Expanded the honorific-suffixed bare person name detector's role-introduction
+  trigger set (HONORIFIC_TRIGGERS) to include broader corporate and government
+  role titles: 总监 (and compound prefixes: 执行总监, 副总监, 技术总监, 财务总监,
+  市场总监, 运营总监, 人力总监, 销售总监, 研发总监, 设计总监, 项目总监, 艺术总监,
+  品牌总监, 合规总监, 风控总监, 行政总监), 主管, 主任, 部长, 副部长. These
+  titles routinely introduce a named person before an honorific suffix (先生/女士/
+  小姐) in company announcements, meeting minutes, and regulatory filings.
+- Extended snapHonorificNameStart to handle multi-char trigger suffix leaks into
+  the captured name (e.g. "技术总监杨明" where "总监" leaks into the captured
+  name run). The fix advances past the leaked suffix so the full title stays
+  readable and only the name is redacted.
+- Extended HONORIFIC_NAME_BAD_PREFIX to include 这位/那位/每位/这些/那些 so
+  generic address phrases (这位主任女士) stay readable.
+- Added 2 synthetic tests: new role trigger coverage (positive) and prose/
+  generic-address counterexamples.
+- Chinese ruleset bumped r12 -> r13.
+
+## NoAI redaction engine 1.5.17 (general r12, chinese r12) - 2026-06-21
+
+Chinese ruleset round: contract / rental / loan party person labels (chinese r12).
+
+- Added contract / rental / loan party person labels (PERSON, Balanced):
+  出租人, 承租人, 担保人, 借款人, 贷款人, 抵押人, 出借人, 出质人, 质权人,
+  发包人, 承包人, 出租方, 承租方, 担保方, 借款方, 贷款方. Lease agreements,
+  loan contracts, guarantee deeds, and pledge agreements introduce named
+  individuals under these labels. The value must pass PERSON_RE (2-6 Han chars),
+  so a named individual is caught while an organization name that exceeds the
+  length limit is deferred to the ORG label rules. Prose without a colon-value
+  structure (出租人应当提供相关证明) and placeholder values stay readable.
+- Added 2 synthetic tests: contract/rental party coverage (positive) and prose/
+  placeholder counterexamples.
+- Chinese ruleset bumped r11 -> r12.
+
+## NoAI redaction engine 1.5.17 (general r12, chinese r11) - 2026-06-21
+
+Chinese ruleset round: taxpayer / tax registration identifier labels (chinese r11).
+
+- Added label-bound taxpayer / tax registration identifier detection (BUSINESS_ID,
+  Light): 纳税人识别号 / 税务登记号 / 税号. Chinese corporate documents, invoices,
+  and tax filings label the taxpayer identifier under these labels. The value is a
+  15-20 char alphanumeric string. Label-bound only; bare digit runs without the
+  label stay readable.
+- Added 2 synthetic tests: taxpayer label coverage (positive) and placeholder/prose
+  counterexamples.
+- Chinese ruleset bumped r10 -> r11.
 
 ## NoAI redaction engine 1.5.17 (general r12, chinese r10) - 2026-06-20
 
