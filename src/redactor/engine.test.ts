@@ -4533,6 +4533,56 @@ The win at the dealership was exciting.`,
     expect(output).toContain("win at the dealership");
   });
 
+  it("redacts the full 'Dr. <Name>' form including the title as one unit", () => {
+    // Clinical and certification letters introduce physicians as
+    // "Dr. Aisha M. Bello", "Dr. Helen T. Park", "Dear Dr. Samuel R. Whitford".
+    // The title-led detector captured the name but the leading "Dr." was stripped
+    // during candidate cleaning, fragmenting the match and leaving the bare
+    // surname/initials readable in some positions. The full "Dr. <Name>" surface
+    // should redact as one PERSON unit so neither the title nor a name fragment
+    // leaks. Prose "the doctor" (no capital-D title form) stays readable.
+    const output = redact(
+      `Treating physician: Dr. Aisha M. Bello, MD.
+Dear Dr. Samuel R. Whitford,
+Examination by Dr. Helen T. Park.
+The doctor will see you now.`,
+      "balanced",
+    );
+    expect(output).not.toContain("Dr. Aisha M. Bello");
+    expect(output).not.toContain("Aisha M. Bello");
+    expect(output).not.toContain("Dr. Samuel R. Whitford");
+    expect(output).not.toContain("Samuel R. Whitford");
+    expect(output).not.toContain("Dr. Helen T. Park");
+    expect(output).not.toContain("Helen T. Park");
+    expect(output).toContain("PERSON_");
+    // The lowercase prose "doctor" must stay readable.
+    expect(output).toContain("The doctor will see you now");
+  });
+
+  it("redacts claim/group control numbers without leaking a phone-shaped suffix", () => {
+    // Health-plan EOBs and correspondence print a group number, a claim control
+    // number, and a check number with digit-run shapes that are phone-shaped and
+    // were mislabeled PHONE, leaking non-digit suffixes ("-CLM") and prefixes.
+    // These are label-bound identifiers; the value must contain a digit. A bare
+    // digit run in prose stays readable.
+    const output = redact(
+      `Group Number: 77412-001
+Claim Control Number: 2024-008821-CLM
+check #00884210
+The group met yesterday.`,
+      "light",
+    );
+    expect(output).not.toContain("77412-001");
+    expect(output).not.toContain("2024-008821-CLM");
+    expect(output).not.toContain("00884210");
+    expect(output).toContain("BUSINESS_ID_");
+    // The phone-shaped values must not be mislabeled as phone.
+    expect(output).not.toMatch(/Group Number: PHONE_/);
+    expect(output).not.toMatch(/Claim Control Number: PHONE_/);
+    // Prose "group" stays readable.
+    expect(output).toContain("group met yesterday");
+  });
+
   it("redacts bankruptcy case, document, and debtor tax identifiers", () => {
     // Chapter 11 notices carry the Case No., the ECF Document No., and the
     // debtor's Tax ID. All are label-bound; the bare digit run was previously

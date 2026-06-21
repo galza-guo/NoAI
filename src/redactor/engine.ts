@@ -1137,6 +1137,29 @@ export class Detector {
       ],
       [
         "BUSINESS_ID",
+        // Health-plan / EOB group number, claim control number, and check
+        // reference, label-bound. EOBs print "Group Number: 77412-001",
+        // "Claim Control Number: 2024-008821-CLM", and the remittance check as
+        // "check #00884210". These digit-run shapes are phone-shaped and were
+        // mislabeled PHONE, leaking non-digit suffixes ("-CLM") and prefixes.
+        // The label is the trust anchor; the value must contain a digit. A bare
+        // digit run in prose stays readable.
+        /\b(?:Group\s+Number|Claim\s+Control\s+Number)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        1,
+        "EOB group/claim control number label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Remittance check reference, label-bound. EOBs and remittance advice
+        // print the issued check as "check #00884210" or "Check No. 00884210".
+        // The "#" / "No." qualifier is required so prose "the check" never
+        // matches; the value must contain a digit.
+        /\bChecks?\s+(?:#|Nos?\.?)\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        1,
+        "remittance check reference label",
+      ],
+      [
+        "BUSINESS_ID",
         // ISIN (International Securities Identification Number): 2-letter
         // country code + 9 alphanumeric + 1 check digit, e.g. GB00B63HMG49.
         // The fixed length and leading 2 letters make the format distinctive.
@@ -2561,8 +2584,12 @@ export class Detector {
     // Title-led names use same-line whitespace only ([^\S\r\n]+) so that a
     // title at the start of a line (e.g. an Attention block) does not stitch
     // across newlines into the next person's title ("Mr. Tyler Howes\nMs. ...").
+    // Continuation tokens allow a single-letter middle initial ("Dr. Aisha M.
+    // Bello", "Mr. Daniel K. Weinstein") so the full title+name surface redacts
+    // as one PERSON unit; without it a period-bearing initial ("M.") broke the
+    // match and leaked the surname.
     const titlePattern = new RegExp(
-      String.raw`\b(?:${PERSON_TITLE_ALT})\.?[^\S\r\n]+([A-Z][A-Za-z'’-]+(?:[^\S\r\n]+[A-Z][A-Za-z'’-]+){0,3})\b`,
+      String.raw`\b(?:${PERSON_TITLE_ALT})\.?[^\S\r\n]+([A-Z][A-Za-z'’-]+(?:[^\S\r\n]+(?:[A-Z]\.?|[A-Z][A-Za-z'’-]+)){0,3})\b`,
       "g",
     );
     for (const match of doc.text.matchAll(titlePattern)) {

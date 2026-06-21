@@ -3,6 +3,38 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.25 (general r20, chinese r10) - 2026-06-21
+
+Clinical correspondence round: an explanation of benefits (EOB), a clinical
+referral letter, and a disability certification letter. Synthetic representative
+documents only; fabricated test values, no real patient/member/NPI/license/SSN
+identifiers committed. Deterministic rule changes only. No AI/LLM/backend/
+telemetry added.
+
+- Fixed the title-led person pattern so the full "Dr. <Name>" (and
+  "Mr./Mrs./Ms. <Name>") surface redacts as one PERSON unit, including a
+  period-bearing middle initial. Previously the title pattern's continuation
+  token class excluded periods, so "Dr. Aisha M. Bello" was captured only up to
+  "Dr. Aisha" and the surname/initials leaked (the Loop 7 residual). Single-letter
+  middle initials ("M.") are now accepted as continuation tokens, matching the
+  form/benefits detector. Prose "the doctor" (lowercase) stays readable; NAIR-v2
+  keepClean is unchanged, so no over-redaction was introduced.
+- Added EOB group/claim-control number label (BUSINESS_ID, Light). EOBs print
+  "Group Number: 77412-001" and "Claim Control Number: 2024-008821-CLM"; the
+  digit runs are phone-shaped and were mislabeled PHONE, leaking the "-CLM"
+  suffix and prefix. The label is the trust anchor; the value must contain a
+  digit. A bare digit run in prose stays readable.
+- Added remittance check reference label (BUSINESS_ID, Light). EOBs/remittance
+  advice print the issued check as "check #00884210" or "Check No. 00884210".
+  The "#" / "No." qualifier is required so prose "the check" never matches.
+- Added 2 synthetic tests (full "Dr. <Name>" unit; EOB control/check numbers),
+  each with counterexamples.
+- Residual (deferred): the broader proper-name-in-prose concern is partially
+  addressed for the title-led form, but bare-surname repeats and credential
+  suffixes (", MD", ", PhD") beyond the captured name still need a separate
+  pass; member IDs with no digit ("XPR-...") are caught as BUSINESS_ID via the
+  prefix form but the label-bound variant remains weaker.
+
 ## NoAI redaction engine 1.5.24 (general r19, chinese r10) - 2026-06-21
 
 Insurance claim / loss notice round: an auto claim loss notice, a property claim
