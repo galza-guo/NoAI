@@ -3611,11 +3611,18 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("CASE_REF_");
   });
 
-  it("redacts Chinese bank account labels only at heavy level", () => {
+  it("redacts Chinese bank account labels at balanced level when account-shaped", () => {
+    // Label-bound 16-19 digit bank card numbers are redacted at balanced.
     const balancedOutput = redact("账号：9999999999999999999", "balanced");
 
-    expect(balancedOutput).toContain("账号：9999999999999999999");
-    expect(balancedOutput).not.toContain("BANK_ACCOUNT_");
+    expect(balancedOutput).not.toContain("9999999999999999999");
+    expect(balancedOutput).toContain("账号：");
+    expect(balancedOutput).toContain("BANK_ACCOUNT_");
+
+    // A too-short run (not account-shaped) stays readable at balanced.
+    const shortOutput = redact("账号：12345", "balanced");
+    expect(shortOutput).toContain("账号：12345");
+    expect(shortOutput).not.toContain("BANK_ACCOUNT_");
 
     const heavyOutput = redact("账号：9999999999999999999", "heavy");
 
@@ -5911,6 +5918,85 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).not.toContain("广东省深圳市罗湖区人民南路99号");
     expect(output).toContain("汉族");
     expect(output).toContain("女");
+  });
+
+  // ----------------------------------------------------------------------
+  // Round 21 — insurance claim / social-security documents. Labels for claim
+  // numbers, insurance parties, citizen IDs, and benefit-disbursement bank
+  // accounts. All values invented; checksums hand-verified.
+  // ----------------------------------------------------------------------
+
+  it("redacts insurance claim and policy reference labels as CASE_REF", () => {
+    const output = redact(
+      [
+        "赔案编号：CL-2026-0512-0034567。",
+        "赔案号：CLM20260512ABC。",
+        "保单号：PA-2023-000123456789。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("CL-2026-0512-0034567");
+    expect(output).not.toContain("CLM20260512ABC");
+    expect(output).not.toContain("PA-2023-000123456789");
+    expect(output).toContain("CASE_REF_");
+    // Must NOT be misclassified as a phone (the 0512-0034567 substring looks
+    // phone-shaped).
+    expect(output).not.toContain("PHONE_");
+  });
+
+  it("redacts insurance party person labels (投保人/被保险人/受益人/户名)", () => {
+    const output = redact(
+      [
+        "投保人：陈建国，身份证号码：320583199003152627。",
+        "被保险人：李慧敏。",
+        "受益人：李慧敏。",
+        "户名：李慧敏",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("陈建国");
+    expect(output).not.toContain("李慧敏");
+    expect(output).toContain("PERSON_");
+    // Label text stays readable.
+    expect(output).toContain("投保人：");
+    expect(output).toContain("被保险人：");
+    expect(output).toContain("受益人：");
+    expect(output).toContain("户名：");
+  });
+
+  it("redacts 公民身份号码 and 居民身份证号 labels as NATIONAL_ID", () => {
+    const output = redact(
+      "参保人员：王建华，男，公民身份号码：110101196503072817。",
+    );
+
+    expect(output).not.toContain("110101196503072817");
+    expect(output).toContain("NATIONAL_ID_");
+    expect(output).toContain("公民身份号码：");
+  });
+
+  it("redacts bank account under 待遇发放账号 / 银行账号 labels at balanced level", () => {
+    const output = redact(
+      [
+        "银行账号：6222021102071953264。",
+        "待遇发放账号：6217001234567890123。",
+        "收款账号：6228480402564890018。",
+      ].join("\n"),
+      "balanced",
+    );
+
+    expect(output).not.toContain("6222021102071953264");
+    expect(output).not.toContain("6217001234567890123");
+    expect(output).not.toContain("6228480402564890018");
+    expect(output).toContain("BANK_ACCOUNT_");
+  });
+
+  it("keeps short digit runs under account labels readable when not account-shaped", () => {
+    const output = redact("待遇发放账号：12345。", "balanced");
+
+    // A 5-digit run is not a plausible bank account; the label stays but the
+    // value is not promoted to BANK_ACCOUNT at balanced level.
+    expect(output).toContain("待遇发放账号：12345。");
+    expect(output).not.toContain("BANK_ACCOUNT_");
   });
 });
 

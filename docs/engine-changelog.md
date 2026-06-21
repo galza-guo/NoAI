@@ -3,6 +3,16 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.25 (general r20, chinese r21) - 2026-06-22
+
+Chinese Loop 21: Insurance Claim Decisions & Social-Security Notices.
+
+- Added insurance claim reference labels (`赔案编号`, `赔案号`, `理赔案号`, `报案号`, `理赔编号`) to `PROCUREMENT_REF_LABELS` so insurance claim numbers bind to `CASE_REF` instead of being misclassified as `PHONE` when the value contains a phone-shaped substring (e.g. `CL-2026-0512-0034567`).
+- Added insurance party labels (`投保人`, `被保险人`, `受益人`, `户名`, `账户名`, `开户名`) to `PERSON_LABELS` so named individuals on claim decisions, underwriting forms, and disbursement notices are redacted.
+- Added `公民身份号码` to `PRC_ID_LABELS` — the formal GB/T 17744 wording used on social-security, medical-insurance, and household-registration documents.
+- Added benefit-disbursement bank-account labels (`待遇发放账号`, `养老金发放账号`, `发放账号`, `待遇领取账号`) to `BANK_ACCOUNT_LABELS`.
+- Promoted label-bound Chinese bank accounts from `heavy` (level 3) to `balanced` (level 2). A 16-19 digit card number under an explicit account label is a clear identifier and should be redacted at the default level; the `BANK_ACCOUNT_RE` validator still rejects shorter runs.
+
 ## NoAI redaction engine 1.5.25 (general r20, chinese r20) - 2026-06-22
 
 Chinese Loop 20: Labour Arbitration Awards & Regulatory Decisions.

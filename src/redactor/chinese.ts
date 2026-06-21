@@ -28,6 +28,9 @@ const PRC_ID_LABELS = [
   "居民身份证号",
   "身份证号码",
   "身份证号",
+  // Formal / administrative variant used on social-security, medical-insurance,
+  // and household-registration documents (公民身份号码 is the GB/T 17744 wording).
+  "公民身份号码",
   // Traditional / HK / TW aliases (same kind, same validator):
   "身分證號",
   "身分證字號",
@@ -68,6 +71,13 @@ const BANK_ACCOUNT_LABELS = [
   "开户账号",
   "对公账号",
   "收款账号",
+  // Social-security / pension / benefit disbursement account labels
+  // (待遇发放账号 / 养老金发放账号 / 抚恤金发放账号). The value is always a
+  // long bank card number, so the BANK_ACCOUNT_RE validator still applies.
+  "待遇发放账号",
+  "养老金发放账号",
+  "发放账号",
+  "待遇领取账号",
   "账号",
 ];
 const ADDRESS_LABELS = [
@@ -205,6 +215,14 @@ const PERSON_LABELS = [
   "担保方",
   "借款方",
   "贷款方",
+  // Insurance party labels (introduce a named individual on life-insurance
+  // claim decisions, underwriting forms, and benefit notices):
+  "投保人",
+  "被保险人",
+  "受益人",
+  "户名", // bank-account holder name on payment/disbursement forms
+  "账户名",
+  "开户名",
 ];
 const ORG_LABELS = [
   "代理机构",
@@ -287,6 +305,14 @@ const PROCUREMENT_REF_LABELS = [
   "保单编号",
   "保函号",
   "保函编号",
+  // Insurance claim references (CASE_REF). 赔案编号 / 赔案号 identify a
+  // specific claim file on life/P&C insurance decision notices; the value is
+  // an alphanumeric reference (CL-2026-0512-0034567), never prose.
+  "赔案编号",
+  "赔案号",
+  "理赔案号",
+  "报案号",
+  "理赔编号",
   "挂号单号",
   "查询号",
   "查询码",
@@ -1095,7 +1121,7 @@ function detectChineseLabelValues(
     doc,
     BANK_ACCOUNT_LABELS,
     "BANK_ACCOUNT",
-    3,
+    2,
     "Chinese bank account label",
     add,
     (v) => BANK_ACCOUNT_RE.test(v),
