@@ -14,6 +14,8 @@ coverage/
 # gold annotations local so benchmark materials do not leak into the repo.
 benchmarking/private/*
 !benchmarking/private/.gitignore
+benchmarking/suites/*
+!benchmarking/suites/.gitkeep
 benchmarking/suites/*/documents/
 benchmarking/suites/*/markdown/
 benchmarking/suites/*/pdf/
