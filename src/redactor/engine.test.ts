@@ -4291,6 +4291,75 @@ My Commission Expires: 11/02/2028
     expect(output).not.toMatch(/Bar No\. PHONE_/);
   });
 
+  it("redacts dotted-state bar numbers without the 'No.' qualifier", () => {
+    // SEC/court signature blocks print the second attorney's bar number as
+    // "Ill. Bar 6282660" / "NY. Bar 3098471" — the dotted state abbreviation
+    // followed by "Bar" and the digit run, WITHOUT the "No." qualifier that the
+    // existing detector requires. The dotted prefix + "Bar" + required digit is
+    // the trust anchor; "bar" alone never triggers.
+    const output = redact(
+      `Daniel J. Maher, Mass. Bar No. 654711
+Pei Y. Chung, Ill. Bar 6282660
+Rosa L. Vega, NY. Bar 3098471
+The corner bar serves lunch.`,
+      "light",
+    );
+    expect(output).not.toContain("654711");
+    expect(output).not.toContain("6282660");
+    expect(output).not.toContain("3098471");
+    expect(output).toContain("BUSINESS_ID_");
+    // The bare-word "bar" in prose ("corner bar") must stay readable.
+    expect(output).toContain("corner bar serves lunch");
+  });
+
+  it("redacts inline attorney bar initials in parentheses after a name", () => {
+    // Federal court signature blocks append the attorney's bar-roll initials in
+    // parentheses directly after the printed name: "Michael D. Liskow (ML 4581)"
+    // or "Jane Q. Public (JQP 28841)". The 2-3 capital initials + space +
+    // required digit inside parens, immediately following a titled name, is the
+    // trust anchor. It must not swallow ordinary parentheticals like "(US)".
+    const output = redact(
+      `__/s/ Michael D. Liskow__
+Michael D. Liskow (ML 4581)
+John A. O'Brien (JO 2199)
+Anna R. Delacroix (ARD 88204)
+Some footnote (US) about equity (i.e. roughly).`,
+      "balanced",
+    );
+    expect(output).not.toContain("ML 4581");
+    expect(output).not.toContain("JO 2199");
+    expect(output).not.toContain("ARD 88204");
+    expect(output).toContain("BUSINESS_ID_");
+    // Ordinary parentheticals must remain readable.
+    expect(output).toContain("(US)");
+    expect(output).toContain("(i.e. roughly)");
+  });
+
+  it("redacts domain-embedded company names with a legal-form suffix", () => {
+    // Tech-company filings name the respondent with its website embedded in the
+    // legal name: "GoDaddy.com LLC", "Acme.io, Inc.", "FooCorp.net Limited".
+    // The ORG suffix detector's token class excludes periods, so these were
+    // never matched as organizations in prose and leaked. A company name whose
+    // leading token contains a dot-TLD and ends in a legal-form suffix is
+    // anchored by the suffix; bare domains without a suffix stay readable.
+    const output = redact(
+      `In the Matter of GODADDY.COM LLC, a limited liability company.
+Respondent GoDaddy.com LLC is a Delaware company.
+Visit example.com for the generic site, and www.sample.org too.
+Acme.io, Inc. filed the form.`,
+      "balanced",
+    );
+    expect(output).not.toContain("GoDaddy.com LLC");
+    expect(output).not.toContain("GODADDY.COM LLC");
+    expect(output).not.toContain("Acme.io, Inc.");
+    expect(output).toContain("ORG_");
+    // A bare domain without a company suffix stays readable; a www-domain is
+    // handled by the existing bare-www URL detector (redacted as a URL), not by
+    // the domain-org rule.
+    expect(output).toContain("example.com");
+    expect(output).not.toContain("www.sample.org");
+  });
+
   it("redacts bankruptcy case, document, and debtor tax identifiers", () => {
     // Chapter 11 notices carry the Case No., the ECF Document No., and the
     // debtor's Tax ID. All are label-bound; the bare digit run was previously

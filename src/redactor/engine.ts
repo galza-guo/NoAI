@@ -1387,8 +1387,13 @@ export class Detector {
         // dotted state code ("N.C. Bar No.", "NY. Bar No."). The full label +
         // "No." qualifier is the trust anchor because "bar" alone is a common
         // word; the dotted/[A-Z]{2} prefix is captured so the whole label
-        // redacts as one reference. The value must contain a digit.
-        /\b(?:(?:[A-Z]{2}\.|[A-Z]\.[A-Z]\.|State\s+)\s*)?Bar\s+Nos?\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        // redacts as one reference. The value must contain a digit. SEC/court
+        // signature blocks also drop the "No." qualifier for the second attorney
+        // ("Ill. Bar 6282660", "NY. Bar 3098471"): the dotted or [A-Z]{2} state
+        // prefix + "Bar" + digit run is still anchored, so accept that form too.
+        // A bare "Bar <digits>" (no prefix, no "No.") never matches, keeping
+        // prose such as "the corner bar" or "bar 45" readable.
+        /\b(?:(?:(?:[A-Z][A-Za-z.]{0,5}\.|State\s+)\s*)?Bar\s+Nos?\.?\s*[:#]?|(?:[A-Z][A-Za-z.]{0,5}\.|State\s+)\s*Bar\s+)[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "state bar number label",
       ],
@@ -1722,6 +1727,19 @@ export class Detector {
         3,
         "heavy non-Latin fallback quarantine",
       ],
+      [
+        "BUSINESS_ID",
+        // Inline attorney bar-roll initials in parentheses, directly after the
+        // printed name in federal court signature blocks: "Michael D. Liskow
+        // (ML 4581)", "John A. O'Brien (JO 2199)". The format — 2-3 uppercase
+        // initials, a space, then a 4+ digit number, all inside parentheses — is
+        // the trust anchor; ordinary parentheticals such as "(US)" or
+        // "(i.e. roughly)" have no digits and never match. The whole parenthetical
+        // redacts as one reference.
+        /\([A-Z]{2,3}\s+\d{4,}\)/g,
+        1,
+        "attorney bar-roll initials",
+      ],
     ];
 
     for (const [kind, regex, level, reason] of patterns) {
@@ -2004,7 +2022,7 @@ export class Detector {
         "property identification number label",
       ],
       [
-        /^\s*(?:(?:[A-Z]{2}\.|[A-Z]\.[A-Z]\.|State\s+)\s*)?Bar\s+Nos?\.?\s*[:：]?\s*(.+)$/i,
+        /^\s*(?:(?:(?:[A-Z][A-Za-z.]{0,5}\.|State\s+)\s*)?Bar\s+Nos?\.?\s*[:：]?|(?:[A-Z][A-Za-z.]{0,5}\.|State\s+)\s*Bar\s+)[:：]?\s*(.+)$/i,
         "BUSINESS_ID",
         1,
         "state bar number label",
@@ -3256,6 +3274,37 @@ export class Detector {
           "ORG",
           2,
           "organization suffix",
+          doc.name,
+          (match.index ?? 0) + match[0].indexOf(surface),
+        );
+    }
+
+    // Domain-embedded company names. Tech-company filings name the entity with
+    // its website embedded in the legal name: "GoDaddy.com LLC",
+    // "Acme.io, Inc.", "FooCorp.net Limited". The orgToken class above excludes
+    // periods, so these were never matched and leaked in prose. The leading
+    // "Name.<tld>" token is anchored by a small set of well-known company-domain
+    // TLDs and the trailing legal-form suffix, so bare domains without a suffix
+    // ("example.com", "www.sample.org") stay readable.
+    const DOMAIN_TLD_ALT =
+      "com|net|org|io|co|ai|inc|dev|app|cloud|tech|finance|money";
+    const domainOrgPattern = new RegExp(
+      String.raw`(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{1,}(?:[-'][A-Za-z0-9]+)*\.(?:${DOMAIN_TLD_ALT})(?:[^\S\r\n]+[A-Z][A-Za-z'()-]*){0,4}(?:[^\S\r\n]+(?:${GENERIC_TAIL_ORG_SUFFIX_ALT})|(?:[^\S\r\n]+|,\s+)(?:${LEGAL_FORM_ORG_SUFFIX_ALT}))(?![A-Za-z0-9])`,
+      "g",
+    );
+    for (const match of doc.text.matchAll(domainOrgPattern)) {
+      const surface = this.normalizeOrgSurface(match[0]);
+      if (!surface) continue;
+      if (
+        !LEADING_PERSON_TITLE_RE.test(surface) &&
+        !looksLikeGenericOrganizationPhrase(surface) &&
+        !this.isGenericOrgBoilerplate(surface)
+      )
+        this.add(
+          surface,
+          "ORG",
+          2,
+          "domain-embedded organization suffix",
           doc.name,
           (match.index ?? 0) + match[0].indexOf(surface),
         );

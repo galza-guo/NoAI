@@ -3,6 +3,45 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.21 (general r16, chinese r10) - 2026-06-21
+
+Litigation / regulatory filing round: SEC civil complaints and an FTC complaint
+with caption docket numbers, multi-attorney signature blocks, and a
+domain-embedded respondent name. Synthetic representative documents only;
+fabricated test values, no real party/bar identifiers committed. Deterministic
+rule changes only. No AI/LLM/backend/telemetry added.
+
+- Broadened the state-bar-number label to abbreviated state names without the
+  "No." qualifier (BUSINESS_ID, Light). SEC/court signature blocks print the
+  second attorney's bar number as "Ill. Bar 6282660" / "NY. Bar 3098471" — the
+  dotted or capitalized abbreviated state prefix ("Ill.", "Mass.", "Cal.",
+  "N.Y.", "N.C.") + "Bar" + a digit run. The previous detector required "Bar
+  No.", so these leaked. The dotted/state prefix remains the trust anchor, so a
+  bare "Bar <digits>" in prose still never matches and "the corner bar" stays
+  readable.
+- Added inline attorney bar-roll initials in parentheses (BUSINESS_ID,
+  Balanced). Federal court signature blocks append the attorney's bar-roll
+  initials directly after the printed name: "Michael D. Liskow (ML 4581)",
+  "John A. O'Brien (JO 2199)". The format — 2-3 uppercase initials, a space,
+  then 4+ digits, all inside parentheses — is the trust anchor; ordinary
+  parentheticals such as "(US)" or "(i.e. roughly)" have no digits and never
+  match.
+- Added domain-embedded organization suffix detection (ORG, Balanced).
+  Tech-company filings name the respondent with its website embedded in the
+  legal name ("GoDaddy.com LLC", "Acme.io, Inc.", "FooCorp.net Limited"). The
+  ORG suffix detector's token class excluded periods, so these were never
+  matched and leaked in prose. A leading "Name.<tld>" token (small set of
+  well-known company-domain TLDs) plus a trailing legal-form suffix anchors the
+  match; bare domains ("example.com") and www-domains stay readable / are
+  handled by the existing URL detector.
+- Added 3 synthetic tests (dotted-state bar without "No."; inline bar-roll
+  initials in parens; domain-embedded org suffix), each with counterexamples.
+- Residual (deferred): proper-name short-form aliasing remains the largest gap
+  — a formally-detected party (e.g. "Apple, Inc.", "Levoff") is redacted at its
+  full mention but the bare alias ("Apple", "Levoff", "Polevikov", "GoDaddy")
+  used later in prose still leaks. This is a broad engine-architecture concern
+  rather than a single label-bound rule, so it is left for a dedicated round.
+
 ## NoAI redaction engine 1.5.20 (general r15, chinese r10) - 2026-06-21
 
 Invoice / remittance / contractor-payment round: vendor invoices with wire blocks,
