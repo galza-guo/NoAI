@@ -78,6 +78,12 @@ const ADDRESS_LABELS = [
   "送达地址",
   "住所",
   "住址",
+  "居住地址",
+  "工作单位及职务", // A mix of org and title, but fundamentally an address/location field
+  "主要营业地点",
+  "主要營業地點",
+  "营业地点",
+  "營業地點",
   "地址",
   // Common procurement/corporate address labels:
   "供应商地址",
@@ -112,7 +118,6 @@ const PERSON_LABELS = [
   "委托诉讼代理人",
   "诉讼代理人",
   "经办律师",
-  "授权代表",
   "联系人",
   "项目联系人",
   "负责人",
@@ -178,6 +183,17 @@ const PERSON_LABELS = [
   "担保人",
   "借款人",
   "贷款人",
+  // Corporate officer labels:
+  "公司秘书",
+  "公司秘書",
+  "执行董事",
+  "執行董事",
+  "非执行董事",
+  "非執行董事",
+  "独立非执行董事",
+  "獨立非執行董事",
+  "授权代表",
+  "授權代表",
   "抵押人",
   "出借人",
   "出质人",
@@ -570,6 +586,7 @@ const STOCK_CODE_RE = /^\d{4,6}(?:\.(?:HK|SS|SH|SZ))?$/;
 const TAX_ID_RE = /^[A-Za-z0-9]{15,20}$/;
 const POSTCODE_RE = /^\d{6}$/;
 const PERSON_RE = /^[\u3400-\u9fff·]{2,6}$/;
+const PERSON_VALUE_RE = /^([\u3400-\u9fff·]{2,6}|[A-Za-z \-'.]{2,40})$/;
 const ORG_RE = /^[\u3400-\u9fffA-Za-z0-9()（）·.&' -]{2,60}$/;
 const ADDRESS_SUFFIX_RE =
   /省|市|区|县|镇|乡|村|路|街|道|号|室|楼|栋|幢|大厦|广场|中心|工业区|开发区|园区|區|縣|鎮|鄉|號|樓|棟|大廈|廣場|工業區|開發區|園區/;
@@ -955,7 +972,7 @@ function detectChineseLabelValues(
     2,
     "Chinese person label",
     add,
-    (v) => PERSON_RE.test(v),
+    (v) => PERSON_VALUE_RE.test(v),
     splitChineseList,
   );
   applyLabelRules(
@@ -1487,15 +1504,16 @@ const HONORIFIC_NON_NAME = new Set([
 // "选举张三"). Real names never begin with these tokens.
 const HONORIFIC_NAME_BAD_PREFIX =
   /^(?:欢迎|感谢|提名|选举|聘任|任命|委派|委聘|介绍|邀请|请教|咨询|代表|主持|审查|关于|对于|通过|各位|大家|所有|这位|那位|每位|这些|那些)/;
-const HONORIFIC_RE = /([\u3400-\u9fff·]{2,4}?)(先生|女士|小姐)/g;
+const HONORIFIC_RE = /([\u3400-\u9fff·]{2,4}?|[A-Za-z \-'.]{2,40}?)(先生|女士|小姐)/g;
 function detectHonorificNames(doc: RedactionInput, add: AddCandidate): void {
   const text = doc.text;
   // Scan each honorific with a NON-GREEDY 2-4 Han name so the shortest name run
   // before the honorific is preferred (董事长李铁先生 -> "李铁"). Then clean and
   // anchor the result.
   for (const match of text.matchAll(HONORIFIC_RE)) {
-    let name = match[1] ?? "";
-    let nameStart = match.index ?? 0;
+    const origName = match[1] ?? "";
+    let name = origName.trim();
+    let nameStart = (match.index ?? 0) + origName.indexOf(name);
     // The honorific begins right after the captured name run.
     const honorificStart = nameStart + name.length;
     // 1. If the name absorbed a preceding verb/trigger (提名李四女士 ->
@@ -1518,7 +1536,8 @@ function detectHonorificNames(doc: RedactionInput, add: AddCandidate): void {
       nameStart = snapped;
       name = text.slice(nameStart, honorificStart);
     }
-    if (name.length < 2 || name.length > 4) continue;
+    const isHan = /[\u3400-\u9fff]/.test(name);
+    if (name.length < 2 || (isHan ? name.length > 4 : name.length > 40)) continue;
     if (HONORIFIC_NON_NAME.has(name)) continue;
     if (SIGNATURE_NON_NAME.has(name)) continue;
     if (HONORIFIC_NAME_BAD_PREFIX.test(name)) continue;
@@ -1632,7 +1651,7 @@ function isPlausibleAddress(value: string): boolean {
   return (
     value.length >= 4 &&
     value.length <= 80 &&
-    ADDRESS_SUFFIX_RE.test(value) &&
+    (ADDRESS_SUFFIX_RE.test(value) || /[A-Za-z]{3,}/.test(value)) &&
     !isPlaceholder(value)
   );
 }

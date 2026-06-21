@@ -3,6 +3,15 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.25 (general r20, chinese r18) - 2026-06-21
+
+Chinese Loop 18: International/Traditional Chinese Mix (Prada). Synthetic tests only.
+
+- Updated `isPlausibleAddress` to allow foreign addresses without Han characters or Chinese suffixes.
+- Updated `HONORIFIC_RE` to correctly extract foreign names (up to 40 Latin characters) preceding Chinese honorifics like 先生/女士/小姐, properly handling spaces as boundaries.
+- Added new corporate officer labels (公司秘书, 执行董事, 非执行董事, 独立非执行董事, 授权代表) and their Traditional Chinese variants to `PERSON_LABELS`.
+- Added location labels (居住地址, 工作单位及职务, 主要营业地点, 营业地点) to `ADDRESS_LABELS`.
+
 ## NoAI redaction engine 1.5.25 (general r20, chinese r17) - 2026-06-21
 
 Chinese Loop 17: Hong Kong & Traditional Chinese (Tencent). Synthetic tests only.

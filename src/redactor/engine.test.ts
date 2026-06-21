@@ -5779,6 +5779,34 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).toContain("董事會宣佈以下變更：");
     expect(output).toContain("先生辭任本公司獨立非執行董事");
   });
+
+  // Loop 18 — International/Traditional Chinese Mix
+  it("redacts foreign names and addresses in Chinese contexts", () => {
+    const output = redact(
+      [
+        "本公司董事會宣佈，Miuccia Prada Bianchi 女士與 Patrizio Bertelli 先生繼續擔任聯席行政總裁。",
+        "註冊地址：Via Antonio Fogazzaro, 28, 20135 Milan, Italy",
+        "香港主要營業地點：香港中環皇后大道中15號置地廣場公爵大廈36樓",
+        "公司秘書：Jane Doe 女士",
+        "授權代表：John Smith 先生",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("Miuccia Prada Bianchi");
+    expect(output).not.toContain("Patrizio Bertelli");
+    expect(output).not.toContain("Via Antonio Fogazzaro, 28, 20135 Milan, Italy");
+    expect(output).not.toContain("香港中環皇后大道中15號置地廣場公爵大廈36樓");
+    expect(output).not.toContain("Jane Doe");
+    expect(output).not.toContain("John Smith");
+
+    // The honorifics and labels should remain
+    expect(output).toContain("女士與");
+    expect(output).toContain("先生繼續擔任聯席行政總裁");
+    expect(output).toContain("註冊地址：");
+    expect(output).toContain("香港主要營業地點：");
+    expect(output).toContain("公司秘書：");
+    expect(output).toContain("授權代表：");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {
