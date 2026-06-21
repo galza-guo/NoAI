@@ -3,6 +3,37 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.19 (general r14, chinese r10) - 2026-06-21
+
+Clinical records / clinical-trial round: discharge summaries, a
+ClinicalTrials.gov-style registration, and a research informed-consent form.
+Synthetic representative documents only; no real patient/site data committed.
+Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added ClinicalTrials.gov registry identifier detection (CASE_REF, Light). Trial
+  identifiers are a globally unique "NCT" + exactly 8 digits, e.g. "NCT04551293".
+  They appear with or without an "Identifier:" label and leaked entirely. The
+  "NCT" + 8-digit shape is the distinctive anchor; the bare word "NCT" in prose
+  never carries 8 trailing digits.
+- Added National Provider Identifier (NPI) detection (BUSINESS_ID, Light). NPI is
+  the 10-digit US healthcare provider identifier, e.g. "NPI: 1548729036". It was
+  swallowed by the phone regex and mislabeled PHONE, fragmenting the value. The
+  "NPI" label + 10-digit shape distinguishes it from a phone number.
+- Added medical record number and subject identifier labels (BUSINESS_ID, Light).
+  "Medical Record No.: MG-2024-008712" and "Subject ID: BRV-00584" are
+  alphanumeric clinical identifiers that were mislabeled PHONE. The label anchor
+  owns the value; a digit requirement rejects placeholder prose.
+- Added IRB protocol number label (CASE_REF, Light). Research consent forms and
+  protocols number the ethics approval as "IRB Protocol No.: 2024-0719". The
+  "IRB" anchor owns the value and rejects placeholder prose.
+- Added 1 synthetic test covering all five new identifier forms with a
+  counterexample (bare "NCT" word in prose and an unlabeled number stay readable).
+- Residual (deferred): medication brand names (e.g. "Plavix") in discharge
+  medication lists are not redacted — generic drug names (Aspirin, Warfarin) must
+  stay readable, so brand-vs-generic disambiguation needs a curated brand list and
+  is deferred. "Attending Physician:" as a prose label still surfaces the role
+  word; titled ("Dr.") names are captured separately.
+
 ## NoAI redaction engine 1.5.18 (general r13, chinese r10) - 2026-06-21
 
 SEC-correspondence / federal-award round: public law-firm response letters and

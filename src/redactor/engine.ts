@@ -844,6 +844,18 @@ export class Detector {
       ["CASE_REF", /\bHKIAC\/[A-Z]{1,2}\d+\b/g, 1, "case shorthand"],
       [
         "CASE_REF",
+        // ClinicalTrials.gov registry identifiers are a globally unique "NCT"
+        // prefix followed by exactly 8 digits, e.g. "NCT04551293". They appear
+        // in trial registrations, consent forms, and publications with or
+        // without an "Identifier:" label. The "NCT" + 8-digit shape is the
+        // distinctive anchor; the bare word "NCT" in prose never carries 8
+        // trailing digits.
+        /\bNCT\d{8}\b/g,
+        1,
+        "ClinicalTrials.gov registry identifier",
+      ],
+      [
+        "CASE_REF",
         // Bracketed law-firm / case-management matter tags in forwarded email
         // subjects, e.g. "[team.D19995]" or "[FIRM-MATTERS.FID1695188]".
         // Require the bracket, a dotted D/FID numeric suffix, and 4+ digits so
@@ -1309,6 +1321,27 @@ export class Detector {
       ],
       [
         "BUSINESS_ID",
+        // National Provider Identifier (NPI), the 10-digit US healthcare
+        // provider identifier, e.g. "NPI: 1548729036". It is 10 digits and was
+        // swallowed by the phone regex and mislabeled PHONE. The "NPI" label
+        // anchor + 10-digit requirement distinguishes it from a phone number.
+        /\bNPI\s*[:#]\s*\d{10}\b/gi,
+        1,
+        "National Provider Identifier (NPI) label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Clinical record identifiers written as a label followed by a value,
+        // e.g. "Medical Record No.: MG-2024-008712", "Subject ID: BRV-00584".
+        // These alphanumeric identifiers were swallowed by the phone regex and
+        // mislabeled PHONE. The label anchor owns the value; the digit
+        // requirement rejects placeholder prose like "Subject ID: pending".
+        /\b(?:Medical\s+Record|Subject)\s+(?:No\.?|Number|ID)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "clinical record identifier label",
+      ],
+      [
+        "BUSINESS_ID",
         // Grant program / funding codes as bare compound labels, e.g.
         // "NSF Program Code: 1761", "NIH Activity Code: R01". The agency prefix
         // plus "Program/Activity Code" is the distinctive anchor.
@@ -1359,6 +1392,16 @@ export class Detector {
         /\b(?:Clerk'?s\s+)?File\s+Nos?\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "recorded-instrument file number label",
+      ],
+      [
+        "CASE_REF",
+        // Institutional Review Board protocol numbers in clinical research,
+        // e.g. "IRB Protocol No.: 2024-0719" or "IRB No. STU-0021093". The
+        // "IRB" anchor owns the value; the digit requirement rejects placeholder
+        // prose such as "IRB approval pending".
+        /\bIRB\s+(?:Protocol\s+)?Nos?\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "IRB protocol number label",
       ],
       [
         "CASE_REF",
@@ -1794,6 +1837,15 @@ export class Detector {
         1,
         "regulator matter label",
       ],
+      // Institutional Review Board protocol numbers in clinical research consent
+      // forms and protocols: "IRB Protocol No.: 2024-0719". Label-bound so a
+      // bare figure stays readable.
+      [
+        /^\s*IRB\s+(?:Protocol\s+)?Nos?\.?\s*[:：]?\s*(.+)$/i,
+        "CASE_REF",
+        1,
+        "IRB protocol number label",
+      ],
       [
         /^\s*(?:CMS\s+Case|EEOC\s+Nos?|Document\s+Control\s+Nos?)\b\.?\s*[:：]?\s*(.+)$/i,
         "CASE_REF",
@@ -1867,6 +1919,22 @@ export class Detector {
         "BUSINESS_ID",
         1,
         "federal entity identifier (bare acronym) label",
+      ],
+      // Clinical / healthcare provider identifiers, label-bound. NPI (10-digit
+      // National Provider Identifier), Medical Record No., and Subject ID name a
+      // specific provider or study subject. Several are phone-shaped and were
+      // mislabeled PHONE; the label anchor owns the value.
+      [
+        /^\s*NPI\s*[:：]\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "National Provider Identifier (NPI) label",
+      ],
+      [
+        /^\s*(?:Medical\s+Record|Subject)\s+(?:No\.?|Number|ID)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "clinical record identifier label",
       ],
       [
         /^\s*(?:NSF|NIH|DOE|NASA|USDA)\s+(?:Program|Activity)\s+Code\b\.?\s*[:：]?\s*(.+)$/i,

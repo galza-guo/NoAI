@@ -2903,6 +2903,39 @@ Reference item 90210 applies to batch 12345.
     expect(output).toContain("Reference item 90210");
   });
 
+  it("redacts medical record number, NPI, and clinical study identifiers", () => {
+    // Clinical/medical records label a medical record number as "Medical Record
+    // No.: MG-2024-008712" and a provider's NPI as "NPI: 1548729036". Both are
+    // 10-digit / alphanumeric identifiers that were swallowed by the phone regex
+    // and mislabeled PHONE, fragmenting the value. ClinicalTrials.gov registry
+    // IDs are a distinctive "NCT" + 8 digits shape ("NCT04551293"). IRB Protocol
+    // No. and Subject ID label research identifiers. The labels and the NCT
+    // prefix are the trust anchors.
+    const output = redact(
+      `
+Medical Record No.: MG-2024-008712
+NPI: 1548729036
+Identifier: NCT04551293
+IRB Protocol No.: 2024-0719
+Subject ID: BRV-00584
+The study ran from NCT time onward. Reference 90210 applies.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("MG-2024-008712");
+    expect(output).not.toContain("1548729036");
+    expect(output).not.toContain("NCT04551293");
+    expect(output).not.toContain("2024-0719");
+    expect(output).not.toContain("BRV-00584");
+    expect(output).toContain("BUSINESS_ID_");
+    expect(output).toContain("CASE_REF_");
+    // Counterexample: "NCT" used as a bare word in prose stays readable, and a
+    // bare number not under a label stays readable.
+    expect(output).toContain("from NCT time onward");
+    expect(output).toContain("Reference 90210");
+  });
+
   it("keeps earlier-round canaries intact in a finance-operations context", () => {
     // Finance documents still carry court/SEC/regulator references, phones,
     // postcodes, and procurement IDs. They must behave as in earlier rounds,
