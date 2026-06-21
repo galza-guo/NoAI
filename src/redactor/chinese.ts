@@ -124,6 +124,7 @@ const PERSON_LABELS = [
   "被申请人",
   "原告",
   "被告",
+  "当事人",
   "代表",
   "代表人",
   "项目经理",
@@ -482,6 +483,7 @@ const ORG_STRONG_SUFFIXES = [
   "有限公司",
   "普通合伙",
   "合伙企业",
+  "事务所",
   "研究院",
   "研究所",
   "实验室",
@@ -495,6 +497,7 @@ const ORG_STRONG_SUFFIXES = [
   "有限責任公司",
   "普通合夥",
   "合夥企業",
+  "事務所",
   "研究所",
   "實驗室",
   "醫院",
@@ -805,7 +808,7 @@ function detectChineseDirectPatterns(
   // 8 chars allowed by REGULATORY_DOC_NO_RE.
   applyRegex(
     doc,
-    /[\u3400-\u9fff]{2,10}[〔［[][(]?(?:19|20)\d{2}[)）]?[〕］\]]\d{1,5}号/g,
+    /[\u3400-\u9fff]{2,30}[〔［[][(]?(?:19|20)\d{2}[)）]?[〕］\]]\d{1,5}号/g,
     "CASE_REF",
     1,
     "Chinese agency-prefixed bracketed case reference",

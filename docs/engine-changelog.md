@@ -3,6 +3,15 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.25 (general r20, chinese r15) - 2026-06-21
+
+Chinese Loop 15: Regulatory Penalty Decisions (CSRC/SAMR). Synthetic tests only.
+
+- Added `当事人` to `PERSON_LABELS` to capture both individual and corporate respondents correctly.
+- Added `事务所` as a strong organization suffix.
+- Increased max length for agency prefixes in Chinese bracketed case references to 30 characters (supports full regulatory agency names like `中国证券监督管理委员会上海监管局`).
+- Added org alias inference: automatically infers an alias for organizations detected with a trailing parenthetical (e.g. extracts `大华会计师事务所` from `大华会计师事务所（特殊普通合伙）`).
+
 ## NoAI redaction engine 1.5.25 (general r20, chinese r14) - 2026-06-21
 
 Chinese procurement round: corporate disclosure, procurement, and regulatory documents. Synthetic tests only, no real identifiers committed. Deterministic rule changes only. No AI/LLM/backend/telemetry added.

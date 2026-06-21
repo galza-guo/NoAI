@@ -5711,6 +5711,34 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).toContain("合同总金额");
     expect(output).toContain("中标供应商统一社会信用代码");
   });
+
+  // Loop 15 — CSRC Penalty Decisions
+  it("redacts long agency-prefixed case references, bracketed org suffixes, and infers org aliases", () => {
+    const output = redact(
+      [
+        "中国证券监督管理委员会上海监管局行政处罚决定书沪〔2025〕32号",
+        "当事人：大华会计师事务所（特殊普通合伙），统一社会信用代码：91110108590676050Q，住所：北京市海淀区西四环中路16号院7号楼1101。",
+        "依据《中华人民共和国证券法》（以下简称《证券法》）的有关规定，我局对大华会计师事务所执行的A公司2023年年度审计未勤勉尽责一案进行了立案调查。",
+        "当事人：李四，男，1980年1月1日出生。",
+        "李四利用未公开信息交易股票。",
+      ].join("\n"),
+    );
+
+    // Case reference with long agency prefix
+    expect(output).not.toContain("中国证券监督管理委员会上海监管局行政处罚决定书沪〔2025〕32号");
+    
+    // ORG with bracketed suffix
+    expect(output).not.toContain("大华会计师事务所（特殊普通合伙）");
+    expect(output).not.toContain("大华会计师事务所"); // Alias redaction
+    
+    // Identifiers
+    expect(output).not.toContain("91110108590676050Q");
+    expect(output).not.toContain("北京市海淀区西四环中路16号院");
+    
+    // Person extraction from "当事人" and alias replacement
+    expect(output).not.toContain("1980年1月1日出生");
+    expect(output).not.toContain("李四");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {

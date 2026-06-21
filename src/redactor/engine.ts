@@ -560,6 +560,7 @@ export class Detector {
       this.detectCustomTerms(doc);
     }
     this.addPersonAliases();
+    this.addOrgAliases();
     this.finalizeCandidates();
     return [...this.candidates.values()].sort(
       (a, b) =>
@@ -3982,6 +3983,35 @@ export class Detector {
             doc.name,
             match.index ?? 0,
           );
+      }
+    }
+  }
+
+  private addOrgAliases(): void {
+    const orgs = new Set<string>();
+    for (const candidate of this.candidates.values()) {
+      if (candidate.kind !== "ORG") continue;
+      orgs.add(candidate.value);
+    }
+    for (const doc of this.docs) {
+      for (const org of orgs) {
+        const match = org.match(/^(.+?)\s*[(（]/);
+        if (!match || match[1].length < 2) continue;
+        const alias = match[1];
+        if (alias === org) continue;
+
+        const re = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(alias)}(?![A-Za-z0-9])`, "g");
+        for (const m of doc.text.matchAll(re)) {
+          const original = this.candidates.get(this.key("ORG", org));
+          this.add(
+            alias,
+            "ORG",
+            original ? original.minLevel : 2,
+            "organization bracket alias",
+            doc.name,
+            m.index ?? 0,
+          );
+        }
       }
     }
   }
