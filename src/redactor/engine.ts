@@ -47,7 +47,7 @@ const BUILDING_KEYWORD_ALT = BUILDING_KEYWORDS.join("|");
 const ADDRESS_UNIT_WORDS_ALT = [...UNIT_INDICATORS, ...BUILDING_KEYWORDS].join(
   "|",
 );
-const STREET_NAME_TOKEN_PATTERN = String.raw`(?:[A-Z][A-Za-z'’-]+|\d{1,5}(?:\^\((?:st|nd|rd|th)\)|st|nd|rd|th)?)`;
+const STREET_NAME_TOKEN_PATTERN = String.raw`(?:[A-Z][A-Za-z'’-]+|[A-Z]|\d{1,5}(?:\^\((?:st|nd|rd|th)\)|st|nd|rd|th)?)`;
 const STANDALONE_UNIT_RE = new RegExp(
   String.raw`\b(?:${ADDRESS_UNIT_WORDS_ALT})\b|\b\d+\s*/\s*F\b`,
   "i",
@@ -550,6 +550,7 @@ export class Detector {
       this.detectLabelContinuationValues(doc);
       this.detectAddressContinuations(doc);
       this.detectStandaloneAddressLines(doc);
+      this.detectAddressTails(doc);
       this.detectPeople(doc);
       this.detectOrganizations(doc);
       this.detectMatterTerms(doc);
@@ -721,6 +722,21 @@ export class Detector {
         "mixed-separator US phone number",
       ],
       ["URL", /https?:\/\/[^\s)>\]]+/g, 1, "URL"],
+      [
+        "URL",
+        // Firm/vendor letterheads, signature blocks, and contact lines print a
+        // website as a bare "www.example.com" with NO http(s):// scheme. The
+        // scheme-only rule above leaked these entirely, so the website
+        // identifier survived. The "www." prefix is a strong trust anchor; a
+        // following host segment and a 2+ letter TLD make this safe without a
+        // TLD dictionary. A bare domain WITHOUT the www anchor (e.g.
+        // "example.com" mid-prose) is intentionally NOT matched, and "www"
+        // used as a word ("every www attendee") cannot match because the regex
+        // requires "www." immediately followed by a host label and a dot+TLD.
+        /\bwww\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}\b/g,
+        1,
+        "bare www. website URL (no scheme)",
+      ],
       [
         "INTERNAL_LINK",
         /\]\(([^)]+\.pdf)\)/g,
@@ -1696,6 +1712,19 @@ export class Detector {
         1,
         "procurement contact label",
       ],
+      // Federal awards, contracts, and grants name the responsible official with
+      // a fixed signing/contracting role label and a colon:
+      // "CONTRACTING OFFICER: Karen L. Williams", "Authorized Officer: Daniel
+      // Park", "Contracting Officer's Technical Representative: Dr. Kim Caid".
+      // The titled-name ("Dr. Kim Caid") form is already caught by the
+      // signature/titled detectors, but the bare label+name leaks because the
+      // role word is not a person title. The role label is the trust anchor.
+      [
+        /^\s*(?:Contracting\s+Officer|Authorized\s+Officer|Administrative\s+Officer|Technical\s+Representative|Contracting\s+Officer['’]s\s+Technical\s+Representative|COTR|COR)\s*[:：]\s*(.+)$/i,
+        "PERSON",
+        1,
+        "contracting/signing officer label",
+      ],
       [
         /^\s*(?:Buyer\s+Name|Bidder\s+Name)\s*[:：]\s*(.+)$/i,
         "PERSON_OR_ORG",
@@ -2215,6 +2244,89 @@ export class Detector {
           pos,
         );
       }
+    }
+  }
+
+  private detectAddressTails(doc: RedactionInput): void {
+    // When a numbered street / unit line is redacted as ADDRESS, the following
+    // standalone "City, State" and bare "ZIP" lines leak as plain prose because
+    // they carry no street suffix or number of their own. These are the tail of
+    // the mailing address and must redact. Trust anchor: the immediately
+    // preceding non-empty line is an ADDRESS candidate (or a city-state tail
+    // already captured here in the same block). Without that anchor a bare
+    // 5-digit figure or a "City, ST" fragment in unrelated prose stays
+    // readable. Recognized tail forms: "City, State" / "City, ST" with an
+    // optional trailing ZIP, and a bare US ZIP (5 or 5-4 digits).
+    const lines = doc.text.split(/\r?\n/);
+    const offsets: number[] = [];
+    let searchPos = 0;
+    for (const line of lines) {
+      const pos = doc.text.indexOf(line, searchPos);
+      offsets.push(pos);
+      searchPos = pos + line.length + 1;
+    }
+    const addressValues = new Set<string>();
+    for (const candidate of this.candidates.values()) {
+      if (candidate.kind === "ADDRESS") addressValues.add(candidate.value);
+    }
+    const isAddressLine = (idx: number): boolean => {
+      const text = visibleLineText(lines[idx] ?? "").trim();
+      if (!text) return false;
+      return [...addressValues].some((v) => text.includes(v));
+    };
+    const cityStateRe = new RegExp(
+      String.raw`^[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,3},\s+(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?|D\.C\.|(?:${US_STATE_ALT}))(?:\s+\d{5}(?:-\d{4})?)?$`,
+    );
+    const zipRe = /^\d{5}(?:-\d{4})?$/;
+    let prevInAddressBlock = false;
+    for (let i = 0; i < lines.length; i += 1) {
+      const visible = visibleLineText(lines[i]).trim();
+      if (!visible) {
+        prevInAddressBlock = false;
+        continue;
+      }
+      const anchored = prevInAddressBlock || isAddressLine(i - 1 < 0 ? -1 : i - 1);
+      // Skip to the previous NON-EMPTY line for the anchor check.
+      let prevIdx = -1;
+      for (let j = i - 1; j >= 0; j -= 1) {
+        if (visibleLineText(lines[j]).trim()) {
+          prevIdx = j;
+          break;
+        }
+      }
+      const anchoredPrev = prevIdx >= 0 && (prevInAddressBlock || isAddressLine(prevIdx));
+      if (!anchored && !anchoredPrev) {
+        prevInAddressBlock = false;
+        continue;
+      }
+      let captured = false;
+      if (cityStateRe.test(visible)) {
+        const cityState = visible.replace(/\s+\d{5}(?:-\d{4})?$/, "");
+        this.add(
+          cityState,
+          "LOCATION",
+          1,
+          "address-tail city-state line",
+          doc.name,
+          offsets[i],
+        );
+        const zip = visible.match(/\d{5}(?:-\d{4})?$/);
+        if (zip) {
+          this.add(
+            zip[0],
+            "POSTCODE",
+            1,
+            "address-tail ZIP",
+            doc.name,
+            offsets[i] + visible.lastIndexOf(zip[0]),
+          );
+        }
+        captured = true;
+      } else if (zipRe.test(visible)) {
+        this.add(visible, "POSTCODE", 1, "address-tail ZIP", doc.name, offsets[i]);
+        captured = true;
+      }
+      prevInAddressBlock = captured;
     }
   }
 

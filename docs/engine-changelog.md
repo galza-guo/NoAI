@@ -3,6 +3,47 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.18 (general r13, chinese r10) - 2026-06-21
+
+SEC-correspondence / federal-award round: public law-firm response letters and
+a federal award/contract notice. Synthetic representative documents only; no
+real documents committed. Deterministic rule changes only. No
+AI/LLM/backend/telemetry added.
+
+- Added bare `www.` website URL detection (URL, Light). Firm/vendor letterheads
+  and contact lines print a website as a bare "www.example.com" with NO
+  http(s):// scheme. The scheme-only URL regex leaked these entirely, so the
+  website identifier survived. The "www." prefix is the trust anchor; a host
+  segment plus a 2+ letter TLD anchors the rest without a TLD dictionary. A bare
+  domain without "www." ("example.com" mid-prose) and "www" used as a word
+  ("every www attendee") are intentionally NOT matched.
+- Added single-letter street-name support in the numbered-street address
+  detector (ADDRESS, Light). Street names like "100 F Street, N.E.",
+  "1500 K Street", "42 A Avenue" (single capital letter streets common in
+  Washington D.C., Sacramento, and many US grids) leaked because the street-name
+  token required 2+ characters. The street suffix anchor (Street/Avenue/...) is
+  still required, so ordinary numbered prose is unaffected.
+- Added contracting/signing officer label person detection (PERSON, Light).
+  Federal awards, contracts, and grants name the responsible official with a
+  fixed role label and colon: "CONTRACTING OFFICER: Karen L. Williams",
+  "Authorized Officer: Daniel Park". The titled-name ("Dr. Kim Caid") form was
+  already caught, but the bare label+name leaked because the role word is not a
+  person title. The role label (Contracting/Authorized/Administrative Officer,
+  Technical Representative, COTR, COR) is the trust anchor.
+- Added address-tail city-state + bare-ZIP line detection (LOCATION/POSTCODE,
+  Light). When a numbered street line is redacted as ADDRESS, the following
+  standalone "City, State" and bare 5-digit/ZIP+4 lines leaked as plain prose
+  because they carry no street suffix. The trust anchor is the immediately
+  preceding non-empty line being an ADDRESS candidate (or a captured tail in the
+  same block). A bare 5-digit figure or "City, ST" fragment in unrelated prose
+  stays readable.
+- Added 3 synthetic tests (bare www URL; contracting-officer label name;
+  address-tail city-state/ZIP), each with a counterexample.
+- Residual (deferred): bare domains without "www." still leak; "Messrs. Murray
+  and Hancock" surname-only mentions after the greeting still leak (surname-only
+  without a first name is too ambiguous to bind safely); bare federal Treasury
+  account codes ("11-3400-0-7-0503") are still mislabeled PHONE.
+
 ## NoAI redaction engine 1.5.17 (general r12, chinese r10) - 2026-06-20
 
 Property / event round: county property tax bills and conference registration

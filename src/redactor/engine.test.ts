@@ -2826,6 +2826,83 @@ Row 1 of the ledger. Internal queue 567890. Version 2.1 applies.
     }
   });
 
+  it("redacts bare www. website URLs that have no scheme", () => {
+    // Firm/vendor letterheads and signature blocks print a website as a bare
+    // "www.example.com" with no http(s):// scheme. The scheme-only URL regex
+    // leaked these entirely, so the website identifier survived. The "www."
+    // prefix is a strong trust anchor; a following host and 2+ letter TLD make
+    // this safe. A bare domain without www (e.g. "example.com" mid-prose) is
+    // NOT matched, and "every www attendee" stays readable.
+    const output = redact(
+      `
+Acme Corp
+100 Market Street
+www.acme-example.com
+Visit example.com for details.
+We met every www attendee at the summit.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("www.acme-example.com");
+    expect(output).toContain("URL_");
+    // Counterexample: a bare domain without the www anchor stays readable.
+    expect(output).toContain("example.com for details");
+    // Counterexample: "www" used as a word in prose is not a URL.
+    expect(output).toContain("every www attendee");
+  });
+
+  it("redacts named contracting officer / authorized signer after the role label", () => {
+    // Federal awards, contracts, and grants name the responsible official with a
+    // fixed role label and colon: "CONTRACTING OFFICER: Karen L. Williams",
+    // "Authorized Officer: Daniel Park". The titled-name ("Dr. Kim Caid") form
+    // was already caught, but the bare label+name leaked because the role word is
+    // not a person title. The role label is the trust anchor.
+    const output = redact(
+      `
+CONTRACTING OFFICER: Karen L. Williams
+COTR: Dr. Kimberly E. Caid
+Authorized Officer: Daniel Park
+The Contracting Officer shall sign all modifications.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("Karen L. Williams");
+    expect(output).not.toContain("Daniel Park");
+    expect(output).toContain("PERSON_");
+    // Counterexample: the role label itself in prose stays readable.
+    expect(output).toContain("The Contracting Officer shall sign");
+  });
+
+  it("redacts standalone city-state and bare ZIP lines that follow an address", () => {
+    // When a numbered street line is redacted, the following standalone
+    // "City, State" and bare 5-digit ZIP lines leak as plain text. These are
+    // part of the mailing address and must redact. A bare 5-digit figure that
+    // is NOT under an address label (e.g. a reference "Item 90210") stays
+    // readable; the city-state line carries its own trust signal (a US state
+    // code after a comma).
+    const output = redact(
+      `
+Latham & Watkins LLP
+650 Town Center Drive, 20th Floor
+Costa Mesa, California 92626
+United States Securities and Exchange Commission
+100 F Street, N.E.
+Washington, D.C. 20549
+Reference item 90210 applies to batch 12345.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("Costa Mesa, California");
+    expect(output).not.toContain("Washington, D.C.");
+    expect(output).toContain("LOCATION_");
+    expect(output).toContain("POSTCODE_");
+    // Counterexample: bare numbers not under an address label stay readable.
+    expect(output).toContain("Reference item 90210");
+  });
+
   it("keeps earlier-round canaries intact in a finance-operations context", () => {
     // Finance documents still carry court/SEC/regulator references, phones,
     // postcodes, and procurement IDs. They must behave as in earlier rounds,
