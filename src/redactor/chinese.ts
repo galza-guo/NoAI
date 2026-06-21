@@ -234,6 +234,16 @@ const PERSON_LABELS = [
   "接生人员",
   "体检医师",
   "主检医师",
+  // VAT invoice signer role labels (introduce the named individual at the
+  // bottom of a 增值税专用发票 / 普通发票):
+  "收款人",
+  "开票人",
+  "开票员",
+  "收款员",
+  "复核人",
+  "复核",
+  "制单人",
+  "经办人",
 ];
 const ORG_LABELS = [
   "代理机构",
@@ -346,6 +356,7 @@ const PROCUREMENT_REF_LABELS = [
 const FINANCE_REF_LABELS = [
   "发票号",
   "发票号码",
+  "发票代码",
   "票据号",
   "票据编号",
   "报关单号",
@@ -357,6 +368,9 @@ const FINANCE_REF_LABELS = [
   "许可证编号",
   "批准文号",
   "备案文号",
+  // VAT invoice verification code (校验码) is a 20-24 digit string printed
+  // on the lower-right of 专票/普票; always a digit run, never prose.
+  "校验码",
 ];
 // Cross-border / social identifiers (label-bound only; bare detection would be
 // too FP-prone). WeChat IDs are arbitrary usernames, passport numbers vary by
@@ -476,24 +490,29 @@ const RMB_YI_YUAN_RE =
 // caught. Requires the trailing 元 anchor so 年/月/日 fragments are not swept.
 const CN_NUMERAL_AMT_CHARS =
   "[零〇一二三四五六七八九十百千万亿壹贰叁肆伍陆柒捌玖拾佰仟]";
+// Suffix for formal RMB amounts: 元 may be followed by 角(N×10 cents) and/or
+// 分(N cents), optionally ending in 整/正 (壹佰贰拾元伍角整 / 叁角柒分).
+const CN_NUMERAL_AMT_SUFFIX =
+  "元(?:" + CN_NUMERAL_AMT_CHARS + "?角)?" + "(?:" + CN_NUMERAL_AMT_CHARS + "?分)?(?:整|正)?";
 const RMB_CN_NUMERAL_RE = new RegExp(
-  "(?:人民币\\s*)?" + CN_NUMERAL_AMT_CHARS + "+元(?:整|正)?",
+  "(?:人民币\\s*)?" + CN_NUMERAL_AMT_CHARS + "+" + CN_NUMERAL_AMT_SUFFIX,
   "g",
 );
 const RMB_CN_NUMERAL_WAN_YI_RE = new RegExp(
-  "(?:人民币\\s*)?" + CN_NUMERAL_AMT_CHARS + "+[万亿]元(?:整|正)?",
+  "(?:人民币\\s*)?" + CN_NUMERAL_AMT_CHARS + "+[万亿]" + CN_NUMERAL_AMT_SUFFIX,
   "g",
 );
 
-// Structure guard: returns the numeral run (text before 元/万元/亿元) from a
-// full Chinese-numeral amount match, so the allow() filter can decide whether
-// the amount carries enough compounding structure to redact.
+// Structure guard: returns the numeral run (text before 元/万元/亿元, including
+// any 角/分 fractional numerals) from a full Chinese-numeral amount match, so
+// the allow() filter can decide whether the amount carries enough compounding
+// structure to redact.
 function chineseNumeralRun(fullMatch: string): string {
-  // Strip an optional 人民币 prefix and the trailing 元/元整/万元/亿元 anchor.
+  // Strip an optional 人民币 prefix and everything from the 元 anchor onward
+  // (元 + optional 角/分 + optional 整/正).
   return fullMatch
     .replace(/^人民币\s*/, "")
-    .replace(/元(?:整|正)?$/, "")
-    .replace(/[万亿]$/, "");
+    .replace(/元.*$/, "");
 }
 
 // A written-out Chinese-numeral amount looks formal when the numeral run has
@@ -716,6 +735,12 @@ const PHONE_RE = /^(?:\+?86[-\s]?)?(?:1[3-9]\d{9}|0\d{2,3}[-\s]?\d{7,8})$/;
 // stripping spaces before the length check; a single regex with backreferences
 // would be more brittle than the two-shape union below.
 const BANK_ACCOUNT_RE = /^(?:\d{16,19}|(?:\d{4}\s){3}\d{4}(?:\s\d{1,3})?)$/;
+// Bare account-number adjacency: a 16-19 digit run that directly follows the
+// label 账号 / 卡号 / 银行卡号 with NO colon separator (户名李建华，账号621700…),
+// common on lease/payment forms where fields are comma-spliced. A lookbehind
+// anchors the label without consuming it, so match[0] is just the digit run.
+const BARE_ACCOUNT_ADJACENCY_RE =
+  /(?<=账号|卡号|银行卡号|银行账号)(?:[，,]?\s*)\d{16,19}\b/g;
 // Procurement / contract / document reference shape. Must contain at least
 // one digit (lookahead) so prose such as 订单管理 / 快递送达 stays readable.
 // Internal single-space groups are allowed so formatted document numbers such
@@ -970,6 +995,18 @@ function detectChineseDirectPatterns(
     "bare Chinese wan/yi amount",
     add,
     (match) => isPlausibleBareWanYi(doc.text, match),
+  );
+  // Bare account-number adjacency (账号621700… with no colon). A lookbehind
+  // anchors the label so match[0] starts at the digit run; cleanChineseValue
+  // trims any leading comma/space so the placeholder keeps just the digits.
+  applyRegex(
+    doc,
+    BARE_ACCOUNT_ADJACENCY_RE,
+    "BANK_ACCOUNT",
+    2,
+    "bare Chinese bank account adjacency",
+    add,
+    (match) => /\d{16,19}/.test(match.text),
   );
   applyRegex(
     doc,

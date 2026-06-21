@@ -261,6 +261,13 @@ const REGULATOR_NUMBER_SPLIT_RE = /^\d{1,4}[\s-]\d{1,4}$/;
 const REGULATOR_NUMBER_LABEL_RE =
   /\b(?:File|Docket|Matter|Case|Charge|Claim|Reference)\s+Nos?\b\.?\s*[:#]?\s*$/i;
 
+// Chinese document-reference labels that bind a following digit run as a
+// CASE_REF, not a PHONE. When a phone-shaped run directly follows one of these
+// labels (发票代码：031001800111 / 校验码：25605123), the label-bound CASE_REF
+// detector owns it and the bare PHONE candidate is skipped.
+const CHINESE_REF_LABEL_BEFORE_PHONE_RE =
+  /(?:发票代码|发票号码|发票号|校验码|流水号|凭证号|订单号|运单号|保单号|住院号|门诊号|病案号|病历号|出生证编号)\s*[：:#]\s*$/;
+
 // Priority used to pick a single kind when the same exact surface string is
 // detected under multiple kinds (lower wins). Keeps replacement tokens consistent.
 const KIND_PRIORITY: Record<CandidateKind, number> = {
@@ -1858,6 +1865,13 @@ export class Detector {
         if (kind === "PHONE" && REGULATOR_NUMBER_SPLIT_RE.test(value)) {
           const before = doc.text.slice(Math.max(0, pos - 30), pos);
           if (REGULATOR_NUMBER_LABEL_RE.test(before)) continue;
+        }
+        // A phone-shaped digit run that directly follows a Chinese document
+        // reference label is a CASE_REF owned by the label-bound detector, not
+        // a phone (发票代码：031001800111 / 校验码：25605123).
+        if (kind === "PHONE") {
+          const before = doc.text.slice(Math.max(0, pos - 24), pos);
+          if (CHINESE_REF_LABEL_BEFORE_PHONE_RE.test(before)) continue;
         }
         // IBAN must pass MOD-97 and carry an issuing country code; otherwise
         // the shape ([A-Z]{2}\d{2}…) catches Chinese hospital admission codes,

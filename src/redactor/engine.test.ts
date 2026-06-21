@@ -6067,6 +6067,82 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).toContain("狭窄85%");
     expect(output).not.toContain("AMOUNT");
   });
+
+  // ----------------------------------------------------------------------
+  // Round 23 — real-estate lease & VAT invoice documents. Labels for invoice
+  // codes/numbers, verification codes, and invoice signer roles; bare
+  // account-number adjacency after 户名/账号; Chinese-numeral 角/分 fractions.
+  // All values invented.
+  // ----------------------------------------------------------------------
+
+  it("redacts VAT invoice code/number/verification labels as CASE_REF (not PHONE)", () => {
+    const output = redact(
+      [
+        "发票代码：031001800111。",
+        "发票号码：25605123。",
+        "校验码：03100180011156782345678901234。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("03100180011156782345678901234");
+    expect(output).not.toContain("031001800111");
+    expect(output).not.toContain("25605123");
+    expect(output).toContain("CASE_REF_");
+    expect(output).not.toContain("PHONE_");
+  });
+
+  it("redacts VAT invoice signer role labels (收款人/复核/开票人/开票员)", () => {
+    const output = redact(
+      [
+        "收款人：张敏。",
+        "复核：刘洋。",
+        "开票人：陈静。",
+        "开票员：周建华。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("张敏");
+    expect(output).not.toContain("刘洋");
+    expect(output).not.toContain("陈静");
+    expect(output).not.toContain("周建华");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("收款人：");
+    expect(output).toContain("复核：");
+    expect(output).toContain("开票人：");
+  });
+
+  it("redacts Chinese-numeral amounts including 角/分 fractional units", () => {
+    const output = redact(
+      [
+        "金额壹拾玖万贰仟肆佰玖拾玖元叁角柒分。",
+        "税额壹万壹仟肆佰陆拾元陆角叁分。",
+        "小写：人民币壹佰贰拾元伍角整。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("壹拾玖万贰仟肆佰玖拾玖元");
+    expect(output).not.toContain("壹万壹仟肆佰陆拾元");
+    expect(output).not.toContain("壹佰贰拾元");
+    // Fractional 角/分 / 整 must travel inside the amount placeholder rather
+    // than leak after it.
+    expect(output).not.toContain("叁角");
+    expect(output).not.toContain("陆角");
+    expect(output).toContain("AMOUNT_");
+  });
+
+  it("redacts bank account adjacent to 户名 label without a colon separator", () => {
+    const output = redact(
+      [
+        "户名李建华，账号6217001234567890123。",
+        "户名：王丽娟，账号6225880123456789。",
+      ].join("\n"),
+      "balanced",
+    );
+
+    expect(output).not.toContain("6217001234567890123");
+    expect(output).not.toContain("6225880123456789");
+    expect(output).toContain("BANK_ACCOUNT_");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {

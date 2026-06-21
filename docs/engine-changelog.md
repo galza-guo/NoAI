@@ -3,6 +3,19 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.6.0 (general r20, chinese r23) - 2026-06-22
+
+Shared engine: Chinese reference-label PHONE suppression.
+
+- Added `CHINESE_REF_LABEL_BEFORE_PHONE_RE` guard in the shared direct-pattern loop. When a phone-shaped digit run directly follows a Chinese document-reference label (`发票代码`/`发票号码`/`校验码`/`流水号`/`订单号`/`运单号`/`保单号`/`住院号`/`门诊号`/`病案号`/`病历号`/`出生证编号`), the bare PHONE candidate is skipped so the label-bound CASE_REF detector owns the value (e.g. `发票代码：031001800111` is no longer misclassified as PHONE).
+
+Chinese Loop 23: Real-Estate Lease & VAT Invoice Documents.
+
+- Added VAT invoice finance labels (`发票代码`, `校验码`) to `FINANCE_REF_LABELS`; `发票号码` was already present.
+- Added invoice signer role labels (`收款人`, `开票人`, `开票员`, `收款员`, `复核人`, `复核`, `制单人`, `经办人`) to `PERSON_LABELS`.
+- Extended `RMB_CN_NUMERAL_RE` to include 角/分 fractional units and 整/正 suffix so formal amounts like `壹拾玖万贰仟肆佰玖拾玖元叁角柒分` are redacted whole rather than leaking `叁角柒分` after the 元 anchor.
+- Added `BARE_ACCOUNT_ADJACENCY_RE` for bare 16-19 digit bank-card runs that directly follow the label `账号`/`卡号`/`银行卡号`/`银行账号` with no colon separator (lease/payment forms where fields are comma-spliced: `户名李建华，账号621700…`).
+
 ## NoAI redaction engine 1.6.0 (general r20, chinese r22) - 2026-06-22
 
 Shared engine: IBAN checksum validation + clinical-percentage guard.
