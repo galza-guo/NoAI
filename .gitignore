@@ -23,5 +23,12 @@ benchmarking/suites/*/model-proposals/
 benchmarking/suites/*/gold/
 benchmarking/suites/*/reports/
 benchmarking/suites/*/engine-output/
+benchmarking/suites/*/cache/
+benchmarking/suites/*/.cache/
+benchmarking/suites/*/scratch/
+benchmarking/suites/*/tmp/
+benchmarking/suites/*/downloads/
+benchmarking/suites/*/source/
+benchmarking/suites/*/source-raw/
 .vercel
 .worktrees/

@@ -55,3 +55,10 @@ benchmark. Run improvement rounds in a separate working thread using fresh
 development-corpus documents. After the worker finishes, audit the engine
 changes, run the normal test/build/version checks, run NAIR scoring, and decide
 whether to adopt, partially keep, or discard the round.
+
+For long-running English/general and Chinese rule loops, use the persistent
+worktree workflow in `docs/rule-worktree-workflow.md`. The dev-loop workflow is
+only for language-specific ruleset development. Rule worktrees prepare reviewed
+branches with synthetic tests and benchmark evidence. The main worktree remains
+the integration lane for review, merge/squash/cherry-pick, and shared
+infrastructure work.

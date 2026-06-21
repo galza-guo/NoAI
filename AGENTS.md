@@ -61,6 +61,18 @@ The current prototype was developed against real-world English legal/business do
 
 The strongest next work is to improve the detector systematically: add failing synthetic cases, tune rules, and keep a human-readable explanation of what each rule is intended to catch. Frontend polish can come later.
 
+## Persistent Rule Worktrees
+
+When the user explicitly asks to run long English/general and Chinese redaction-rule development loops in parallel, follow `docs/rule-worktree-workflow.md`.
+
+- Keep the main worktree for app, UI, shared engine, benchmark harness, build/test, and broad refactor work.
+- Run language-specific rule-set development-loop improvements in the dedicated English/general or Chinese rule worktree once that worktree exists. Do not use the main worktree for long-running benchmark/corpus-driven rule loops unless the user explicitly asks.
+- The NoAI dev-loop skill is only for language-specific ruleset development. UI, file readers, shared engine architecture, benchmark harness/process changes, package/build config, app integration, and general refactors stay on the main-worktree/integration path.
+- Do not create, delete, reset, rebase, or repurpose worktrees without explicit approval.
+- Treat English/general and Chinese rule branches as reviewed preparation branches. Dev-loop workers may commit in their own rule worktree at the end of each completed loop, and may do multiple loops with one commit per accepted loop. The main worktree is the integration/review lane; rule-loop builders do not merge themselves into `main`.
+- Keep raw documents, extracted text, annotations, comparison reports, generated benchmark outputs, logs, and caches under ignored private folders.
+- Do not run broad searches over local sealed benchmark suites. During rule-writing work, exclude `benchmarking/private/**` and `benchmarking/suites/**` unless a command is deliberately operating on the current ignored dev-round folder.
+
 ## Frontend Development Guidelines
 
 - **Typography**: Never allow elements to fall back to browser default fonts. All typography must be strictly defined by the design system variables (`--font-sans`, `--font-display`, `--font-mono`). Ensure form controls (`button`, `input`, `select`, `textarea`) and preformatted text (`code`, `pre`, `kbd`, `samp`) explicitly inherit or declare these variables, as they do not inherit from `body` by default.

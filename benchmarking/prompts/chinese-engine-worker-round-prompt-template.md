@@ -20,6 +20,26 @@ span-level benchmark failures are off limits.
 Use only the supplied Chinese development-corpus documents and the existing
 synthetic regression tests.
 
+## Worktree Guardrails
+
+This prompt is for Chinese ruleset development only.
+Long-running Chinese rule-development rounds should run in the persistent
+Chinese rule worktree described in `docs/rule-worktree-workflow.md`. Stay in
+that lane.
+
+- Focus on `src/redactor/chinese.ts`, Chinese-specific tests, Chinese corpus
+  docs, the Chinese ruleset version, and the changelog.
+- Do not modify UI, file readers, benchmark harnesses, package scripts, or
+  shared infrastructure unless the user explicitly asks.
+- Treat `src/redactor/engine.test.ts`, `src/redactor/version.ts`, and
+  `docs/engine-changelog.md` as shared conflict points.
+- Do not run broad searches over `benchmarking/private/**` or
+  `benchmarking/suites/**` while writing rules.
+- You may commit in this rule worktree at the end of each accepted loop, and may
+  run multiple loops with one commit per accepted loop. The main worktree
+  integration agent reviews and merges/squashes/cherry-picks accepted work; do
+  not merge this branch into `main`.
+
 ## Round Goal
 
 Improve deterministic Chinese redaction behavior for:
