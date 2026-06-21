@@ -5819,10 +5819,98 @@ The parcel sits in Cedar Park, TX (US).`,
 
     expect(output).not.toContain("北京市海淀区中关村大街27号中关村大厦10层");
     expect(output).not.toContain("北京市海淀区中关村大街27号中关村大厦");
-    
+
     // Check that we didn't wipe out innocent prose
     expect(output).toContain("同時，");
     expect(output).toContain("的辦公室也參與了此事。");
+  });
+
+  // ----------------------------------------------------------------------
+  // Round 20 — arbitration/court case refs with 【】 brackets, ORG prefix
+  // trimming, Chinese-numeral RMB amounts, and ethnicity-label guard.
+  // All values invented; patterns drawn from public labor-arbitration awards
+  // and regulatory decisions.
+  // ----------------------------------------------------------------------
+
+  it("redacts Chinese case refs using full-width 【】 brackets (arbitration/labour awards)", () => {
+    const output = redact(
+      [
+        "深劳人仲案【2022】8836号。",
+        "京海劳仲【2025】第1024号裁决书。",
+        "沪一仲案【2026】0512-001号。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("深劳人仲案【2022】8836号");
+    expect(output).not.toContain("京海劳仲【2025】第1024号");
+    expect(output).not.toContain("沪一仲案【2026】0512-001号");
+    expect(output).toContain("CASE_REF_");
+    // Surrounding prose stays readable.
+    expect(output).toContain("。");
+    expect(output).toContain("裁决书");
+  });
+
+  it("keeps ordinary 【】 prose readable (footnotes/glossaries, not case refs)", () => {
+    const output = redact("注释【2022】说明此为示例段落。");
+
+    expect(output).toContain("注释【2022】说明此为示例段落。");
+    expect(output).not.toContain("CASE_REF_");
+  });
+
+  it("trims leading verb/preposition prefixes from context organization matches", () => {
+    const output = redact(
+      [
+        // A verb phrase precedes the org name; only the org should be replaced.
+        "华铭智能通过发行股份、可转换债券等方式收购北京聚利科技有限公司股权。",
+        // A single-char preposition precedes the org name.
+        "对上海华铭智能终端设备股份有限公司给予警告。",
+      ].join("\n"),
+    );
+
+    // Org names gone.
+    expect(output).not.toContain("北京聚利科技有限公司");
+    expect(output).not.toContain("上海华铭智能终端设备股份有限公司");
+    expect(output).toContain("ORG_");
+    // Generic leading prose must NOT be swept into the org placeholder:
+    // the acquisition verb phrase and preposition stay readable.
+    expect(output).toContain("收购");
+    expect(output).toContain("股权");
+    expect(output).toContain("给予警告");
+    expect(output).not.toContain("收购北京");
+    expect(output).not.toContain("对上海");
+  });
+
+  it("redacts Chinese-numeral RMB amounts (一百五十万元 / 伍万捌仟元)", () => {
+    const output = redact(
+      [
+        "处以一百五十万元罚款。",
+        "支付赔偿金人民币伍万捌仟元整。",
+        "违法所得共计贰佰叁拾万元。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("一百五十万元");
+    expect(output).not.toContain("伍万捌仟元");
+    expect(output).not.toContain("贰佰叁拾万元");
+    expect(output).toContain("AMOUNT_");
+    expect(output).toContain("罚款");
+    expect(output).toContain("赔偿金");
+    // Surrounding prose stays readable; 人民币 prefix may travel with the
+    // amount span, which is acceptable and consistent with Arabic-digit form.
+    expect(output).toContain("支付赔偿金");
+    expect(output).toContain("违法所得共计");
+  });
+
+  it("does not redact ethnicity/gender labels (汉族/女) leaked from party blocks", () => {
+    const output = redact(
+      "被申请人：李某某，女，汉族，住址：广东省深圳市罗湖区人民南路99号。",
+    );
+
+    // Name and address redacted; generic demographics stay readable.
+    expect(output).not.toContain("李某某");
+    expect(output).not.toContain("广东省深圳市罗湖区人民南路99号");
+    expect(output).toContain("汉族");
+    expect(output).toContain("女");
   });
 });
 

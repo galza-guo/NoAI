@@ -3,6 +3,15 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.25 (general r20, chinese r20) - 2026-06-22
+
+Chinese Loop 20: Labour Arbitration Awards & Regulatory Decisions.
+
+- Added `ARBITRATION_CASE_NO_RE` to redact Chinese arbitration/labour case numbers that use full-width `【】` brackets (e.g. `深劳人仲案【2022】8836号`, `京海劳仲【2025】第1024号`). The existing `〔〕`/`［］`/`[]` bracket forms are unchanged, and the 2-8 char Han prefix guard keeps ordinary `【】` footnotes readable.
+- Added `trimOrgLeadingProse` in context-org detection so a strong-suffix org match no longer sweeps preceding verb-of-acquisition / connective phrases into the placeholder (e.g. `…可转换债券等方式收购北京聚利科技有限公司` → only `北京聚利科技有限公司` is redacted; leading `对`/`与`/`由` particles are also trimmed).
+- Added written-out Chinese-numeral RMB amount detection (`RMB_CN_NUMERAL_RE` / `RMB_CN_NUMERAL_WAN_YI_RE`) for formal/financial amounts on legal and arbitral documents (e.g. `一百五十万元`, `人民币伍万捌仟元整`, `贰佰叁拾万元`). A structure guard (`hasChineseNumeralAmountStructure`) keeps casual pocket-change prose like `一万元` / `一元` readable by requiring ≥3 numeral positions, an internal power-of-ten multiplier (十/百/千/拾/佰/仟), or a formal 大写 financial digit.
+- Added `CHINESE_DEMOGRAPHIC_TERMS` stopword set (PRC ethnic-group names plus gender descriptors) and applied it in both `isPlausibleContextPerson` and the `PERSON_LABELS` validator, so demographic fields that leak out of party blocks (e.g. `被申请人：李某某，女，汉族，…`) no longer become stray `PERSON_` placeholders.
+
 ## NoAI redaction engine 1.5.25 (general r20, chinese r19) - 2026-06-21
 
 Chinese Loop 19: Synthetic Consolidation. Synthetic tests only.

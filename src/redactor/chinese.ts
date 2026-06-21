@@ -413,6 +413,47 @@ const RMB_WAN_YUAN_RE =
   /(?:人民币\s*)?[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?\s*万元/g;
 const RMB_YI_YUAN_RE =
   /(?:人民币\s*)?[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?\s*亿元/g;
+// Chinese-numeral RMB amounts written out in formal/financial form
+// (处以一百五十万元罚款 / 支付人民币伍万捌仟元整 / 违法所得贰佰叁拾万元).
+// Combined digit set: everyday numerals (一二三…十百千万亿, 〇/零) and the
+// formal "大写" financial digits (壹贰叁肆伍陆柒捌玖拾佰仟) used on legal and
+// arbitral documents. The regex matches any numeral run anchored by 元/元整;
+// a structure guard (hasChineseNumeralAmountStructure) then rejects casual
+// pocket-change phrases (一万元 / 一元 / 几元) so ordinary prose stays readable
+// while formal multi-position amounts (一百五十万 / 伍万捌仟 / 贰佰叁拾万) are
+// caught. Requires the trailing 元 anchor so 年/月/日 fragments are not swept.
+const CN_NUMERAL_AMT_CHARS =
+  "[零〇一二三四五六七八九十百千万亿壹贰叁肆伍陆柒捌玖拾佰仟]";
+const RMB_CN_NUMERAL_RE = new RegExp(
+  "(?:人民币\\s*)?" + CN_NUMERAL_AMT_CHARS + "+元(?:整|正)?",
+  "g",
+);
+const RMB_CN_NUMERAL_WAN_YI_RE = new RegExp(
+  "(?:人民币\\s*)?" + CN_NUMERAL_AMT_CHARS + "+[万亿]元(?:整|正)?",
+  "g",
+);
+
+// Structure guard: returns the numeral run (text before 元/万元/亿元) from a
+// full Chinese-numeral amount match, so the allow() filter can decide whether
+// the amount carries enough compounding structure to redact.
+function chineseNumeralRun(fullMatch: string): string {
+  // Strip an optional 人民币 prefix and the trailing 元/元整/万元/亿元 anchor.
+  return fullMatch
+    .replace(/^人民币\s*/, "")
+    .replace(/元(?:整|正)?$/, "")
+    .replace(/[万亿]$/, "");
+}
+
+// A written-out Chinese-numeral amount looks formal when the numeral run has
+// real compounding structure: ≥3 numeral positions, an internal power-of-ten
+// multiplier (十/百/千/拾/佰/仟), or at least one formal 大写 financial digit.
+// Bare 一万/一百/几万 without that structure stays readable as pocket-change.
+function hasChineseNumeralAmountStructure(numeralRun: string): boolean {
+  if (numeralRun.length >= 3) return true;
+  if (/[十百千拾佰仟]/.test(numeralRun)) return true;
+  if (/[壹贰叁肆伍陆柒捌玖拾佰仟]/.test(numeralRun)) return true;
+  return false;
+}
 // Bare 万/亿 amounts with NO trailing 元 (合同金额80万 / 市值约80亿). The digit
 // run must be directly followed by 万 or 亿, and the char after that must not be
 // a counter (万人/1万个/3万年) nor 元 (covered by the 万元/亿元 rules). The counter
@@ -428,6 +469,13 @@ const FULLWIDTH_YEN_RE =
   /\uFFE5\s*[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?/g;
 const REGULATORY_DOC_NO_RE =
   /[\u3400-\u9fff]{1,8}[〔［\[]\d{4}[〕］\]]\d{1,5}号/g;
+// Same shape as REGULATORY_DOC_NO_RE but using full-width 【】 brackets, the
+// dominant form in Chinese labour-arbitration awards (深劳人仲案【2022】8836号)
+// and some court notices. The leading Han run is the case-type prefix
+// (深劳人仲案 / 京海劳仲 / 沪一仲案), so 2-8 chars keeps 注释 / 说明 / 概述 prose
+// out even when it happens to use 【】 footnotes.
+const ARBITRATION_CASE_NO_RE =
+  /[\u3400-\u9fff]{2,8}【\d{4}】(?:第?\d{1,6}(?:-\d{1,4})?)号/g;
 const COURT_CASE_NO_RE =
   /[（(]\d{4}[)）][\u3400-\u9fff]{1,4}\d{0,4}[\u3400-\u9fff]{1,8}第?\d{1,6}号/g;
 const AGREEMENT_PARTY_RE =
@@ -484,6 +532,74 @@ const CHINESE_ROLE_TERMS = new Set([
   "公司",
   "本司",
   "本人",
+]);
+
+// Demographic descriptors that appear as comma-separated fields inside a
+// party/subject block (被申请人：李某某，女，汉族，住址：…). These are NOT names
+// even though they pass the 2-6 Han-char PERSON_RE shape, so they must be
+// excluded from person candidates to avoid leaking gender/ethnicity into a
+// PERSON_ placeholder. Includes the official PRC ethnic-group names plus the
+// common gender/age descriptors 男/女/老/少.
+const CHINESE_DEMOGRAPHIC_TERMS = new Set([
+  "汉族",
+  "回族",
+  "满族",
+  "蒙古族",
+  "藏族",
+  "维吾尔族",
+  "苗族",
+  "彝族",
+  "壮族",
+  "布依族",
+  "侗族",
+  "瑶族",
+  "白族",
+  "土家族",
+  "哈尼族",
+  "哈萨克族",
+  "傣族",
+  "黎族",
+  "傈僳族",
+  "佤族",
+  "畲族",
+  "高山族",
+  "拉祜族",
+  "水族",
+  "东乡族",
+  "纳西族",
+  "景颇族",
+  "柯尔克孜族",
+  "土族",
+  "达斡尔族",
+  "仫佬族",
+  "羌族",
+  "布朗族",
+  "撒拉族",
+  "毛南族",
+  "仡佬族",
+  "锡伯族",
+  "阿昌族",
+  "普米族",
+  "塔吉克族",
+  "怒族",
+  "乌孜别克族",
+  "俄罗斯族",
+  "鄂温克族",
+  "德昂族",
+  "保安族",
+  "裕固族",
+  "京族",
+  "塔塔尔族",
+  "独龙族",
+  "鄂伦春族",
+  "赫哲族",
+  "门巴族",
+  "珞巴族",
+  "基诺族",
+  "外籍",
+  "无族",
+  "男",
+  "女",
 ]);
 
 // Context-organization detection (outside labels). Only STRONG suffixes that
@@ -756,6 +872,28 @@ function detectChineseDirectPatterns(
   );
   applyRegex(doc, RMB_WAN_YUAN_RE, "AMOUNT", 2, "RMB wan-yuan amount", add);
   applyRegex(doc, RMB_YI_YUAN_RE, "AMOUNT", 2, "RMB yi-yuan amount", add);
+  // Written-out Chinese-numeral RMB amounts (一百五十万元 / 人民币伍万捌仟元整 /
+  // 贰佰叁拾万元). The wan/yi variant is scored first so the longer anchored
+  // form wins over the plain 元 form. The allow() filter rejects casual
+  // pocket-change phrases (一万元 / 一元) via the structure guard.
+  applyRegex(
+    doc,
+    RMB_CN_NUMERAL_WAN_YI_RE,
+    "AMOUNT",
+    2,
+    "Chinese-numeral wan/yi RMB amount",
+    add,
+    (match) => hasChineseNumeralAmountStructure(chineseNumeralRun(match.text)),
+  );
+  applyRegex(
+    doc,
+    RMB_CN_NUMERAL_RE,
+    "AMOUNT",
+    2,
+    "Chinese-numeral RMB amount",
+    add,
+    (match) => hasChineseNumeralAmountStructure(chineseNumeralRun(match.text)),
+  );
   applyRegex(doc, FULLWIDTH_YEN_RE, "AMOUNT", 2, "fullwidth-yen amount", add);
   applyRegex(doc, RMB_YUAN_RE, "AMOUNT", 2, "RMB yuan amount", add, (match) => {
     const before = doc.text.slice(Math.max(0, match.index - 4), match.index);
@@ -780,6 +918,14 @@ function detectChineseDirectPatterns(
     "CASE_REF",
     1,
     "Chinese regulatory document number",
+    add,
+  );
+  applyRegex(
+    doc,
+    ARBITRATION_CASE_NO_RE,
+    "CASE_REF",
+    1,
+    "Chinese arbitration case number",
     add,
   );
   applyRegex(
@@ -972,7 +1118,10 @@ function detectChineseLabelValues(
     2,
     "Chinese person label",
     add,
-    (v) => PERSON_VALUE_RE.test(v),
+    (v) =>
+      PERSON_VALUE_RE.test(v) &&
+      !CHINESE_DEMOGRAPHIC_TERMS.has(v) &&
+      !CHINESE_ROLE_TERMS.has(v),
     splitChineseList,
   );
   applyLabelRules(
@@ -1260,6 +1409,48 @@ function isPlausibleAddressFragment(line: string): boolean {
   );
 }
 
+// Leading phrases that the strong-suffix org regex can sweep into a match when
+// the org name follows a verb-of-acquisition / connective in prose. These are
+// generic connective tails, not part of any entity name, so trimming them keeps
+// the org span tight without leaking the preceding sentence into the placeholder
+// (e.g. "可转换债券等方式收购北京聚利科技有限公司" -> "北京聚利科技有限公司").
+// Each entry must end on a boundary that an entity name would not start with.
+const ORG_LEADING_PROSE_RE =
+  /^(?:可?转换债券|公司债券|股权|现金|资产|增资|发行股份|股份|债券|等方式)?(?:等?(?:方式|形式|途径)?)?(?:收购|并购|重组|购买|受让|增持|入股|投资|取得|受让|划转|置换)+/;
+// Single-char particles / prepositions / conjunctions that glue directly to the
+// front of an org name in running prose (对…给予警告 / 与…签订 / 由…承担).
+const ORG_LEADING_PARTICLE_RE = /^(?:对|与|由|向|为|替|给|把|被|将|让|使|按|据|沿|顺)$/;
+
+function trimOrgLeadingProse(value: string): {
+  value: string;
+  trimmed: number;
+} {
+  let trimmed = 0;
+  // First pass: strip a verb-of-acquisition connective tail (greediest).
+  const proseMatch = value.match(ORG_LEADING_PROSE_RE);
+  if (proseMatch) {
+    trimmed = proseMatch[0].length;
+    value = value.slice(trimmed);
+  }
+  // Second pass: repeatedly strip leading single-char particles / punctuation
+  // so "对上海…" / "、北京…" / "，深圳…" collapse to the entity itself.
+  while (value.length > 0) {
+    const head = value[0] ?? "";
+    if (ORG_LEADING_PARTICLE_RE.test(head)) {
+      value = value.slice(1);
+      trimmed += 1;
+      continue;
+    }
+    if (/[\s,.;:()[\]{}<>"'“”‘’、，。；：（）《》【】、]/.test(head)) {
+      value = value.slice(1);
+      trimmed += 1;
+      continue;
+    }
+    break;
+  }
+  return { value, trimmed };
+}
+
 // Context-organization detection: redact organizations mentioned in prose via
 // a strong suffix, WITHOUT requiring a label. This closes the consistency gap
 // where the labeled mention of a vendor is redacted but its body-text mentions
@@ -1272,12 +1463,12 @@ function isPlausibleAddressFragment(line: string): boolean {
 function detectContextOrgs(doc: RedactionInput, add: AddCandidate): void {
   ORG_STRONG_SUFFIX_RE.lastIndex = 0;
   for (const match of doc.text.matchAll(ORG_STRONG_SUFFIX_RE)) {
-    const value = cleanChineseValue(match[1] ?? "");
-    const index =
+    const rawValue = match[1] ?? "";
+    const rawStart =
       (match.index ?? 0) +
-      (match[0].indexOf(match[1] ?? "") >= 0
-        ? match[0].indexOf(match[1] ?? "")
-        : 0);
+      (match[0].indexOf(rawValue) >= 0 ? match[0].indexOf(rawValue) : 0);
+    const { value, trimmed } = trimOrgLeadingProse(cleanChineseValue(rawValue));
+    const index = rawStart + trimmed;
     if (!isPlausibleContextOrg(value)) continue;
     if (isInsideBookTitle(doc.text, index)) continue;
     add(
@@ -1640,7 +1831,11 @@ function splitChineseList(value: string): string[] {
 }
 
 function isPlausibleContextPerson(value: string): boolean {
-  return PERSON_RE.test(value) && !CHINESE_ROLE_TERMS.has(value);
+  return (
+    PERSON_RE.test(value) &&
+    !CHINESE_ROLE_TERMS.has(value) &&
+    !CHINESE_DEMOGRAPHIC_TERMS.has(value)
+  );
 }
 
 function isPlausibleOrg(value: string): boolean {
@@ -1727,6 +1922,7 @@ function isPlausibleRefValue(value: string): boolean {
   return (
     PROJECT_REF_RE.test(value) ||
     /[（(]\d{4}[)）][\u3400-\u9fff]{0,8}\d{0,6}号/.test(value) ||
-    /[\u3400-\u9fff]{1,8}[〔［[]\d{4}[〕］\]]\d{1,5}号/.test(value)
+    /[\u3400-\u9fff]{1,8}[〔［[]\d{4}[〕］\]]\d{1,5}号/.test(value) ||
+    /[\u3400-\u9fff]{2,8}【\d{4}】(?:第?\d{1,6}(?:-\d{1,4})?)号/.test(value)
   );
 }
