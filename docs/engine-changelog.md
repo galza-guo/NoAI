@@ -3,6 +3,37 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.24 (general r19, chinese r10) - 2026-06-21
+
+Insurance claim / loss notice round: an auto claim loss notice, a property claim
+denial letter, and a workers' compensation claim. Synthetic representative
+documents only; fabricated test values, no real claim/policy/VIN/SSN identifiers
+committed. Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added insurance claim prefix-number label (CASE_REF, Light). Auto, property,
+  and workers'-comp loss notices print the claim number with a carrier/sponsor
+  prefix + dash + digit run after a Claim label: "Claim Number: CLM-2024-0778231",
+  "Claim No.: PRP-88204-22", "Carrier Claim Number: WC-0088471-22". The digit run
+  is phone-shaped and was mislabeled PHONE, leaking the carrier prefix. The Claim
+  label (optionally preceded by Carrier/Policy) is the trust anchor; the value
+  must start with 2-5 uppercase letters, a dash, and a 4+ digit run. The whole
+  prefix+digit value redacts as one CASE_REF. A bare prefixed token in prose
+  stays readable.
+- Added Vehicle Identification Number (VIN) label (BUSINESS_ID, Light). Auto
+  insurance claim notices and vehicle documents print the 17-character VIN after
+  a "VIN" / "Vehicle Identification Number" label, e.g. "VIN: 4S4BSAFC6M3220917".
+  The VIN was not detected at all. The label anchor + 17-char run (ISO 3779
+  length, I/O/Q excluded) keeps a bare alnum run from being swept up; generic
+  plates/years stay readable.
+- Added 2 synthetic tests (insurance claim prefix numbers; VIN label), each with
+  counterexamples.
+- Residual (deferred): adjuster/treating-physician names introduced by a role
+  label in prose ("Assigned Adjuster: ...", "Treating physician: Dr. ...") are
+  partially caught, but bare-surname repeats and the "Dr. <Name>" medical form
+  still leak in places; this is the broader proper-name-in-prose concern, left
+  for a dedicated round. License plates ("784-ABC2") are weakly identifying and
+  stay readable.
+
 ## NoAI redaction engine 1.5.23 (general r18, chinese r10) - 2026-06-21
 
 Government procurement / RFP / award notice round: a solicitation notice, a

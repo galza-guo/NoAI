@@ -1112,6 +1112,20 @@ export class Detector {
         "regulator split file/docket number",
       ],
       [
+        "CASE_REF",
+        // Insurance claim numbers with a carrier/sponsor prefix + dash + digit
+        // run after a Claim label, e.g. "Claim Number: CLM-2024-0778231",
+        // "Claim No.: PRP-88204-22", "Carrier Claim Number: WC-0088471-22".
+        // The digit run is phone-shaped and was mislabeled PHONE, leaking the
+        // prefix. The Claim label (optionally preceded by "Carrier"/"Policy")
+        // is the trust anchor; the value must start with 2-5 uppercase letters,
+        // a dash, and a 4+ digit run. A bare prefixed token in prose stays
+        // readable. The whole "PREFIX-digits" value redacts as one CASE_REF.
+        /\b(?:(?:Carrier|Policy)\s+)?Claim\s+(?:Number|Nos?\.?)\b\.?\s*[:#]?\s*([A-Z]{2,5}-\d{4,}[A-Za-z0-9-]*)\b/gi,
+        1,
+        "insurance claim prefix number label",
+      ],
+      [
         "BUSINESS_ID",
         // Exchange stock / securities code, label-bound. HKEX forms write
         // "(Stock Code: 1193)" or "Stock code (if listed) 01919"; the code
@@ -1353,6 +1367,19 @@ export class Detector {
         /\bNPI\s*[:#]\s*\d{10}\b/gi,
         1,
         "National Provider Identifier (NPI) label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Vehicle Identification Number (VIN), the 17-character unique vehicle
+        // identifier, printed after a "VIN" / "VIN:" / "Vehicle Identification
+        // Number:" label in auto insurance claim notices and vehicle documents,
+        // e.g. "VIN: 4S4BSAFC6M3220917". The label anchor + 17-char alnum run
+        // (the ISO 3779 length, excluding I/O/Q in practice but tolerated here)
+        // keeps a bare alnum run from being swept up; generic plates/years stay
+        // readable. The whole 17-char value redacts as one BUSINESS_ID.
+        /\b(?:VIN|Vehicle\s+Identification\s+Number)\b\.?\s*[:#]?\s*([A-HJ-NPR-Z0-9]{17})\b/gi,
+        1,
+        "Vehicle Identification Number (VIN) label",
       ],
       [
         "BUSINESS_ID",

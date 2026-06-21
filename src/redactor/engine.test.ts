@@ -4486,6 +4486,53 @@ ROBERT P. HALLORAN`,
     expect(outputWithName).toContain("PERSON_");
   });
 
+  it("redacts insurance claim numbers with a sponsor prefix and a Claim label", () => {
+    // Insurance loss notices print the claim number with a carrier/sponsor
+    // prefix + dash + digit run ("CLM-2024-0778231", "PRP-88204-22",
+    // "WC-0088471-22") after a "Claim Number" / "Claim No." / "Carrier Claim
+    // Number" label. The digit run is phone-shaped and was mislabeled PHONE,
+    // leaking the prefix. The Claim label is the trust anchor; the value must
+    // contain a digit. A bare prefixed token in prose stays readable.
+    const output = redact(
+      `Claim Number: CLM-2024-0778231
+Claim No.: PRP-88204-22
+Carrier Claim Number: WC-0088471-22
+Reference number CLM-99 for internal use.`,
+      "light",
+    );
+    expect(output).not.toContain("CLM-2024-0778231");
+    expect(output).not.toContain("PRP-88204-22");
+    expect(output).not.toContain("WC-0088471-22");
+    expect(output).toContain("CASE_REF_");
+    // The phone-shaped values must not be mislabeled as phone, and the carrier
+    // prefix must not leak alongside a PHONE_ token.
+    expect(output).not.toMatch(/Claim Number: (?:[A-Z]+-)?PHONE_/);
+    expect(output).not.toMatch(/Claim No\.: (?:[A-Z]+-)?PHONE_/);
+    expect(output).not.toMatch(/Carrier Claim Number: (?:[A-Z]+-)?PHONE_/);
+    // The whole labeled claim reference should redact as one CASE_REF unit.
+    expect(output).toMatch(/Claim Number: CASE_REF_\d+/);
+  });
+
+  it("redacts vehicle identification numbers (VIN) after the VIN label", () => {
+    // Auto insurance claim notices and vehicle documents print the 17-character
+    // Vehicle Identification Number after a "VIN" / "VIN:" label, e.g.
+    // "VIN: 4S4BSAFC6M3220917". The VIN is a unique vehicle identifier that was
+    // not detected at all. The label anchor + 17-char length keeps a bare
+    // alnum run from being swept up; generic plates/years stay readable.
+    const output = redact(
+      `VIN: 4S4BSAFC6M3220917
+Vehicle Identification Number: 1FTFW1ET5DFC10312
+Year/Make/Model: 2021 Subaru Outback
+The win at the dealership was exciting.`,
+      "balanced",
+    );
+    expect(output).not.toContain("4S4BSAFC6M3220917");
+    expect(output).not.toContain("1FTFW1ET5DFC10312");
+    expect(output).toContain("BUSINESS_ID_");
+    // A bare lowercase "win" in prose stays readable.
+    expect(output).toContain("win at the dealership");
+  });
+
   it("redacts bankruptcy case, document, and debtor tax identifiers", () => {
     // Chapter 11 notices carry the Case No., the ECF Document No., and the
     // debtor's Tax ID. All are label-bound; the bare digit run was previously
