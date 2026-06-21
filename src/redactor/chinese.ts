@@ -164,6 +164,27 @@ const PERSON_LABELS = [
   "代表律師",
   "評審專家",
   "評審專家名單",
+  // Contract / rental / loan party labels (introduce a named individual or
+  // entity in lease agreements, loan contracts, guarantee deeds, and pledge
+  // agreements). The value must pass PERSON_RE (2-6 Han chars), so a named
+  // individual is caught while an organization name that exceeds the length
+  // limit is deferred to the ORG label rules.
+  "出租人",
+  "承租人",
+  "担保人",
+  "借款人",
+  "贷款人",
+  "抵押人",
+  "出借人",
+  "出质人",
+  "质权人",
+  "发包人",
+  "承包人",
+  "出租方",
+  "承租方",
+  "担保方",
+  "借款方",
+  "贷款方",
 ];
 const ORG_LABELS = [
   "代理机构",
@@ -311,6 +332,16 @@ const STOCK_CODE_LABELS = [
   "證券代碼",
   "港股代码",
   "港股代碼",
+];
+
+// Taxpayer / tax registration identifier labels (BUSINESS_ID, Light). Chinese
+// corporate documents, invoices, and tax filings label the taxpayer identifier
+// as 纳税人识别号 / 税务登记号 / 税号. The value is a 15-20 digit alphanumeric
+// string. Label-bound only; bare digit runs without the label stay readable.
+const TAX_ID_LABELS = [
+  "纳税人识别号",
+  "税务登记号",
+  "税号",
 ];
 
 const PLACEHOLDER_VALUES = new Set([
@@ -507,6 +538,9 @@ const HK_ID_RE = /^[A-Za-z]{1,2}\d{6}(?:\([A0-9]\)|\(?[A0-9])?$/;
 // but the suffix form is the safest because a bare digit run collides with
 // other numeric references.
 const STOCK_CODE_RE = /^\d{4,6}(?:\.(?:HK|SS|SH|SZ))?$/;
+// Taxpayer / tax registration identifier: 15-20 alphanumeric chars. Chinese
+// individual and corporate taxpayer identifiers range from 15-20 characters.
+const TAX_ID_RE = /^[A-Za-z0-9]{15,20}$/;
 const POSTCODE_RE = /^\d{6}$/;
 const PERSON_RE = /^[\u3400-\u9fff·]{2,6}$/;
 const ORG_RE = /^[\u3400-\u9fffA-Za-z0-9()（）·.&' -]{2,60}$/;
@@ -1022,6 +1056,15 @@ function detectChineseLabelValues(
     add,
     (v) => POSTCODE_RE.test(v),
   );
+  applyLabelRules(
+    doc,
+    TAX_ID_LABELS,
+    "BUSINESS_ID",
+    1,
+    "Chinese taxpayer / tax registration identifier label",
+    add,
+    (v) => TAX_ID_RE.test(v),
+  );
 }
 
 // Multi-line labeled Chinese addresses. The single-line applyLabelRules only
@@ -1339,6 +1382,30 @@ const HONORIFIC_TRIGGERS = [
   "监事长",
   "监事",
   "董事",
+  // Broader corporate / government role titles that routinely introduce a
+  // named person before an honorific suffix (总监, 主管, 主任, 部长) in
+  // company announcements, meeting minutes, and regulatory filings.
+  "执行总监",
+  "副总监",
+  "技术总监",
+  "财务总监",
+  "市场总监",
+  "运营总监",
+  "人力总监",
+  "销售总监",
+  "研发总监",
+  "设计总监",
+  "项目总监",
+  "艺术总监",
+  "品牌总监",
+  "合规总监",
+  "风控总监",
+  "行政总监",
+  "总监",
+  "主管",
+  "主任",
+  "部长",
+  "副部长",
   "提名",
   "选举",
   "聘任",
@@ -1383,7 +1450,7 @@ const HONORIFIC_NON_NAME = new Set([
 // (欢迎各位先生 -> "欢迎各位", 提名李四女士 -> "提名李四", 选举张三先生 ->
 // "选举张三"). Real names never begin with these tokens.
 const HONORIFIC_NAME_BAD_PREFIX =
-  /^(?:欢迎|感谢|提名|选举|聘任|任命|委派|委聘|介绍|邀请|请教|咨询|代表|主持|审查|关于|对于|通过|各位|大家|所有)/;
+  /^(?:欢迎|感谢|提名|选举|聘任|任命|委派|委聘|介绍|邀请|请教|咨询|代表|主持|审查|关于|对于|通过|各位|大家|所有|这位|那位|每位|这些|那些)/;
 const HONORIFIC_RE = /([\u3400-\u9fff·]{2,4}?)(先生|女士|小姐)/g;
 function detectHonorificNames(doc: RedactionInput, add: AddCandidate): void {
   const text = doc.text;
@@ -1444,9 +1511,19 @@ function detectHonorificNames(doc: RedactionInput, add: AddCandidate): void {
 // equals a trigger of length n; if so the real name starts at nameStart+1.
 function snapHonorificNameStart(text: string, nameStart: number): number {
   for (const trigger of HONORIFIC_TRIGGERS_SORTED) {
-    const seg = text.slice(nameStart - trigger.length + 1, nameStart + 1);
-    if (seg === trigger) {
-      return nameStart + 1;
+    // Original: trigger ends exactly at nameStart (one char leaked into name).
+    const seg = text.slice(
+      Math.max(0, nameStart - trigger.length + 1),
+      nameStart + 1,
+    );
+    if (seg === trigger) return nameStart + 1;
+    // When a multi-char suffix of the trigger leaked into the captured name
+    // (e.g. "技术总监杨明" -> captured "总监杨明", the 2-char suffix "总监"
+    // of trigger "技术总监" leaked), advance past the leaked suffix.
+    for (let suffixLen = 2; suffixLen < trigger.length; suffixLen += 1) {
+      const suffix = trigger.slice(-suffixLen);
+      const atNameStart = text.slice(nameStart, nameStart + suffixLen);
+      if (suffix === atNameStart) return nameStart + suffixLen;
     }
   }
   return nameStart;

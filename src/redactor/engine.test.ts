@@ -4588,6 +4588,53 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).toContain("各位先生光临");
   });
 
+  // Batch 13 — expanded honorific role triggers. Broader corporate and
+  // government role titles (总监/主管/主任/部长/副部长 and compound 总监
+  // prefixes) that routinely introduce a named person before an honorific
+  // suffix in company announcements, meeting minutes, and regulatory filings.
+  // All names invented.
+
+  it("redacts honorific-suffixed names after new role triggers", () => {
+    const output = redact(
+      [
+        "公司财务总监刘建国先生在会上发言。",
+        "技术总监杨明先生汇报了研发进展。",
+        "行政部门主管周大海先生负责接待。",
+        "办公室主任郑小芳女士主持了会议。",
+        "部长何国庆先生出席剪彩仪式。",
+      ].join("\n"),
+      "balanced",
+    );
+    for (const leaked of ["刘建国", "杨明", "周大海", "郑小芳", "何国庆"]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("先生");
+    expect(output).toContain("女士");
+    // Role titles stay readable.
+    expect(output).toContain("财务总监");
+    expect(output).toContain("技术总监");
+    expect(output).toContain("主管");
+    expect(output).toContain("主任");
+    expect(output).toContain("部长");
+  });
+
+  it("keeps prose that looks like a role but is not introducing a name readable", () => {
+    // FP guard: 总监/主管/主任/部长 used in common phrases where no name
+    // precedes the honorific must stay readable.
+    const output = redact(
+      [
+        "各位总监先生请注意明天的会议。",
+        "这位主任女士您好。",
+        "所有部门主管均已通知。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("各位总监先生");
+    expect(output).toContain("这位主任女士");
+    expect(output).toContain("所有部门主管");
+  });
+
   it("does not swallow following labeled fields into a labeled address", () => {
     // A labeled address line in a directory/header often continues with other
     // labeled fields on the same line (邮编/总机/电话). The address value must
@@ -4911,6 +4958,119 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).toContain("请见附件");
     expect(output).toContain("不详");
     expect(output).toContain("ABC123");
+  });
+
+  // --------------------------------------------------------------------
+  // Batch 10 — Chinese taxpayer / tax registration identifier labels
+  // (BUSINESS_ID, Light).
+  // --------------------------------------------------------------------
+
+  it("redacts Chinese taxpayer and tax registration identifier labels", () => {
+    // Taxpayer identifiers appear on invoices, tax filings, and corporate
+    // filings under labels like 纳税人识别号 / 税务登记号 / 税号. The value
+    // is a 15-20 digit alphanumeric string. All values are invented fixtures.
+    const output = redact(
+      [
+        "纳税人识别号：91440101MA59EJ6C2Q3P",
+        "税务登记号：440106789012345",
+        "税号：91110108MA01H2E96T",
+      ].join("\n"),
+      "light",
+    );
+    expect(output).not.toContain("91440101MA59EJ6C2Q3P");
+    expect(output).not.toContain("440106789012345");
+    expect(output).not.toContain("91110108MA01H2E96T");
+    expect(output).toContain("纳税人识别号：");
+    expect(output).toContain("税务登记号：");
+    expect(output).toContain("税号：");
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("keeps prose with taxpayer-label substrings readable", () => {
+    // FP guard: 税号 in a generic sentence or with a placeholder value must
+    // stay readable.
+    const output = redact(
+      [
+        "税号：见附件",
+        "税务登记号：待定",
+        "纳税人识别号请查阅营业执照。",
+        // 税务登记 without colon or with non-identifier value
+        "税务登记号不详",
+      ].join("\n"),
+      "light",
+    );
+    expect(output).toContain("见附件");
+    expect(output).toContain("待定");
+    expect(output).toContain("请查阅营业执照");
+    expect(output).toContain("不详");
+  });
+
+  // --------------------------------------------------------------------
+  // Batch 11 — Chinese contract / rental / loan party person labels
+  // (PERSON, Balanced).
+  // --------------------------------------------------------------------
+
+  it("redacts Chinese contract and rental party person labels", () => {
+    // Lease agreements, loan contracts, guarantee deeds, and pledge
+    // agreements introduce named individuals under labels like 出租人 /
+    // 承租人 / 担保人 / 借款人 / 贷款人 / 抵押人. The value must pass
+    // PERSON_RE (2-6 Han chars). All names are invented.
+    const output = redact(
+      [
+        "出租人：张三",
+        "承租人：李四",
+        "担保人：王五",
+        "借款人：赵六",
+        "贷款人：钱七",
+        "抵押人：孙八",
+        "出借人：周九",
+        "出质人：吴十",
+        "质权人：郑十一",
+        "发包人：冯十二",
+        "承包人：陈十三",
+        "出租方：张三",
+        "承租方：李四",
+        "担保方：王五",
+        "借款方：赵六",
+        "贷款方：钱七",
+      ].join("\n"),
+      "balanced",
+    );
+    for (const leaked of [
+      "张三", "李四", "王五", "赵六", "钱七", "孙八",
+      "周九", "吴十", "郑十一", "冯十二", "陈十三",
+    ]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("出租人：");
+    expect(output).toContain("承租人：");
+    expect(output).toContain("担保人：");
+    expect(output).toContain("借款人：");
+    expect(output).toContain("贷款人：");
+    expect(output).toContain("抵押人：");
+    expect(output).toContain("PERSON_");
+  });
+
+  it("keeps contract party label prose readable", () => {
+    // FP guard: 出租人 / 承租人 / 担保人 etc. used in prose without a
+    // colon-value structure or with placeholder values must stay readable.
+    const output = redact(
+      [
+        "出租人应当提供相关证明。",
+        "承租人有权要求维修。",
+        "担保人：见附件",
+        "借款人：待定",
+        "贷款人：不详",
+        "抵押人资格审核通过。",
+      ].join("\n"),
+      "balanced",
+    );
+    expect(output).toContain("出租人应当提供相关证明");
+    expect(output).toContain("承租人有权要求维修");
+    expect(output).toContain("见附件");
+    expect(output).toContain("待定");
+    expect(output).toContain("不详");
+    expect(output).toContain("抵押人资格审核通过");
   });
 
   // --------------------------------------------------------------------

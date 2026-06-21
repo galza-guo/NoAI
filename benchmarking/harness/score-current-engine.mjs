@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { build } from "esbuild";
@@ -96,6 +96,21 @@ function parseArgs(argv) {
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function resolveSuitePath(suite, maybeRelativePath) {
+  if (isAbsolute(maybeRelativePath)) return maybeRelativePath;
+
+  const suiteName = basename(suite);
+  const suiteRelativePrefix = `benchmarking/suites/${suiteName}/`;
+  if (maybeRelativePath.startsWith(suiteRelativePrefix)) {
+    return join(suite, maybeRelativePath.slice(suiteRelativePrefix.length));
+  }
+
+  const rootPath = resolve(root, maybeRelativePath);
+  if (existsSync(rootPath)) return rootPath;
+
+  return resolve(suite, maybeRelativePath);
 }
 
 function percent(value) {
@@ -221,13 +236,16 @@ async function main() {
   const index = readJson(join(suite, "model-input/document-index.json"));
   const manifest = readJson(join(suite, "manifest.json"));
 
-  const docs = index.documents.map((doc) => ({
-    docId: doc.docId,
-    title: doc.title,
-    name: `${doc.docId}.md`,
-    text: readFileSync(resolve(root, doc.markdownPath), "utf8"),
-    markdownPath: resolve(root, doc.markdownPath),
-  }));
+  const docs = index.documents.map((doc) => {
+    const markdownPath = resolveSuitePath(suite, doc.markdownPath);
+    return {
+      docId: doc.docId,
+      title: doc.title,
+      name: `${doc.docId}.md`,
+      text: readFileSync(markdownPath, "utf8"),
+      markdownPath,
+    };
+  });
 
   const engineOutput = await runEngine(root, docs, args.level);
   const outputByDoc = new Map(engineOutput.outputs.map((doc) => [doc.docId, doc]));
@@ -239,7 +257,7 @@ async function main() {
     const goldPath =
       manifestByDoc.get(doc.docId)?.paths?.gold ??
       join(suite, "gold", `${doc.docId}.gold.json`);
-    const gold = readJson(resolve(root, goldPath));
+    const gold = readJson(resolveSuitePath(suite, goldPath));
     const output = outputByDoc.get(doc.docId);
     if (!output) throw new Error(`Engine output missing ${doc.docId}`);
     const reviewDocument = output.reviewDocument;
