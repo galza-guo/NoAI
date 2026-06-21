@@ -2936,6 +2936,60 @@ The study ran from NCT time onward. Reference 90210 applies.
     expect(output).toContain("Reference 90210");
   });
 
+  it("redacts bank account/routing numbers and bank references under their labels", () => {
+    // Vendor invoices and remittance advice label a beneficiary account as
+    // "Account No.: 8842271936" and a US bank routing number as
+    // "Routing/ABA: 026012467" or "Routing No.: 121000358". These 9-10 digit
+    // values were swallowed by the phone regex and mislabeled PHONE. Under their
+    // bank label they must be BANK_ACCOUNT (which outranks PHONE). "Bank
+    // Reference:" is a transfer reference, not an account.
+    const output = redact(
+      `
+Account No.: 8842271936
+Routing/ABA: 026012467
+Routing No.: 121000358
+Bank Reference: TRF-2024-0630-8812
+Vendor ID: VND-OR-22319
+Call PHONE_1 at 555 for help on line 7.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("8842271936");
+    expect(output).not.toContain("026012467");
+    expect(output).not.toContain("121000358");
+    expect(output).not.toContain("TRF-2024-0630-8812");
+    expect(output).not.toContain("VND-OR-22319");
+    expect(output).toContain("BANK_ACCOUNT_");
+    expect(output).toContain("CASE_REF_");
+    expect(output).toContain("BUSINESS_ID_");
+    // Counterexample: the account/routing values must NOT be labeled PHONE.
+    // (They appear under a bank label, so the redaction kind must be bank/ref.)
+    expect(output).not.toMatch(/Account No\.: PHONE/);
+    expect(output).not.toMatch(/Routing\/ABA: PHONE/);
+    // Counterexample: a bare phone-shaped fragment in prose still redacts as phone.
+    expect(output).toContain("555");
+  });
+
+  it("redacts the preparer name under the 'Prepared by:' label", () => {
+    // Remittance advice and finance documents attribute the preparer with a
+    // fixed label: "Prepared by: Dana R. Pelletier". The named person leaked
+    // because "Prepared by" is not a recognized person label. The label is the
+    // trust anchor.
+    const output = redact(
+      `
+Prepared by: Dana R. Pelletier
+The document was prepared by the AP team yesterday.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("Dana R. Pelletier");
+    expect(output).toContain("PERSON_");
+    // Counterexample: "prepared by" used as prose stays readable.
+    expect(output).toContain("prepared by the AP team");
+  });
+
   it("keeps earlier-round canaries intact in a finance-operations context", () => {
     // Finance documents still carry court/SEC/regulator references, phones,
     // postcodes, and procurement IDs. They must behave as in earlier rounds,

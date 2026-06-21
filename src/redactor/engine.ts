@@ -1264,6 +1264,16 @@ export class Detector {
         "payment reference label",
       ],
       [
+        "CASE_REF",
+        // Bank transfer / wire reference on remittance advice and bank advice,
+        // e.g. "Bank Reference: TRF-2024-0630-8812". Distinct from an account
+        // number, this is the bank-side transaction reference. Label-bound so
+        // a bare figure stays readable.
+        /\bBank\s+Reference\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "bank transfer reference label",
+      ],
+      [
         "BUSINESS_ID",
         // Tax identifiers, label-bound. VAT Registration No. (UK/EU), VAT No.,
         // VAT ID, Tax ID, Tax No., Tax Identification No., and Taxpayer ID all
@@ -1428,13 +1438,27 @@ export class Detector {
         // Bank account number, label-bound. Distinct from IBAN (format-bound)
         // and from the generic abbreviated "Account No." case reference, a
         // "Bank Account No." / "Bank Account Number" / "Account Number" field
-        // on an invoice or remittance names the payee's bank account. Restricted
-        // to the "Bank Account" label or the full word "Account Number" so the
-        // existing abbreviated "Account No." (CASE_REF) behavior is unchanged.
-        // Without this rule a digit-only account number is mislabeled as PHONE.
+        // on an invoice or remittance names the payee's bank account. The
+        // abbreviated "Account No." is also treated as BANK_ACCOUNT when its
+        // value is a long digit run (8+ digits) — that is a bank account
+        // number, not a short case reference, and was mislabeled PHONE. Shorter
+        // or alphanumeric abbreviated "Account No." values stay CASE_REF. Without
+        // this rule a digit-only account number is mislabeled as PHONE.
         /\b(?:Bank\s+Account\s+(?:Nos?|Numbers?)|Account\s+Number)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "bank account number label",
+      ],
+      [
+        "BANK_ACCOUNT",
+        // Abbreviated "Account No.: <8+ digit run>" on invoices and remittance
+        // advice names the payee bank account (a long digit run is a bank
+        // account, not a short case reference). The phone regex ate the bare
+        // digits and won the overlap because PHONE outranks CASE_REF. Re-claiming
+        // the value here as BANK_ACCOUNT (which outranks PHONE) keeps the correct
+        // kind. Alphanumeric / short values fall through to the CASE_REF label.
+        /\bAccount\s+Nos?\.?\s*[:#]\s*(?=\D*\d)\d{8,}\b/gi,
+        1,
+        "account number (long digit run) label",
       ],
       [
         "BANK_ACCOUNT",
@@ -1451,12 +1475,13 @@ export class Detector {
       ],
       [
         "BANK_ACCOUNT",
-        // Abbreviated "Routing No." / "Wire Routing No." / "ACH Routing No."
-        // fields on subscription agreements and remittance advice. The label +
-        // "No." qualifier is the anchor; the value must contain a digit so prose
-        // such as "the routing number is pending" stays readable. The digit run
-        // is phone-shaped and was mislabeled PHONE.
-        /\b(?:Wire|ACH)?\s*Routing\s+Nos?\.?\s*[:#\u2010-\u2015]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        // Abbreviated "Routing No." / "Wire Routing No." / "ACH Routing No." /
+        // "Routing/ABA" fields on subscription agreements and remittance advice.
+        // The label (optionally with "No." or as the slash-joined "Routing/ABA")
+        // is the anchor; the value must contain a digit so prose such as "the
+        // routing number is pending" stays readable. The digit run is
+        // phone-shaped and was mislabeled PHONE.
+        /\b(?:Wire|ACH)?\s*Routing(?:\s*\/\s*ABA)?(?:\s+Nos?\.?)?\s*[:#\u2010-\u2015]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "routing number label",
       ],
@@ -1755,6 +1780,17 @@ export class Detector {
         1,
         "procurement contact label",
       ],
+      // Remittance advice, invoices, and finance documents attribute the preparer
+      // with a fixed label: "Prepared by: Dana R. Pelletier". The named person
+      // leaked because "Prepared by" is not a recognized person label. The label
+      // is the trust anchor; prose use ("prepared by the team") is not line-led
+      // with a colon so it stays readable.
+      [
+        /^\s*Prepared\s+by\s*[:：]\s*(.+)$/i,
+        "PERSON",
+        1,
+        "prepared-by label",
+      ],
       // Federal awards, contracts, and grants name the responsible official with
       // a fixed signing/contracting role label and a colon:
       // "CONTRACTING OFFICER: Karen L. Williams", "Authorized Officer: Daniel
@@ -1890,6 +1926,18 @@ export class Detector {
         "BUSINESS_ID",
         1,
         "payment reference label",
+      ],
+      [
+        /^\s*Bank\s+Reference\b\.?\s*[:：]?\s*(.+)$/i,
+        "CASE_REF",
+        1,
+        "bank transfer reference label",
+      ],
+      [
+        /^\s*Vendor\s+(?:IDs?|Nos?|Numbers?|Code)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "vendor identifier label",
       ],
       [
         /^\s*(?:VAT\s+(?:Registration\s+)?(?:Nos?|Numbers?|IDs?)|Tax(?:payer)?\s+(?:Identification\s+)?(?:IDs?|Nos?|Numbers?))\b\.?\s*[:：]?\s*(.+)$/i,

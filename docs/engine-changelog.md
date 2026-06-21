@@ -3,6 +3,41 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.20 (general r15, chinese r10) - 2026-06-21
+
+Invoice / remittance / contractor-payment round: vendor invoices with wire blocks,
+remittance advice with beneficiary bank details, and a municipal contractor
+payment statement. Synthetic representative documents only; fabricated test
+values, no real bank/routing identifiers committed. Deterministic rule changes
+only. No AI/LLM/backend/telemetry added.
+
+- Re-claimed account-number digits mislabeled PHONE (BANK_ACCOUNT, Light). A
+  labelled "Account No.: 8842271936" (abbreviated form) produced a CASE_REF that
+  lost the overlap to the bare-digit PHONE candidate, so the account rendered as
+  PHONE. When the abbreviated "Account No." value is a long digit run (8+ digits)
+  it is now claimed as BANK_ACCOUNT, which outranks PHONE. Short/alphanumeric
+  abbreviated "Account No." values keep the existing CASE_REF behavior.
+- Added "Routing/ABA" routing-number label (BANK_ACCOUNT, Light). US bank wire
+  instructions label the routing value as "Routing/ABA: 026012467" (slash-joined,
+  no "No." qualifier); the existing "Routing No." detector missed it. The 9-digit
+  run is phone-shaped and was mislabeled PHONE.
+- Added "Bank Reference" transfer-reference label (CASE_REF, Light). Remittance
+  advice and bank advice carry the bank-side transaction reference as
+  "Bank Reference: TRF-2024-0630-8812". Distinct from an account number, it was
+  not detected at all.
+- Added "Vendor ID" identifier label (BUSINESS_ID, Light). Procurement and
+  contractor payment statements identify the vendor as "Vendor ID: VND-OR-22319";
+  the value leaked.
+- Added "Prepared by" preparer-name label (PERSON, Light). Remittance advice and
+  finance documents attribute the preparer as "Prepared by: Dana R. Pelletier";
+  the named person leaked. Prose use ("prepared by the team") is not line-led
+  with a colon and stays readable.
+- Added 2 synthetic tests (bank account/routing/bank-reference/vendor labels;
+  prepared-by label), each with counterexamples.
+- Residual (deferred): item SKUs in invoice line-item tables ("SKU WX-A-001")
+  are not redacted — SKUs are weakly identifying and the brand-vs-generic
+  disambiguation is ambiguous, so they stay readable unless user-added.
+
 ## NoAI redaction engine 1.5.19 (general r14, chinese r10) - 2026-06-21
 
 Clinical records / clinical-trial round: discharge summaries, a
