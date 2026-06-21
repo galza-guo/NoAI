@@ -4024,13 +4024,13 @@ export class Detector {
       if (!/[\u3400-\u9fff]/.test(candidate.value)) continue;
       addresses.add(candidate.value);
     }
-    const suffixes = new Set(["号", "楼", "层", "室", "院", "路", "街", "道", "號", "樓", "層", "區", "鎮", "鄉", "縣", "棟", "大廈", "廣場"]);
+    const suffixes = ["号", "楼", "层", "室", "院", "路", "街", "道", "號", "樓", "層", "區", "鎮", "鄉", "縣", "棟", "大厦", "大廈", "广场", "廣場", "园区", "園區"];
     for (const doc of this.docs) {
       for (const addr of addresses) {
         const prefixes = [];
         for (let i = 6; i < addr.length; i++) {
           const prefix = addr.slice(0, i);
-          if (suffixes.has(prefix[prefix.length - 1]) && /\d/.test(prefix)) {
+          if (suffixes.some((s) => prefix.endsWith(s)) && /\d/.test(prefix)) {
             prefixes.push(prefix);
           }
         }

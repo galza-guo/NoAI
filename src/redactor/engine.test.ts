@@ -5807,6 +5807,23 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).toContain("公司秘書：");
     expect(output).toContain("授權代表：");
   });
+
+  // Loop 19 — Synthetic Consolidation
+  it("redacts complex mixed Chinese aliases with multi-character address suffixes", () => {
+    const output = redact(
+      [
+        "主要營業地點：北京市海淀区中关村大街27号中关村大厦10层",
+        "同時，北京市海淀区中关村大街27号中关村大厦的辦公室也參與了此事。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("北京市海淀区中关村大街27号中关村大厦10层");
+    expect(output).not.toContain("北京市海淀区中关村大街27号中关村大厦");
+    
+    // Check that we didn't wipe out innocent prose
+    expect(output).toContain("同時，");
+    expect(output).toContain("的辦公室也參與了此事。");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {

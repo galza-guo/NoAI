@@ -3,6 +3,12 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.25 (general r20, chinese r19) - 2026-06-21
+
+Chinese Loop 19: Synthetic Consolidation. Synthetic tests only.
+
+- Updated `addChineseAddressAliases` to support multi-character suffixes (e.g. 大厦, 广场, 园区) using `endsWith` rather than matching only single-character suffixes.
+
 ## NoAI redaction engine 1.5.25 (general r20, chinese r18) - 2026-06-21
 
 Chinese Loop 18: International/Traditional Chinese Mix (Prada). Synthetic tests only.
