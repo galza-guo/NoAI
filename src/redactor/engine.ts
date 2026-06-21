@@ -561,6 +561,7 @@ export class Detector {
     }
     this.addPersonAliases();
     this.addOrgAliases();
+    this.addChineseAddressAliases();
     this.finalizeCandidates();
     return [...this.candidates.values()].sort(
       (a, b) =>
@@ -4011,6 +4012,46 @@ export class Detector {
             doc.name,
             m.index ?? 0,
           );
+        }
+      }
+    }
+  }
+
+  private addChineseAddressAliases(): void {
+    const addresses = new Set<string>();
+    for (const candidate of this.candidates.values()) {
+      if (candidate.kind !== "ADDRESS") continue;
+      if (!/[\u3400-\u9fff]/.test(candidate.value)) continue;
+      addresses.add(candidate.value);
+    }
+    const suffixes = new Set(["号", "楼", "层", "室", "院", "路", "街", "道"]);
+    for (const doc of this.docs) {
+      for (const addr of addresses) {
+        const prefixes = [];
+        for (let i = 6; i < addr.length; i++) {
+          const prefix = addr.slice(0, i);
+          if (suffixes.has(prefix[prefix.length - 1]) && /\d/.test(prefix)) {
+            prefixes.push(prefix);
+          }
+        }
+        prefixes.sort((a, b) => b.length - a.length);
+
+        for (const prefix of prefixes) {
+          if (prefix === addr) continue;
+          let searchPos = 0;
+          let idx;
+          while ((idx = doc.text.indexOf(prefix, searchPos)) !== -1) {
+            const original = this.candidates.get(this.key("ADDRESS", addr));
+            this.add(
+              prefix,
+              "ADDRESS",
+              original ? original.minLevel : 2,
+              "Chinese address prefix alias",
+              doc.name,
+              idx,
+            );
+            searchPos = idx + prefix.length;
+          }
         }
       }
     }

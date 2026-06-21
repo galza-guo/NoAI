@@ -3,6 +3,12 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.25 (general r20, chinese r16) - 2026-06-21
+
+Chinese Loop 16: SAMR Penalties & Multiple Respondents. Synthetic tests only.
+
+- Added Chinese address prefix alias extraction: Automatically extracts prefixes from labeled Chinese addresses that end in common address suffixes (号, 楼, 层, 室, 院, 路, 街, 道) and uses them to redact unlabeled partial addresses in prose.
+
 ## NoAI redaction engine 1.5.25 (general r20, chinese r15) - 2026-06-21
 
 Chinese Loop 15: Regulatory Penalty Decisions (CSRC/SAMR). Synthetic tests only.

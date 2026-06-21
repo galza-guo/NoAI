@@ -5739,6 +5739,26 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).not.toContain("1980年1月1日出生");
     expect(output).not.toContain("李四");
   });
+
+  // Loop 16 — SAMR Penalties & Multiple Respondents
+  it("infers Chinese address prefix aliases to redact partial addresses in prose", () => {
+    const output = redact(
+      [
+        "住所（住址）：北京市朝阳区建国路88号院1号楼10层1101",
+        "我局执法人员对北京某某科技有限公司位于北京市朝阳区建国路88号院1号楼的经营场所进行现场检查。",
+      ].join("\n"),
+    );
+
+    // The full labeled address is redacted
+    expect(output).not.toContain("北京市朝阳区建国路88号院1号楼10层1101");
+    
+    // The unlabeled prefix in prose is also redacted
+    expect(output).not.toContain("北京市朝阳区建国路88号院1号楼");
+    
+    // Check that we didn't wipe out innocent prose
+    expect(output).toContain("我局执法人员对北京某某科技有限公司位于");
+    expect(output).toContain("的经营场所进行现场检查。");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {
