@@ -5690,6 +5690,27 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).toContain("Compliance Department");
     expect(output).not.toContain("compliance@example.org");
   });
+  it("redacts Chinese procurement amount and contact labels", () => {
+    const output = redact(
+      [
+        "采购人联系方式：010-12345678",
+        "供应商联系方式：13812345678",
+        "采购人地址：北京市海淀区中关村大街1号",
+        "合同总金额（单位万元）：79.1",
+        "中标供应商统一社会信用代码：91110000123456789X",
+      ].join("\n"),
+    );
+    expect(output).not.toContain("010-12345678");
+    expect(output).not.toContain("13812345678");
+    expect(output).not.toContain("北京市海淀区中关村大街1号");
+    expect(output).not.toContain("79.1");
+    expect(output).not.toContain("91110000123456789X");
+    expect(output).toContain("采购人联系方式");
+    expect(output).toContain("供应商联系方式");
+    expect(output).toContain("采购人地址");
+    expect(output).toContain("合同总金额");
+    expect(output).toContain("中标供应商统一社会信用代码");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {

@@ -3,6 +3,15 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.25 (general r20, chinese r14) - 2026-06-21
+
+Chinese procurement round: corporate disclosure, procurement, and regulatory documents. Synthetic tests only, no real identifiers committed. Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added support for Chinese amount labels (合同总金额, 采购预算, etc.) to detect bare numbers following these labels.
+- Added `中标供应商统一社会信用代码` as a recognized USCC label prefix.
+- Added `采购人地址`, `供应商地址` as recognized address labels.
+- Added `采购人联系方式`, `供应商联系方式` as recognized phone labels.
+
 ## NoAI redaction engine 1.5.25 (general r20, chinese r13) - 2026-06-21
 
 Clinical correspondence round: an explanation of benefits (EOB), a clinical

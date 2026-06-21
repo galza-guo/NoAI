@@ -22,7 +22,7 @@ const VALUE_UNTIL_HARD_STOP = String.raw`([^\r\n。；;]+)`;
 // does not fire. Both （）and () brackets are accepted.
 const LABEL_SYNONYM_PARENS = String.raw`(?:\s*[（(][^）)]*[）)])?`;
 
-const USCC_LABELS = ["统一社会信用代码", "社会信用代码"];
+const USCC_LABELS = ["统一社会信用代码", "社会信用代码", "中标供应商统一社会信用代码"];
 const PRC_ID_LABELS = [
   "身份证件号码",
   "居民身份证号",
@@ -38,7 +38,9 @@ const PHONE_LABELS = [
   "联系方式",
   "项目联系电话",
   "采购单位联系方式",
+  "采购人联系方式",
   "代理机构联系方式",
+  "供应商联系方式",
   "手机号码",
   "电话",
   // 手机 alone is too short (it matches "手机号码" as a substring and the
@@ -80,6 +82,7 @@ const ADDRESS_LABELS = [
   // Common procurement/corporate address labels:
   "供应商地址",
   "采购单位地址",
+  "采购人地址",
   "代理机构地址",
   // Shareholder-meeting / conference venue labels (listed-company notices,
   // AGM convening notices). These carry the on-site address the same way an
@@ -342,6 +345,27 @@ const TAX_ID_LABELS = [
   "纳税人识别号",
   "税务登记号",
   "税号",
+];
+
+const AMOUNT_LABELS = [
+  "合同总金额",
+  "合同金额",
+  "中标金额",
+  "成交金额",
+  "采购预算",
+  "预算金额",
+  "项目预算",
+  "注册资本",
+  "投资总额",
+  // Traditional / HK aliases
+  "合同總金額",
+  "中標金額",
+  "成交金額",
+  "採購預算",
+  "預算金額",
+  "項目預算",
+  "註冊資本",
+  "投資總額",
 ];
 
 const PLACEHOLDER_VALUES = new Set([
@@ -1060,10 +1084,19 @@ function detectChineseLabelValues(
     doc,
     TAX_ID_LABELS,
     "BUSINESS_ID",
-    1,
-    "Chinese taxpayer / tax registration identifier label",
+    1, // light
+    "Chinese taxpayer identifier label",
     add,
     (v) => TAX_ID_RE.test(v),
+  );
+  applyLabelRules(
+    doc,
+    AMOUNT_LABELS,
+    "AMOUNT",
+    2, // balanced
+    "Chinese amount label",
+    add,
+    (v) => /\d/.test(v),
   );
 }
 
