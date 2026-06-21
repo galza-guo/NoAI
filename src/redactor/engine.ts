@@ -294,6 +294,41 @@ const KIND_PRIORITY: Record<CandidateKind, number> = {
   PROPER_NOUN: 27,
 };
 
+// ISO 13616 IBAN country codes that issue IBANs today (SEPA + ROW). A
+// 2-letter Latin prefix NOT in this set cannot be an IBAN, so internal
+// document numbers such as Chinese hospital codes (ZH202605000123) and
+// tracking IDs (MZ2026-05012) are not misclassified as bank accounts.
+const IBAN_COUNTRY_CODES = new Set([
+  "AL", "AD", "AT", "AZ", "BH", "BY", "BE", "BA", "BR", "BG", "CR", "HR",
+  "CY", "CZ", "DK", "DO", "EG", "SV", "EE", "FI", "FR", "GE", "DE", "GI",
+  "GR", "GL", "GT", "HU", "IS", "IQ", "IE", "IL", "IT", "JO", "KZ", "XK",
+  "KW", "LV", "LB", "LI", "LT", "LU", "LY", "MK", "MT", "MR", "MU", "MD",
+  "MC", "ME", "MA", "NL", "NO", "PK", "PS", "PL", "PT", "QA", "RO", "RU",
+  "SM", "SA", "RS", "SK", "SI", "ES", "SE", "CH", "TL", "TN", "TR", "UA",
+  "AE", "GB", "VA", "VG",
+]);
+
+// ISO 13616 MOD-97 IBAN check. Rearranges the country-code + check digits +
+// BBAN to the numeric form (letters → 10..35), then verifies the remainder.
+// Returns false for any value that is not structurally an IBAN (length, chars,
+// country code) or whose check digits fail MOD-97.
+function isValidIban(value: string): boolean {
+  const iban = value.replace(/\s+/g, "").toUpperCase();
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban)) return false;
+  if (!IBAN_COUNTRY_CODES.has(iban.slice(0, 2))) return false;
+  const rearranged = iban.slice(4) + iban.slice(0, 4);
+  let decimal = "";
+  for (const ch of rearranged) {
+    decimal += ch >= "A" && ch <= "Z" ? String(ch.charCodeAt(0) - 55) : ch;
+  }
+  // Big-integer MOD-97 via running remainder (safe without BigInt).
+  let remainder = 0;
+  for (const digit of decimal) {
+    remainder = (remainder * 10 + Number(digit)) % 97;
+  }
+  return remainder === 1;
+}
+
 type DetectorConfig = {
   customTerms?: string[];
   knownOrganizations?: string[];
@@ -1823,6 +1858,21 @@ export class Detector {
         if (kind === "PHONE" && REGULATOR_NUMBER_SPLIT_RE.test(value)) {
           const before = doc.text.slice(Math.max(0, pos - 30), pos);
           if (REGULATOR_NUMBER_LABEL_RE.test(before)) continue;
+        }
+        // IBAN must pass MOD-97 and carry an issuing country code; otherwise
+        // the shape ([A-Z]{2}\d{2}…) catches Chinese hospital admission codes,
+        // tracking IDs, and other 2-letter-prefixed reference numbers.
+        if (kind === "BANK_ACCOUNT" && reason === "IBAN") {
+          if (!isValidIban(value)) continue;
+        }
+        // A percentage that directly follows a clinical narrowing / stenosis /
+        // fraction noun (Chinese 狭窄85% / 阻塞70% / 射血分数45%) is a medical
+        // finding, not a financial amount. Keep it readable.
+        if (kind === "AMOUNT" && reason === "percentage") {
+          const before = doc.text.slice(Math.max(0, pos - 12), pos);
+          if (/(?:狭窄|阻塞|梗阻|钙化|闭塞|狭窄度|阻塞度|射血分数|阻塞比例)$/.test(before)) {
+            continue;
+          }
         }
         this.add(value, kind, level, reason, doc.name, pos);
       }

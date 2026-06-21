@@ -3,6 +3,19 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.6.0 (general r20, chinese r22) - 2026-06-22
+
+Shared engine: IBAN checksum validation + clinical-percentage guard.
+
+- Added `isValidIban` MOD-97 (ISO 13616) check and an issuing-country-code allowlist for the IBAN direct pattern. The previous shape-only regex (`[A-Z]{2}\d{2}…`) matched any 2-letter-prefixed alphanumeric run, so Chinese hospital admission codes (`ZH202605000123`), outpatient numbers (`MZ2026-05012`), and similar document IDs were misclassified as `BANK_ACCOUNT`. Real IBANs (e.g. `GB29 NWBK 601613 31926819`) still match.
+- Added a clinical-context guard to the shared percentage pattern: `X%` is kept readable when it directly follows a clinical narrowing/stenosis/fraction noun (狭窄/阻塞/梗阻/钙化/闭塞/狭窄度/阻塞度/射血分数/阻塞比例), so coronary-stenosis findings (`前降支中段狭窄85%`) are no longer over-redacted as financial amounts.
+
+Chinese Loop 22: Healthcare & Medical Records.
+
+- Added healthcare reference labels (`住院号`, `门诊号`, `病案号`, `病历号`, `就诊号`, `急诊号`) and birth-certificate labels (`出生证编号`, `出生医学证明编号`, `出生证号`) to `PROCUREMENT_REF_LABELS` so hospital/document numbers bind to `CASE_REF` (the IBAN validator now also prevents these from being misclassified as `BANK_ACCOUNT`).
+- Added physician role labels (`主治医师`, `住院医师`, `签发医师`, `经治医师`, `主治医生`, `住院医生`, `接生人员`, `体检医师`, `主检医师`) to `PERSON_LABELS` so signing clinicians on discharge summaries, medical certificates, and birth certificates are redacted.
+- Widened `PROJECT_REF_RE` to allow internal single-space groups so formatted document numbers such as birth-certificate refs (`O2026 0512 0034`) validate while still requiring alphanumeric boundaries and a digit.
+
 ## NoAI redaction engine 1.5.25 (general r20, chinese r21) - 2026-06-22
 
 Chinese Loop 21: Insurance Claim Decisions & Social-Security Notices.

@@ -223,6 +223,17 @@ const PERSON_LABELS = [
   "户名", // bank-account holder name on payment/disbursement forms
   "账户名",
   "开户名",
+  // Healthcare physician role labels (introduce the signing clinician on
+  // discharge summaries, medical certificates, and birth certificates):
+  "主治医师",
+  "住院医师",
+  "签发医师",
+  "经治医师",
+  "主治医生",
+  "住院医生",
+  "接生人员",
+  "体检医师",
+  "主检医师",
 ];
 const ORG_LABELS = [
   "代理机构",
@@ -313,6 +324,21 @@ const PROCUREMENT_REF_LABELS = [
   "理赔案号",
   "报案号",
   "理赔编号",
+  // Healthcare / medical record references (CASE_REF). 住院号 / 门诊号 / 病案号
+  // identify a specific encounter or chart on hospital paperwork; the value
+  // is a short alphanumeric code, never prose.
+  "住院号",
+  "门诊号",
+  "病案号",
+  "病历号",
+  "就诊号",
+  "急诊号",
+  // Birth-certificate document references (CASE_REF). 出生证编号 /
+  // 出生医学证明编号 identify a specific certificate; the value is a
+  // formatted document number with spaces (O2026 0512 0034).
+  "出生证编号",
+  "出生医学证明编号",
+  "出生证号",
   "挂号单号",
   "查询号",
   "查询码",
@@ -690,7 +716,14 @@ const PHONE_RE = /^(?:\+?86[-\s]?)?(?:1[3-9]\d{9}|0\d{2,3}[-\s]?\d{7,8})$/;
 // stripping spaces before the length check; a single regex with backreferences
 // would be more brittle than the two-shape union below.
 const BANK_ACCOUNT_RE = /^(?:\d{16,19}|(?:\d{4}\s){3}\d{4}(?:\s\d{1,3})?)$/;
-const PROJECT_REF_RE = /^(?=[A-Za-z0-9._/-]*\d)[A-Za-z0-9._/-]{4,50}$/;
+// Procurement / contract / document reference shape. Must contain at least
+// one digit (lookahead) so prose such as 订单管理 / 快递送达 stays readable.
+// Internal single-space groups are allowed so formatted document numbers such
+// as birth-certificate refs (O2026 0512 0034) and serialised IDs validate,
+// but the value must still start and end on an alphanumeric and be dominated
+// by alphanumerics (≥60%), so prose phrases cannot slip through.
+const PROJECT_REF_RE =
+  /^(?=[A-Za-z0-9._/ -]*\d)[A-Za-z0-9](?:[A-Za-z0-9._/ -]{2,48}[A-Za-z0-9])?$/;
 // WeChat IDs: must start with a letter, 6-20 chars, letters/digits/_/-.
 const WECHAT_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{5,19}$/;
 // Passport numbers: a letter followed by 8 digits (PRC E/G shape) is the most

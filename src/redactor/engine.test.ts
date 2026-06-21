@@ -5998,6 +5998,75 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).toContain("待遇发放账号：12345。");
     expect(output).not.toContain("BANK_ACCOUNT_");
   });
+
+  // ----------------------------------------------------------------------
+  // Round 22 — healthcare / medical records. Labels for hospital admission
+  // and outpatient numbers, physician role labels, and birth-certificate
+  // reference numbers. All values invented.
+  // ----------------------------------------------------------------------
+
+  it("redacts hospital admission/outpatient numbers as CASE_REF (not BANK_ACCOUNT)", () => {
+    const output = redact(
+      [
+        "住院号：ZH202605000123。",
+        "门诊号：MZ2026-05012。",
+        "病案号：BA20260500001。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("ZH202605000123");
+    expect(output).not.toContain("MZ2026-05012");
+    expect(output).not.toContain("BA20260500001");
+    expect(output).toContain("CASE_REF_");
+    // Must NOT be misclassified as a bank account.
+    expect(output).not.toContain("BANK_ACCOUNT_");
+  });
+
+  it("redacts physician role labels (主治医师/住院医师/签发医师/经治医师)", () => {
+    const output = redact(
+      [
+        "主治医师：刘明远。",
+        "住院医师：孙小燕。",
+        "签发医师：赵慧芳。",
+        "经治医师：周建国。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("刘明远");
+    expect(output).not.toContain("孙小燕");
+    expect(output).not.toContain("赵慧芳");
+    expect(output).not.toContain("周建国");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("主治医师：");
+    expect(output).toContain("住院医师：");
+    expect(output).toContain("签发医师：");
+    expect(output).toContain("经治医师：");
+  });
+
+  it("redacts birth-certificate and document reference labels as CASE_REF", () => {
+    const output = redact(
+      [
+        "出生证编号：O2026 0512 0034。",
+        "出生医学证明编号：W202605120001。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("O2026 0512 0034");
+    expect(output).not.toContain("W202605120001");
+    expect(output).toContain("CASE_REF_");
+    // Must NOT be misclassified as a phone (the 0512-0034 substring is
+    // phone-shaped).
+    expect(output).not.toContain("PHONE_");
+  });
+
+  it("keeps medical clinical percentages readable (coronary stenosis finding)", () => {
+    // A percentage that follows a clinical narrowing/stenosis noun is a
+    // clinical finding, not a financial amount, and must stay readable.
+    const output = redact("冠脉造影提示前降支中段狭窄85%。");
+
+    expect(output).toContain("狭窄85%");
+    expect(output).not.toContain("AMOUNT");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {
