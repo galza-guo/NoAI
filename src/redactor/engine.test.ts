@@ -4412,6 +4412,80 @@ The candidate will advance next year.`,
     expect(output).toContain("The candidate will advance");
   });
 
+  it("redacts CAGE Code and contractor license number labels", () => {
+    // Federal contract award notices print the awardee's CAGE Code
+    // ("CAGE Code: 8QT29") and a contractor/professional license number
+    // ("Contractor License Number: IL-ROC-0048291"). These are label-bound
+    // government entity / professional identifiers; the CAGE form puts "Code"
+    // between the acronym and the colon, which the existing CAGE:/CAGE# detector
+    // missed, and there was no contractor-license detector at all. Label-bound
+    // so a bare "8QT29" or "IL-ROC-0048291" in prose stays readable.
+    const output = redact(
+      `CAGE Code: 8QT29
+Contractor License Number: IL-ROC-0048291
+License No.: CA-CSLB-992041
+The cage held the animals.`,
+      "light",
+    );
+    expect(output).not.toContain("8QT29");
+    expect(output).not.toContain("IL-ROC-0048291");
+    expect(output).not.toContain("CA-CSLB-992041");
+    expect(output).toContain("BUSINESS_ID_");
+    // Prose "cage" (lowercase) stays readable.
+    expect(output).toContain("cage held the animals");
+  });
+
+  it("redacts bond and policy number labels without phone mislabel", () => {
+    // Procurement bid bonds and insurance certificates print a surety/bond
+    // number and a policy number with a sponsor prefix + dash + number
+    // ("Bond No. LMBS-4471930-25", "Policy No. GS-2025-0088471"). The dash-split
+    // digit run is phone-shaped and was mislabeled PHONE, leaking the prefix.
+    // Label-bound so the bare number stays readable.
+    const output = redact(
+      `Bond No. LMBS-4471930-25
+Policy No. GS-2025-0088471
+Surety Bond Number: SBA-2024-7781023`,
+      "light",
+    );
+    expect(output).not.toContain("LMBS-4471930-25");
+    expect(output).not.toContain("GS-2025-0088471");
+    expect(output).not.toContain("SBA-2024-7781023");
+    expect(output).toContain("BUSINESS_ID_");
+    // The phone-shaped dash-split values must not be mislabeled as phone.
+    expect(output).not.toMatch(/Bond No\. PHONE_/);
+    expect(output).not.toMatch(/Policy No\. PHONE_/);
+  });
+
+  it("does not over-redact all-caps procurement/regulatory heading lines as people", () => {
+    // Procurement and regulatory notices open with an all-caps title on its own
+    // line ("SOLICITATION NOTICE", "CONTRACT AWARD NOTICE", "PUBLIC BID
+    // ABSTRACT"). The all-caps-line detector can misread these as a person
+    // name. The heading nouns (Notice/Abstract/Bulletin/Memorandum) never
+    // appear as surnames, so these title lines must stay readable.
+    const output = redact(
+      `SOLICITATION NOTICE
+CONTRACT AWARD NOTICE
+PUBLIC BID ABSTRACT
+
+Awarded to Robert P. Halloran.`,
+      "balanced",
+    );
+    expect(output).toContain("SOLICITATION NOTICE");
+    expect(output).toContain("CONTRACT AWARD NOTICE");
+    expect(output).toContain("PUBLIC BID ABSTRACT");
+    // A real all-caps name on its own line is still redacted, unlike the
+    // heading lines above it.
+    const outputWithName = redact(
+      `SOLICITATION NOTICE
+
+ROBERT P. HALLORAN`,
+      "balanced",
+    );
+    expect(outputWithName).toContain("SOLICITATION NOTICE");
+    expect(outputWithName).not.toContain("ROBERT P. HALLORAN");
+    expect(outputWithName).toContain("PERSON_");
+  });
+
   it("redacts bankruptcy case, document, and debtor tax identifiers", () => {
     // Chapter 11 notices carry the Case No., the ECF Document No., and the
     // debtor's Tax ID. All are label-bound; the bare digit run was previously

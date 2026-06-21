@@ -1315,10 +1315,24 @@ export class Detector {
         // (Unique Entity ID), DUNS Number, and the program/funding codes
         // (NSF/NIH Program Code, CFDA/Assistance Number) identify the grant or
         // the funded entity. Label-bound so bare figures stay readable. DUNS
-        // (dd-ddddddd) is phone-shaped and was mislabeled PHONE.
-        /\b(?:Award|UEI|DUNS|CFDA|Assistance)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        // (dd-ddddddd) is phone-shaped and was mislabeled PHONE. CAGE Code is
+        // included ("CAGE Code: 8QT29") because federal award notices print the
+        // awardee's Commercial and Government Entity code with "Code" between the
+        // acronym and the colon, which the bare-acronym detector below misses.
+        /\b(?:Award|UEI|DUNS|CFDA|Assistance|CAGE)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "federal grant award identifier label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Contractor / professional license number, label-bound. Procurement
+        // award notices and contractor registrations print the awardee's license
+        // as "Contractor License Number: IL-ROC-0048291", "License No.:
+        // CA-CSLB-992041", or "License Number: ...". The label is required so a
+        // bare alnum-hyphen value stays readable; the value must contain a digit.
+        /\b(?:Contractor\s+License|License)\s+(?:Number|No\.?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        1,
+        "contractor license number label",
       ],
       [
         "BUSINESS_ID",
@@ -1976,10 +1990,17 @@ export class Detector {
       // Federal grant award identifier labels (NSF/NIH/federal notices).
       // Line-anchored companions to the inline BUSINESS_ID rules.
       [
-        /^\s*(?:Award|UEI|DUNS|CFDA|Assistance)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:：]?\s*(.+)$/i,
+        /^\s*(?:Award|UEI|DUNS|CFDA|Assistance|CAGE)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:：]?\s*(.+)$/i,
         "BUSINESS_ID",
         1,
         "federal grant award identifier label",
+      ],
+      // Contractor / professional license number label, line-anchored.
+      [
+        /^\s*(?:Contractor\s+License|License)\s+(?:Number|No\.?)\b\.?\s*[:：]?\s*(.+)$/i,
+        "BUSINESS_ID",
+        1,
+        "contractor license number label",
       ],
       [
         /^\s*(?:UEI|DUNS|NPN|EIN|FEIN|CAGE)\s*[:：]\s*(.+)$/i,
@@ -4157,6 +4178,14 @@ export class Detector {
       "Method",
       "Information",
       "Table",
+      // Procurement / regulatory document headings (e.g. "Solicitation Notice",
+      // "Contract Award Notice", "Public Bid Abstract"). These title lines are
+      // all-caps and sit on their own line, so the all-caps-line detector can
+      // misread them as person names; the heading nouns never appear as surnames.
+      "Notice",
+      "Abstract",
+      "Bulletin",
+      "Memorandum",
     ]);
     if (tokens.length >= 2 && DOCUMENT_HEADING_ENDINGS.has(lastToken))
       return false;

@@ -3,6 +3,37 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.5.23 (general r18, chinese r10) - 2026-06-21
+
+Government procurement / RFP / award notice round: a solicitation notice, a
+contract award notice, and a public bid abstract. Synthetic representative
+documents only; fabricated test values, no real contractor/vendor/award
+identifiers committed. Deterministic rule changes only. No AI/LLM/backend/
+telemetry added.
+
+- Added CAGE Code label-bound detection (BUSINESS_ID, Light). Federal contract
+  award notices print the awardee's Commercial and Government Entity code as
+  "CAGE Code: 8QT29" — "Code" sits between the acronym and the colon, which the
+  bare-acronym ("CAGE:") detector missed. Added to the federal grant award label
+  group. Label-bound so a bare code stays readable.
+- Added contractor / professional license number label (BUSINESS_ID, Light).
+  Procurement award notices and contractor registrations print the license as
+  "Contractor License Number: IL-ROC-0048291", "License No.: CA-CSLB-992041", or
+  "License Number: ...". The qualifier (Number/No.) is required so prose
+  "license" alone never matches; the value must contain a digit.
+- Added procurement/regulatory heading-noun guard to person-name validation.
+  All-caps title lines ("SOLICITATION NOTICE", "CONTRACT AWARD NOTICE", "PUBLIC
+  BID ABSTRACT") were misread as a person name by the all-caps-line detector
+  because the heading sits on its own line. Added Notice/Abstract/Bulletin/
+  Memorandum to the document-heading-endings set; real all-caps names on their
+  own line are still redacted.
+- Added 3 synthetic tests (CAGE Code + contractor license labels; bid/policy
+  number labels; procurement heading over-redaction guard), each with
+  counterexamples.
+- Residual (deferred): CLIN 4-digit line-item codes ("0001") and the "City Hall,
+  Conference Room 4B" venue line are weakly identifying / ambiguous and stay
+  readable. Bond/Policy numbers were already handled by existing label detectors.
+
 ## NoAI redaction engine 1.5.22 (general r17, chinese r10) - 2026-06-21
 
 Commercial contracts round: a commercial lease, an employment agreement, and a
