@@ -1416,6 +1416,22 @@ Insurance: BlueCross BlueShield of North Carolina
 
     expect(output).toContain("North Carolina");
   });
+
+  it("redacts 'day of' dates, numeric-prefix limited partnerships, and Email: labels", () => {
+    const output = redact(`
+This Lease Agreement (the "Lease") is entered into as of this 31st day of December, 2014, by and between 66 South Hanford Street Limited Partnership, a Washington limited partnership ("Landlord") and Jones Soda Co., a Washington corporation ("Tenant").
+
+Email: Jennifer Cue jencue@jonessoda.com
+    `);
+    
+    expect(output).toContain("DATE_001");
+    expect(output).toContain("ORG_001");
+    expect(output).toContain("ORG_002");
+    expect(output).toContain("PERSON_001");
+    expect(output).not.toContain("31st day of December");
+    expect(output).not.toContain("66 South Hanford");
+    expect(output).not.toContain("Jennifer Cue");
+  });
 });
 
 describe("interactive review model", () => {
@@ -2852,6 +2868,483 @@ We met every www attendee at the summit.
     expect(output).toContain("every www attendee");
   });
 
+  it("redacts bare domain URLs after contact/website field labels", () => {
+    // Letterheads, signature blocks, and vendor contact sheets print a website
+    // as a bare domain (no scheme, no "www.") after a field label: "Web:
+    // cedar-marsh.example.co.uk", "Website: brightline-systems.example.com",
+    // "URL: northpeak.example.co.uk", "w: globex.example". The label anchor is
+    // required so a bare domain in prose ("see example.com for details") stays
+    // readable. Multi-label TLDs (.co.uk, .gov.uk), paths, and subdomains are
+    // all tolerated.
+    const output = redact(
+      `
+Web: cedar-marsh.example.co.uk
+Website: brightline-systems.example.com
+URL: northpeak.example.co.uk
+Site: portal.example.io
+Homepage: https://home.example.org
+w: globex.example
+Portal: support.brightline-systems.example.com/tickets
+Page: status.example.io
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("cedar-marsh.example.co.uk");
+    expect(output).not.toContain("brightline-systems.example.com");
+    expect(output).not.toContain("northpeak.example.co.uk");
+    expect(output).not.toContain("portal.example.io");
+    expect(output).not.toContain("globex.example");
+    expect(output).not.toContain("support.brightline-systems.example.com");
+    expect(output).not.toContain("status.example.io");
+    expect(output).toContain("URL_");
+  });
+
+  it("redacts www2/www3 host-prefixed website URLs", () => {
+    // Load-balanced and mirror sites use a "www2." / "www3." host prefix
+    // instead of plain "www.". The bare-www detector required "www." followed
+    // by a host label, so "www2.cedar-marsh.example.co.uk" leaked. Treat the
+    // numbered www-variant the same as plain www.
+    const output = redact(
+      `
+www2.cedar-marsh.example.co.uk
+www3.example.com
+www.example.com
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("www2.cedar-marsh.example.co.uk");
+    expect(output).not.toContain("www3.example.com");
+    expect(output).not.toContain("www.example.com");
+    expect(output).toContain("URL_");
+  });
+
+  it("does not over-redact bare domains that have no website label", () => {
+    // Counterexample: a bare domain in prose with no label anchor, or a
+    // sentence that merely mentions a domain-shaped word, must stay readable.
+    // Only the labeled form and www./wwwN. forms are redacted.
+    const output = redact(
+      `
+Visit example.com for details.
+We read the chapter.com summary together.
+The file is report.pdf on the shared drive.
+Please email us, not post on social.media sites.
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("example.com for details");
+    expect(output).toContain("chapter.com summary");
+    expect(output).toContain("report.pdf");
+    expect(output).toContain("social.media sites");
+  });
+
+  it("redacts court action/suit/index case references after their labels", () => {
+    // Court pleadings and filings use "Action No.", "Suit No.", and "Index
+    // No." as standard docket labels (alongside Docket/Matter/Case No.). These
+    // identify a specific proceeding and are sensitive. The label + qualifier
+    // anchor is required so bare figures and prose stay readable; the value
+    // must contain a digit.
+    const output = redact(
+      `
+Action No. ST-2024-0088
+Suit No. S-2024-0088
+Index No. 008821/2024
+Action Number 24-CV-00882
+Suit Number: SC-008821
+Index Number 2024-008821
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("ST-2024-0088");
+    expect(output).not.toContain("S-2024-0088");
+    expect(output).not.toContain("008821/2024");
+    expect(output).not.toContain("24-CV-00882");
+    expect(output).not.toContain("SC-008821");
+    expect(output).not.toContain("2024-008821");
+    expect(output).toContain("CASE_REF_");
+  });
+
+  it("redacts our/your correspondence references after the ref label", () => {
+    // Legal and business correspondence identifies the matter with an
+    // abbreviated possessive reference: "Our ref: 2024/008821",
+    // "Your ref: P-008821/24", "Our Ref. CLM-008821", "Your reference: 008821".
+    // The bare "Reference:" detector only matches the trailing word, so the
+    // possessive "Our/Your ref:" form leaked. The possessive + ref label is the
+    // trust anchor; the value must contain a digit so prose stays readable.
+    const output = redact(
+      `
+Our ref: 2024/008821
+Your ref: P-008821/24
+Our Ref. CLM-008821
+Your reference: 008821
+Your ref is pending.
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("2024/008821");
+    expect(output).not.toContain("P-008821/24");
+    expect(output).not.toContain("CLM-008821");
+    expect(output).not.toContain("008821");
+    expect(output).toContain("CASE_REF_");
+    // Counterexample: a ref with no digit value is prose and stays readable.
+    expect(output).toContain("Your ref is pending");
+  });
+
+  it("does not over-redact action/suit/index words used as prose", () => {
+    // Counterexample: "Action", "Suit", and "Index" as ordinary words must stay
+    // readable. The label + qualifier (No./Number) + digit value anchor is what
+    // protects them.
+    const output = redact(
+      `
+We will take action on the matter.
+The suit was filed last year.
+See the index at the back of the book.
+Action number zero is not a real case.
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("take action");
+    expect(output).toContain("suit was filed");
+    expect(output).toContain("index at the back");
+    expect(output).toContain("Action number zero");
+  });
+
+  it("does not redact legal correspondence privilege/boilerplate phrases", () => {
+    // Legal letters carry standard privilege and confidentiality rubrics that
+    // sit on their own line in title case ("Without Prejudice", "Subject to
+    // Contract", "Strictly Private and Confidential", "Governing Law",
+    // "Force Majeure"). The standalone title-case person detector wrongly read
+    // "Without Prejudice" as a personal name and redacted it as PERSON. These
+    // are boilerplate and must stay fully readable. A genuine standalone person
+    // name on its own line still redacts.
+    const output = redact(
+      `
+WITHOUT PREJUDICE
+Without Prejudice
+Subject to Contract
+Strictly Private and Confidential
+Governing Law
+Force Majeure
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("WITHOUT PREJUDICE");
+    expect(output).toContain("Without Prejudice");
+    expect(output).toContain("Subject to Contract");
+    expect(output).toContain("Strictly Private and Confidential");
+    expect(output).toContain("Governing Law");
+    expect(output).toContain("Force Majeure");
+    expect(output).not.toContain("PERSON_");
+  });
+
+  it("still redacts a genuine standalone person name on its own line", () => {
+    // Counterexample to the counterexample: a real standalone person name on
+    // its own line (e.g. a signature) must still redact after the boilerplate
+    // stoplist is added.
+    const output = redact(
+      `
+Yours faithfully,
+
+Jonathan Pierce Whitcombe
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("Jonathan Pierce Whitcombe");
+    expect(output).toContain("PERSON_");
+  });
+
+  it("redacts passport, tracking, and booking references after their labels", () => {
+    // Travel, shipping, and identity documents carry alphanumeric identifiers
+    // after a field label: "Passport No: P1234567", "Tracking No:
+    // 1Z999AA10123456784" (UPS), "Booking ref: ABC123". These leaked because no
+    // rule covered these label + alphanumeric-id shapes. The label anchor is
+    // required so prose stays readable; the value must contain a letter or
+    // digit sequence long enough to be an identifier.
+    const output = redact(
+      `
+Passport No: P1234567
+Tracking No: 1Z999AA10123456784
+Booking ref: ABC123
+Passport Number: KN8452093
+Tracking Number: 9400111202555388047855
+Booking Reference: XZ7741P
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("P1234567");
+    expect(output).not.toContain("1Z999AA10123456784");
+    expect(output).not.toContain("ABC123");
+    expect(output).not.toContain("KN8452093");
+    expect(output).not.toContain("9400111202555388047855");
+    expect(output).not.toContain("XZ7741P");
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("does not over-redact common words after passport/tracking/booking labels", () => {
+    // Counterexample: the label words used in prose, or a no-value follow-on,
+    // must stay readable. The label + identifier anchor protects them.
+    const output = redact(
+      `
+The passport was lost.
+Tracking the shipment is easy.
+We made a booking for dinner.
+Passport No: (none provided)
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("passport was lost");
+    expect(output).toContain("Tracking the shipment");
+    expect(output).toContain("booking for dinner");
+    expect(output).toContain("(none provided)");
+  });
+
+  it("redacts routing transit numbers as BANK_ACCOUNT, not PHONE", () => {
+    // Bank wire/ACH forms use the full qualifier "Routing Transit No." /
+    // "Routing/Transit Number" for the ABA routing value. The abbreviated
+    // routing rule only matched "Routing No.", so "Routing Transit No:
+    // 026009593" fell through to the generic phone rule and was mislabeled
+    // PHONE. The value should be BANK_ACCOUNT. The 8-9 digit routing shape and
+    // the label anchor make this safe.
+    const output = redact(
+      `
+Routing Transit No: 026009593
+Routing/Transit Number: 021000021
+Routing Transit Number: 071000013
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("026009593");
+    expect(output).not.toContain("021000021");
+    expect(output).not.toContain("071000013");
+    expect(output).toContain("BANK_ACCOUNT_");
+    expect(output).not.toContain("PHONE_");
+  });
+
+  it("redacts the account holder / beneficiary name after the label", () => {
+    // Bank and remittance forms name the account owner with a fixed label:
+    // "Account Holder: John Q. Public", "Beneficiary Name: Meridian Holdings".
+    // The holder is a person or org and must redact. The label anchor is
+    // required so prose stays readable.
+    const output = redact(
+      `
+Account Holder: John Q. Public
+Beneficiary Name: Meridian Holdings LP
+Account Name: Dana R. Pelletier
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("John Q. Public");
+    expect(output).not.toContain("Meridian Holdings LP");
+    expect(output).not.toContain("Dana R. Pelletier");
+  });
+
+  it("redacts officer/manager/owner role-label person names", () => {
+    // Business documents name the responsible individual with a role title and
+    // colon: "Managing Director: Wei Chen", "Company Secretary: Priya Anand",
+    // "Operations Manager: Tom Bradley", "Owner: Sarah J. Connors". These are
+    // person-introducing labels; the name leaked because the role word is not a
+    // person title. Line-led with a colon, so prose ("the manager will decide")
+    // stays readable.
+    const output = redact(
+      `
+Managing Director: Wei Chen
+Executive Director: Helen K. Park
+Company Secretary: Priya Anand
+Operations Manager: Tom Bradley
+Finance Manager: Laura Ng
+Branch Manager: Peter Sokolov
+Owner: Sarah J. Connors
+Proprietor: Frank D. Reyes
+Authorised Signatory: Marcus T. Bell
+Authorized Signatory: Dana R. Pelletier
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("Wei Chen");
+    expect(output).not.toContain("Helen K. Park");
+    expect(output).not.toContain("Priya Anand");
+    expect(output).not.toContain("Tom Bradley");
+    expect(output).not.toContain("Laura Ng");
+    expect(output).not.toContain("Peter Sokolov");
+    expect(output).not.toContain("Sarah J. Connors");
+    expect(output).not.toContain("Frank D. Reyes");
+    expect(output).not.toContain("Marcus T. Bell");
+    expect(output).not.toContain("Dana R. Pelletier");
+    expect(output).toContain("PERSON_OR_ORG_");
+  });
+
+  it("does not redact a role word used as a title value or in prose", () => {
+    // Counterexample: "Title: Company Secretary" has "Company Secretary" as the
+    // VALUE of a Title field, not as a label introducing a name, and must stay
+    // readable. Prose role uses ("the manager will decide") also stay readable.
+    const output = redact(
+      `
+Title:                     Company Secretary
+The manager will decide next week.
+Our proprietor is away today.
+The operations manager briefed the team.
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("Company Secretary");
+    expect(output).toContain("manager will decide");
+    expect(output).toContain("proprietor is away");
+    expect(output).toContain("operations manager briefed");
+  });
+
+  it("redacts legal/financial party-role label names", () => {
+    // Contracts, trusts, wills, and loan documents name the party with a
+    // relationship label and a colon: "Guarantor: Marcus T. Bell", "Borrower:
+    // John Q. Public", "Trustee: Helen K. Park", "Grantor: Sarah J. Connors",
+    // "Petitioner: Elena Rodriguez". These are person/org-introducing labels;
+    // the name leaked because the role word is not a person title. Line-led
+    // with a colon, so prose ("the guarantor must pay") stays readable.
+    const output = redact(
+      `
+Guarantor: Marcus T. Bell
+Petitioner: Elena Rodriguez
+Mortgagor: Robert Hayes
+Borrower: John Q. Public
+Trustee: Helen K. Park
+Settlor: David Okafor
+Grantor: Sarah J. Connors
+Grantee: Frank D. Reyes
+Testator: Wei Chen
+Executor: Priya Anand
+Administrator: Tom Bradley
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("Marcus T. Bell");
+    expect(output).not.toContain("Elena Rodriguez");
+    expect(output).not.toContain("Robert Hayes");
+    expect(output).not.toContain("John Q. Public");
+    expect(output).not.toContain("Helen K. Park");
+    expect(output).not.toContain("David Okafor");
+    expect(output).not.toContain("Sarah J. Connors");
+    expect(output).not.toContain("Frank D. Reyes");
+    expect(output).not.toContain("Wei Chen");
+    expect(output).not.toContain("Priya Anand");
+    expect(output).not.toContain("Tom Bradley");
+    expect(output).toContain("PERSON_OR_ORG_");
+  });
+
+  it("does not redact party-role words used in prose", () => {
+    // Counterexample: "the guarantor must pay", "the trustee decided" as prose
+    // stay readable. The line-led colon anchor is what protects them.
+    const output = redact(
+      `
+The guarantor must pay the debt.
+Our trustee decided to invest.
+The borrower defaulted last year.
+Each grantor signs here.
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("guarantor must pay");
+    expect(output).toContain("trustee decided");
+    expect(output).toContain("borrower defaulted");
+    expect(output).toContain("grantor signs");
+  });
+
+  it("redacts phone extensions after their labels", () => {
+    // Contact blocks carry a phone extension after a label: "Extension: 1234",
+    // "Ext. 5678", "Ext: 9012". A short digit run on its own is not redacted
+    // (too many false positives), but a digit run after an explicit
+    // Extension/Ext label is a personal contact identifier. Line-led with a
+    // colon so prose ("the extension of the deadline") stays readable.
+    const output = redact(
+      `
+Extension: 1234
+Ext. 5678
+Ext: 9012
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("Extension: 1234");
+    expect(output).not.toContain("Ext. 5678");
+    expect(output).not.toContain("Ext: 9012");
+    expect(output).toContain("PHONE_");
+  });
+
+  it("does not over-redact extension/handle words used in prose", () => {
+    // Counterexample: "extension" as an ordinary noun, or "ext." abbreviating
+    // "exterior"/"external", must stay readable. The label + value anchor
+    // protects them.
+    const output = redact(
+      `
+The extension of the deadline helped.
+Ext. weather conditions apply.
+We need an extension on the lease.
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("extension of the deadline");
+    expect(output).toContain("Ext. weather");
+    expect(output).toContain("extension on the lease");
+  });
+
+  it("redacts messaging handles after their service labels", () => {
+    // Contact blocks carry instant-messaging handles after a service label:
+    // "Skype: live:john.doe", "Telegram: @johndoe", "Signal: @alice.b".
+    // These are personal contact identifiers with a distinctive handle format
+    // (live: prefix or @-handle) anchored by the service label. Prose
+    // ("we skyped yesterday") stays readable because the label must be
+    // followed by the handle format with a colon.
+    const output = redact(
+      `
+Skype: live:john.doe
+Telegram: @johndoe
+Signal: @alice.b
+WeChat: wei_chen_88
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("live:john.doe");
+    expect(output).not.toContain("@johndoe");
+    expect(output).not.toContain("@alice.b");
+    expect(output).not.toContain("wei_chen_88");
+    expect(output).toContain("PHONE_");
+  });
+
+  it("does not redact messaging service names used as verbs or prose", () => {
+    // Counterexample: "we skyped yesterday", "send a telegram", "signal the
+    // team" as prose stay readable. The label + colon + handle-format anchor
+    // protects them.
+    const output = redact(
+      `
+We skyped yesterday about the deal.
+Please send a telegram to the office.
+Signal the team when ready.
+The WeChat group discussed it.
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("skyped yesterday");
+    expect(output).toContain("send a telegram");
+    expect(output).toContain("Signal the team");
+    expect(output).toContain("WeChat group");
+  });
+
   it("redacts named contracting officer / authorized signer after the role label", () => {
     // Federal awards, contracts, and grants name the responsible official with a
     // fixed role label and colon: "CONTRACTING OFFICER: Karen L. Williams",
@@ -3103,6 +3596,106 @@ VAT: 20%
     expect(output).toContain("ADDRESS_");
     expect(output).toContain("Terms & Conditions");
     expect(output).toContain("Research & Development");
+  });
+
+  it("redacts field values under Markdown-bold field labels (**Label:** value)", () => {
+    // Invoices, remittance advice, and finance forms converted to Markdown
+    // render field labels in bold: "**Invoice Number:** INV-2024-0088471".
+    // The trailing "**" sits between the label word/colon and the value, which
+    // previously broke every label-bound detector (the digits then leaked as a
+    // mislabeled PHONE). Bold emphasis around the label must not protect the
+    // sensitive value.
+    const output = redact(
+      `
+**Invoice Number:** INV-2024-0088471
+**Account Number:** ACCT-774102
+**Customer No.:** CUST-778210
+**Payment Reference:** PAY-2026-0042
+**Reference:** MER-A-2024-CL
+`,
+      "light",
+    );
+
+    expect(output).not.toContain("INV-2024-0088471");
+    expect(output).not.toContain("ACCT-774102");
+    expect(output).not.toContain("CUST-778210");
+    expect(output).not.toContain("PAY-2026-0042");
+    expect(output).not.toContain("MER-A-2024-CL");
+    // The labeled reference redacts as a unit (consistent with the non-bold
+    // form), so the value never leaks as a mislabeled PHONE.
+    expect(output).toContain("BUSINESS_ID_");
+  });
+
+  it("does not over-redact prose emphasis that merely looks like a bold label", () => {
+    // Counterexample: bold emphasis in ordinary prose must not turn a following
+    // word into a redacted reference. "**Important:** note the change" has no
+    // digit-bearing value and must stay fully readable.
+    const output = redact(
+      `
+**Important:** the meeting is at noon.
+**Note:** please review the contract.
+**Total:** five items were delivered.
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("Important");
+    expect(output).toContain("meeting is at noon");
+    expect(output).toContain("Note");
+    expect(output).toContain("review the contract");
+    expect(output).toContain("five items were delivered");
+  });
+
+  it("redacts currency-anchored labeled amounts and preserves bare labeled decimals", () => {
+    // A decimal amount after a finance label redacts ONLY when an explicit
+    // currency token sits in the same labeled phrase, e.g. "Amount Due (USD):
+    // 27,683.10". A bare decimal after a label with no currency signal
+    // ("Subtotal: 365.00") stays readable: such values appear on templates,
+    // sample forms, and boilerplate price tables where redaction would harm
+    // readability more than it protects privacy. The currency token is the
+    // trust anchor that the value is a real monetary amount. Bold emphasis
+    // ("**Amount Due (USD):** 27,683.10") and a parenthetical currency note are
+    // both tolerated.
+    const output = redact(
+      `
+**Amount Due (USD):** 27,683.10
+Amount Due (USD): 14,500.00
+Balance (EUR): 1,250.00
+Subtotal: 365.00
+Total: 15,000.00
+Balance Due: 8,400.00
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("27,683.10");
+    expect(output).not.toContain("14,500.00");
+    expect(output).not.toContain("1,250.00");
+    expect(output).toContain("AMOUNT_");
+    // Bare labeled decimals with no currency signal stay readable.
+    expect(output).toContain("365.00");
+    expect(output).toContain("15,000.00");
+    expect(output).toContain("8,400.00");
+  });
+
+  it("does not over-redact bare decimals that are not monetary amounts", () => {
+    // Counterexample: decimals that follow non-amount words, or that are
+    // version/section identifiers, must stay readable. The currency anchor is
+    // what protects them.
+    const output = redact(
+      `
+See section 4.2 for details.
+The library is at version 1.25.00.
+We scored 6.50 out of 10.00 on the test.
+Chapter 8.40 covers the topic.
+`,
+      "balanced",
+    );
+
+    expect(output).toContain("section 4.2");
+    expect(output).toContain("version 1.25.00");
+    expect(output).toContain("6.50 out of 10.00");
+    expect(output).toContain("Chapter 8.40");
   });
 
   // ---- Round 9: HR, employment, board/shareholder, governance documents ----

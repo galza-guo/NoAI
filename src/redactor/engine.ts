@@ -63,11 +63,11 @@ const STANDALONE_STREET_ADDRESS_RE = new RegExp(
 const MONTH_ALT =
   "Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?";
 const DAY_MONTH_DATE_RE = new RegExp(
-  String.raw`\b\d{1,2}(?:st|nd|rd|th)?(?:\s+|-|/)(?:${MONTH_ALT})\.?(?:,?\s+|-|/)\d{2,4}\b`,
+  String.raw`\b\d{1,2}(?:st|nd|rd|th)?(?:\s+(?:day\s+of\s+)?|-|/)(?:${MONTH_ALT})\.?(?:,?\s+|-|/)\d{2,4}\b`,
   "gi",
 );
 const DAY_MONTH_NO_YEAR_RE = new RegExp(
-  String.raw`\b\d{1,2}(?:st|nd|rd|th)?(?:\s+|-|/)(?:${MONTH_ALT})\.?\b`,
+  String.raw`\b\d{1,2}(?:st|nd|rd|th)?(?:\s+(?:day\s+of\s+)?|-|/)(?:${MONTH_ALT})\.?\b`,
   "gi",
 );
 const MONTH_DAY_DATE_RE = new RegExp(
@@ -157,8 +157,10 @@ const LEGAL_FORM_ORG_SUFFIXES = [
   "CO\\.?",
   "Company",
   "COMPANY",
+  "Partnership",
+  "PARTNERSHIP",
   "L\\.?P\\.?",
-  "LLP",
+  "L\\.?L\\.?P\\.?",
   "LLLP",
   "PLLC",
   "N\\.?V\\.?",
@@ -633,7 +635,18 @@ export class Detector {
 
     if (kind === "PHONE") {
       const digits = cleaned.replace(/\D/g, "");
-      if (digits.length < 7) return;
+      // A phone extension is a label-bound short digit code ("Extension: 1234")
+      // that is shorter than a full phone number. The explicit label makes it
+      // safe to redact despite being under the usual 7-digit minimum, so bypass
+      // that minimum for the extension reason. Messaging handles
+      // ("Skype: live:john.doe", "Telegram: @johndoe") are contact identifiers
+      // with few or no digits; they are also bypassed because the service label
+      // + distinctive handle format make them safe.
+      const isHandle =
+        reason === "messaging handle label" ||
+        reason === "skype live: handle label";
+      if (digits.length < 7 && reason !== "phone extension label" && !isHandle)
+        return;
       // E.164 caps phone numbers at 15 digits. Longer bare digit strings are
       // more likely to be account numbers or identifiers; label-bound account
       // detectors should classify them instead.
@@ -778,9 +791,26 @@ export class Detector {
         // "example.com" mid-prose) is intentionally NOT matched, and "www"
         // used as a word ("every www attendee") cannot match because the regex
         // requires "www." immediately followed by a host label and a dot+TLD.
-        /\bwww\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}\b/g,
+        // Load-balanced / mirror sites use a numbered host label "www2." /
+        // "www3." instead of plain "www."; treat the numbered variant the same.
+        /\bwww\d?\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}\b/g,
         1,
         "bare www. website URL (no scheme)",
+      ],
+      [
+        "URL",
+        // Bare domain (no scheme, no "www.") printed after a contact/website
+        // field label in letterheads, signature blocks, and vendor contact
+        // sheets: "Web: cedar-marsh.example.co.uk",
+        // "Website: brightline-systems.example.com", "URL: northpeak.example.co.uk",
+        // "w: globex.example". The label anchor is required so a bare domain in
+        // prose ("see example.com for details") stays readable. The domain must
+        // have at least one dot and a 2+ letter TLD; a path after the TLD is
+        // tolerated. The single-letter business-card shorthand "w:" is included
+        // because it only ever introduces a website on a contact card.
+        /(?:Web(?:site)?|Site|Homepage|Home\s+Page|URL|Portal|Page|w)\s*[:#]\s*[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}(?:\/[^\s)]*)?/gi,
+        1,
+        "label-bound bare domain URL",
       ],
       [
         "INTERNAL_LINK",
@@ -858,6 +888,31 @@ export class Detector {
         "UK full address line",
       ],
       ["ADDRESS", /\bP\.?\s*O\.?\s+Box\s+\d{1,10}\b/gi, 1, "post office box"],
+      [
+        "PHONE",
+        // Instant-messaging handles in contact blocks after a service label.
+        // Telegram/Signal/Twitter/X use an "@handle"; the service label makes
+        // it unambiguous and prose ("we skyped yesterday") stays readable
+        // because the handle must follow the label and a colon.
+        /\b(?:Telegram|Signal|Twitter|X|Viber)\s*[:：]\s*@[A-Za-z0-9_.-]{3,}\b/gi,
+        1,
+        "messaging handle label",
+      ],
+      [
+        "PHONE",
+        // Skype "live:" handle form: "Skype: live:john.doe".
+        /\bSkype\s*[:：]\s*live:[A-Za-z0-9_.-]{3,}\b/gi,
+        1,
+        "skype live: handle label",
+      ],
+      [
+        "PHONE",
+        // WeChat handles are an underscore/alphanumeric ID after the label:
+        // "WeChat: wei_chen_88".
+        /\bWeChat\s*[:：]\s*[A-Za-z0-9_][A-Za-z0-9_.-]{3,}\b/gi,
+        1,
+        "messaging handle label",
+      ],
       [
         "CASE_REF",
         /\bHKIAC Arbitration No\.\s*[A-Z]?\d+\b/g,
@@ -1056,7 +1111,7 @@ export class Detector {
         // "Section 16/810") is ambiguous. The value must contain a digit. The
         // acronym forms are written with a trailing period ("Appl.", "Ser.",
         // "Pat."), so an optional "." follows each.
-        /\b(?:Appl\.?|Application|Ser\.?|Patent|Pat\.?|Provisional\s+application)\s+Nos?\.?\s*[:#]?\s*(?=[A-Za-z0-9,/-]*\d)[A-Za-z0-9,/-]{3,}\b/gi,
+        /\b(?:Appl\.?|Application|Ser\.?|Patent|Pat\.?|Provisional\s+application)\s+Nos?\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9,/-]*\d)[A-Za-z0-9,/-]{3,}\b/gi,
         1,
         "patent application/serial number",
       ],
@@ -1068,7 +1123,7 @@ export class Detector {
         // matched as "Company" + "No" + "tifies"), require the value to contain
         // at least one digit via a lookahead. Real registration numbers always
         // contain a digit.
-        /\b(?:CR|BR|Company|Registered|Registration|Business Registration)\s+No\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Z0-9-]{5,}\b/gi,
+        /\b(?:CR|BR|Company|Registered|Registration|Business Registration)\s+No\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Z0-9-]{5,}\b/gi,
         1,
         "business registration number",
       ],
@@ -1188,7 +1243,7 @@ export class Detector {
         // mislabeled PHONE, leaking non-digit suffixes ("-CLM") and prefixes.
         // The label is the trust anchor; the value must contain a digit. A bare
         // digit run in prose stays readable.
-        /\b(?:Group\s+Number|Claim\s+Control\s+Number)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        /\b(?:Group\s+Number|Claim\s+Control\s+Number)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "EOB group/claim control number label",
       ],
@@ -1258,7 +1313,7 @@ export class Detector {
         // file/registration numbers), so only the labeled occurrence is
         // redacted — a bare number elsewhere remains readable. The value must
         // contain at least one digit so prose words after a label are ignored.
-        /\b(?:Solicitation|RFP|RFQ|RFI|IFB|Purchase\s+Order|PO|Contract|Requisition|Vendor|Invoice|Bid|Tender|Quote|Quotation)\s+(?:Nos?|Numbers?|IDs?|Reference|Code)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Solicitation|RFP|RFQ|RFI|IFB|Purchase\s+Order|PO|Contract|Requisition|Vendor|Invoice|Bid|Tender|Quote|Quotation)\s+(?:Nos?|Numbers?|IDs?|Reference|Code)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "procurement document reference",
       ],
@@ -1269,7 +1324,7 @@ export class Detector {
         // "Reference: PAY-2026-0042", "Vendor: V12345". The colon/hash is
         // required to distinguish this from prose ("issue a purchase order for
         // the goods"); the digit lookahead rejects values that are plain prose.
-        /\b(?:Solicitation|RFP|RFQ|RFI|IFB|Purchase\s+Order|PO|Contract|Requisition|Vendor|Invoice|Bid|Tender|Quote|Quotation|Reference)\s*[:#]\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Solicitation|RFP|RFQ|RFI|IFB|Purchase\s+Order|PO|Contract|Requisition|Vendor|Invoice|Bid|Tender|Quote|Quotation|Reference)\s*[:#]\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "procurement reference label",
       ],
@@ -1280,7 +1335,7 @@ export class Detector {
         // common on remittance/bid forms. Keep this label-bound and require a
         // digit-containing value so ordinary "reference number for the table"
         // prose stays readable.
-        /\bReference\s+(?:Nos?|Numbers?|IDs?|Code)\s+for\s+(?:Payment|Remittance|Bid|Tender|Quote|Quotation|Invoice|Purchase\s+Order|PO)\s*[:#]\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\bReference\s+(?:Nos?|Numbers?|IDs?|Code)\s+for\s+(?:Payment|Remittance|Bid|Tender|Quote|Quotation|Invoice|Purchase\s+Order|PO)\s*[:#]\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "compound procurement reference label",
       ],
@@ -1295,9 +1350,37 @@ export class Detector {
         // codes. The label + qualifier anchor is required so bare figures and
         // prose stay readable; the value must contain a digit. The full labeled
         // phrase is the candidate value (consistent with SEC file numbers).
-        /\b(?:Docket|Complaint|Charge|Reference|Matter)\s+(?:Nos?|Numbers?|IDs?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
+        // Court pleadings also use "Action No.", "Suit No.", and "Index No."
+        // as standard docket labels (e.g. NY Index No., civil Action/Suit No.).
+        /\b(?:Docket|Complaint|Charge|Reference|Matter|Action|Suit|Index)\s+(?:Nos?|Numbers?|IDs?)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9/-]*\d)[A-Za-z0-9/-]{2,}\b/gi,
         1,
         "regulator matter reference",
+      ],
+      [
+        "CASE_REF",
+        // Correspondence matter references with a possessive + abbreviated
+        // "ref" label, common on legal and business letters: "Our ref:
+        // 2024/008821", "Your ref: P-008821/24", "Our Ref. CLM-008821". The
+        // bare "Reference:" detector only matches the trailing word, so the
+        // possessive "Our/Your ref:" form leaked. The possessive + ref label is
+        // the trust anchor; the value must contain a digit so prose ("Your ref
+        // is pending") stays readable. Slash-separated values are tolerated.
+        /\b(?:Our|Your|Their)\s+Refs?\.?\s*[:#.]?\s*(?=[A-Za-z0-9/-]*\d)[A-Za-z0-9/-]{3,}\b/gi,
+        1,
+        "correspondence ref label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Travel, shipping, and identity document identifiers after a field
+        // label: "Passport No: P1234567", "Tracking No: 1Z999AA10123456784"
+        // (UPS), "Booking ref: ABC123", "Passport Number: KN8452093". These
+        // leaked because no rule covered these label + alphanumeric-id shapes.
+        // The label anchor is required so prose ("the passport was lost") stays
+        // readable; the value must be an alphanumeric run of at least 4 chars
+        // (letters and/or digits) so a bare "(none provided)" is not matched.
+        /\b(?:Passport|Tracking|Booking)\s+(?:Nos?|Numbers?|Reference|Ref)\.?\s*[:#]\s*[A-Za-z0-9]{4,}\b/gi,
+        1,
+        "travel/shipping identifier label",
       ],
       [
         "CASE_REF",
@@ -1305,7 +1388,7 @@ export class Detector {
         // the label, e.g. "CMS Case # 1-0429876-2026", "EEOC No. 35A-2026-1192",
         // "Document Control No. CMS-2026-088342". Label-bound; digit required so
         // a stray "Control No" prose fragment is not matched.
-        /\b(?:CMS\s+Case|EEOC\s+Nos?|Document\s+Control\s+Nos?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
+        /\b(?:CMS\s+Case|EEOC\s+Nos?|Document\s+Control\s+Nos?)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
         1,
         "agency case/charge reference",
       ],
@@ -1317,7 +1400,7 @@ export class Detector {
         // Identifier), "Establishment Identifier", "Provider No." (CMS),
         // "ICO Registration", "Registry No." / "EPA Registry No.". The label
         // anchor is required because a bare number is usually a figure.
-        /\b(?:FEI|Establishment\s+Identifier|Provider\s+Nos?|ICO\s+Registration|(?:EPA\s+)?Registry\s+Nos?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
+        /\b(?:FEI|Establishment\s+Identifier|Provider\s+Nos?|ICO\s+Registration|(?:EPA\s+)?Registry\s+Nos?)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
         1,
         "regulator establishment/registration identifier",
       ],
@@ -1329,7 +1412,7 @@ export class Detector {
         // Consistent with procurement references, the full labeled phrase is the
         // candidate value and the value must contain a digit so prose and bare
         // figures (table quantities, item codes) stay readable.
-        /\b(?:Remittance\s+Advice|Remittance|Customer)\s+(?:Nos?|Numbers?|IDs?|Reference|Code)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Remittance\s+Advice|Remittance|Customer)\s+(?:Nos?|Numbers?|IDs?|Reference|Code)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "finance document reference",
       ],
@@ -1341,7 +1424,7 @@ export class Detector {
         // "the payment reference will follow" readable while catching the labeled
         // reference. Required because the bare-colon "Reference:" detector only
         // matches the trailing "Reference:" substring, leaving "Payment " unscoped.
-        /\bPayment\s+(?:References?|Ref)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\bPayment\s+(?:References?|Ref)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "payment reference label",
       ],
@@ -1351,7 +1434,7 @@ export class Detector {
         // e.g. "Bank Reference: TRF-2024-0630-8812". Distinct from an account
         // number, this is the bank-side transaction reference. Label-bound so
         // a bare figure stays readable.
-        /\bBank\s+Reference\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\bBank\s+Reference\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "bank transfer reference label",
       ],
@@ -1363,7 +1446,7 @@ export class Detector {
         // label anchor is required; the value must contain a digit so prose stays
         // readable. Bare "TIN" is deliberately excluded because lowercase "tin"
         // is a common word.
-        /\b(?:VAT\s+(?:Registration\s+)?(?:Nos?|Numbers?|IDs?)|Tax(?:payer)?\s+(?:Identification\s+)?(?:IDs?|Nos?|Numbers?))\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:VAT\s+(?:Registration\s+)?(?:Nos?|Numbers?|IDs?)|Tax(?:payer)?\s+(?:Identification\s+)?(?:IDs?|Nos?|Numbers?))\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "tax identifier label",
       ],
@@ -1386,7 +1469,7 @@ export class Detector {
         // phone-shaped and were previously mislabeled PHONE; the label-bound
         // BUSINESS_ID candidate wins on KIND_PRIORITY, mirroring the HR/finance
         // label fixes.
-        /\b(?:Policy|NAIC|NAICS|NPN)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Policy|NAIC|NAICS|NPN)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "insurance policy/regulatory identifier label",
       ],
@@ -1400,7 +1483,7 @@ export class Detector {
         // included ("CAGE Code: 8QT29") because federal award notices print the
         // awardee's Commercial and Government Entity code with "Code" between the
         // acronym and the colon, which the bare-acronym detector below misses.
-        /\b(?:Award|UEI|DUNS|CFDA|Assistance|CAGE)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Award|UEI|DUNS|CFDA|Assistance|CAGE)\s+(?:Number|No\.?|Code|ID)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "federal grant award identifier label",
       ],
@@ -1411,7 +1494,7 @@ export class Detector {
         // as "Contractor License Number: IL-ROC-0048291", "License No.:
         // CA-CSLB-992041", or "License Number: ...". The label is required so a
         // bare alnum-hyphen value stays readable; the value must contain a digit.
-        /\b(?:Contractor\s+License|License)\s+(?:Number|No\.?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Contractor\s+License|License)\s+(?:Number|No\.?)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "contractor license number label",
       ],
@@ -1421,7 +1504,7 @@ export class Detector {
         // by a colon, e.g. "UEI: X4QPM9F6RJ82", "DUNS: 07-445-1928", "NPN:
         // 18442973". The colon anchor distinguishes these from prose ("the UEI
         // is pending"); the digit requirement rejects placeholder values.
-        /\b(?:UEI|DUNS|NPN|EIN|FEIN|CAGE)\s*[:#]\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:UEI|DUNS|NPN|EIN|FEIN|CAGE)\s*[:#]\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "federal entity identifier (bare acronym) label",
       ],
@@ -1455,7 +1538,7 @@ export class Detector {
         // These alphanumeric identifiers were swallowed by the phone regex and
         // mislabeled PHONE. The label anchor owns the value; the digit
         // requirement rejects placeholder prose like "Subject ID: pending".
-        /\b(?:Medical\s+Record|Subject)\s+(?:No\.?|Number|ID)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Medical\s+Record|Subject)\s+(?:No\.?|Number|ID)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "clinical record identifier label",
       ],
@@ -1464,7 +1547,7 @@ export class Detector {
         // Grant program / funding codes as bare compound labels, e.g.
         // "NSF Program Code: 1761", "NIH Activity Code: R01". The agency prefix
         // plus "Program/Activity Code" is the distinctive anchor.
-        /\b(?:NSF|NIH|DOE|NASA|USDA)\s+(?:Program|Activity)\s+Code\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
+        /\b(?:NSF|NIH|DOE|NASA|USDA)\s+(?:Program|Activity)\s+Code\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{2,}\b/gi,
         1,
         "federal program code label",
       ],
@@ -1476,7 +1559,7 @@ export class Detector {
         // the Bar No. identify the officer. Label-bound so bare figures and
         // statute/section citations stay readable. Several values are
         // phone-shaped and were mislabeled PHONE.
-        /\b(?:Instrument|Notary)\s+(?:Number|No\.?|ID)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Instrument|Notary)\s+(?:Number|No\.?|ID)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "deed/notary identifier label",
       ],
@@ -1485,7 +1568,7 @@ export class Detector {
         // Property Identification Number (Tax ID), label-bound. Recorded deeds
         // print the parcel number under this label. The "(Tax ID)" qualifier is
         // optional. Label-bound so a bare parcel-shaped string is not caught.
-        /\bProperty\s+Identification\s+Number(?:\s*\([^)]*\))?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        /\bProperty\s+Identification\s+Number(?:\s*\([^)]*\))?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "property identification number label",
       ],
@@ -1513,7 +1596,7 @@ export class Detector {
         // run than the SEC short shape (e.g. "File No. 2026-0448719"). The label
         // anchor is required so bare figures stay readable; the value must
         // contain a digit.
-        /\b(?:Clerk'?s\s+)?File\s+Nos?\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        /\b(?:Clerk'?s\s+)?File\s+Nos?\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "recorded-instrument file number label",
       ],
@@ -1523,7 +1606,7 @@ export class Detector {
         // e.g. "IRB Protocol No.: 2024-0719" or "IRB No. STU-0021093". The
         // "IRB" anchor owns the value; the digit requirement rejects placeholder
         // prose such as "IRB approval pending".
-        /\bIRB\s+(?:Protocol\s+)?Nos?\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\bIRB\s+(?:Protocol\s+)?Nos?\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "IRB protocol number label",
       ],
@@ -1532,7 +1615,7 @@ export class Detector {
         // ECF / bankruptcy document number, label-bound. Court filings print the
         // clerk's document number as "Document No.: 26-30847 (ECF Doc. #18)".
         // Label-bound so bare figures stay readable.
-        /\bDocument\s+No\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\bDocument\s+No\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "court document number label",
       ],
@@ -1543,7 +1626,7 @@ export class Detector {
         // (no "No./Number" qualifier) the existing tax-identifier rule misses;
         // the value must contain a digit. The EIN shape dd-ddddddd is
         // phone-shaped and was mislabeled PHONE.
-        /\bTax\s+ID\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        /\bTax\s+ID\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "tax identifier (bare) label",
       ],
@@ -1558,7 +1641,7 @@ export class Detector {
         // number, not a short case reference, and was mislabeled PHONE. Shorter
         // or alphanumeric abbreviated "Account No." values stay CASE_REF. Without
         // this rule a digit-only account number is mislabeled as PHONE.
-        /\b(?:Bank\s+Account\s+(?:Nos?|Numbers?)|Account\s+Number)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        /\b(?:Bank\s+Account\s+(?:Nos?|Numbers?)|Account\s+Number)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "bank account number label",
       ],
@@ -1570,7 +1653,7 @@ export class Detector {
         // digits and won the overlap because PHONE outranks CASE_REF. Re-claiming
         // the value here as BANK_ACCOUNT (which outranks PHONE) keeps the correct
         // kind. Alphanumeric / short values fall through to the CASE_REF label.
-        /\bAccount\s+Nos?\.?\s*[:#]\s*(?=\D*\d)\d{8,}\b/gi,
+        /\bAccount\s+Nos?\.?\s*[:#]\*{0,2}\s*(?=\D*\d)\d{8,}\b/gi,
         1,
         "account number (long digit run) label",
       ],
@@ -1595,7 +1678,7 @@ export class Detector {
         // is the anchor; the value must contain a digit so prose such as "the
         // routing number is pending" stays readable. The digit run is
         // phone-shaped and was mislabeled PHONE.
-        /\b(?:Wire|ACH)?\s*Routing(?:\s*\/\s*ABA)?(?:\s+Nos?\.?)?\s*[:#\u2010-\u2015]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        /\b(?:Wire|ACH)?\s*Routing(?:\s*\/\s*(?:ABA|Transit))?(?:\s+Transit)?(?:\s+(?:Nos?\.?|Numbers?|IDs?))?\s*[:#\u2010-\u2015]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "routing number label",
       ],
@@ -1639,7 +1722,7 @@ export class Detector {
         // prose (e.g. "Employee Number of staff", "Employee ID: pending") and
         // bare figures stay readable. Without these rules the trailing digit run
         // is mislabeled as PHONE and the alphabetic prefix leaks.
-        /\b(?:Employee|Personnel|Payroll)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Employee|Personnel|Payroll)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "HR/payroll identifier label",
       ],
@@ -1651,7 +1734,7 @@ export class Detector {
         // "Reference:" detector only matches the trailing substring and left the
         // "Payroll " / "Shareholder " prefix unscoped. The value must contain a
         // digit so prose (e.g. "the payroll reference will follow") stays readable.
-        /\b(?:Payroll|Shareholder)\s+(?:References?|Ref)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Payroll|Shareholder)\s+(?:References?|Ref)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "compound HR/payroll reference label",
       ],
@@ -1664,7 +1747,7 @@ export class Detector {
         // is the candidate value and the value must contain a digit so prose and
         // bare figures stay readable. Without this rule the trailing digit run is
         // mislabeled as PHONE and the grant prefix leaks.
-        /\b(?:Equity\s+Grant|Option\s+Grant|Grant|Award)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Equity\s+Grant|Option\s+Grant|Grant|Award)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "equity award identifier label",
       ],
@@ -1676,7 +1759,7 @@ export class Detector {
         // equity award notices. Label-bound and digit-required so prose and bare
         // figures stay readable. Without this rule the trailing digit run is
         // mislabeled as PHONE and the certificate prefix leaks.
-        /\b(?:Share\s+Certificate|Certificate)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Share\s+Certificate|Certificate)\s+(?:IDs?|Nos?|Numbers?)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "share certificate identifier label",
       ],
@@ -1686,7 +1769,7 @@ export class Detector {
         // "Share Certificate: SHC-778210". The colon anchor distinguishes this
         // from prose ("the share certificate of incorporation"); the digit
         // lookahead rejects prose values.
-        /\bShare\s+Certificate\s*[:#]\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\bShare\s+Certificate\s*[:#]\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "share certificate label",
       ],
@@ -1700,7 +1783,7 @@ export class Detector {
         // "subject to approval") and bare figures stay readable. Without this
         // rule the trailing digit run is mislabeled as PHONE/DATE and the prefix
         // leaks.
-        /\b(?:Written\s+Consent\s+(?:IDs?|Nos?|Numbers?)|Approval\s+(?:IDs?|Nos?|Numbers?))\b\.?\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\b(?:Written\s+Consent\s+(?:IDs?|Nos?|Numbers?)|Approval\s+(?:IDs?|Nos?|Numbers?))\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "governance reference label",
       ],
@@ -1709,7 +1792,7 @@ export class Detector {
         // Bare-colon "Written Consent:" field (qualifier omitted), e.g.
         // "Written Consent: WC-2026-014". The colon anchor + digit requirement
         // keeps prose such as "by written consent of the board" readable.
-        /\bWritten\s+Consent\s*[:#]\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
+        /\bWritten\s+Consent\s*[:#]\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "written consent label",
       ],
@@ -1815,6 +1898,20 @@ export class Detector {
       ["AMOUNT", /^\s*\d{4,}\s*$/gm, 2, "standalone large number"],
       ["AMOUNT", /\b\d[\d,.]*\s?(?:million|billion)\b/g, 2, "large amount"],
       ["AMOUNT", /(?<![\w.])\d{1,3}(?:\.\d+)?%(?!\w)/g, 2, "percentage"],
+      [
+        "AMOUNT",
+        // Bare decimal amount directly after an amount-indicating field label
+        // ONLY when an explicit currency token sits in the same labeled phrase
+        // (parenthetical or prefix), e.g. "Amount Due (USD): 27,683.10". A bare
+        // decimal after a label with NO currency signal ("Subtotal: 365.00") is
+        // deliberately NOT matched: such values appear on templates, sample
+        // forms, and boilerplate price tables where redaction would harm
+        // readability more than it protects privacy. The currency token in the
+        // phrase is the trust anchor that the value is a real monetary amount.
+        /\b(?:Sub-?total|Total|Amount(?:\s+Due|\s+Paid)?|Balance(?:\s+Due)?|Paid|Due|Sum|Discount|Fee|Tax|Unit\s+Price|Price|Cost|Charge|Net|Gross)\s*\(?(?:USD|HKD|RMB|CNY|EUR|GBP|JPY|INR|AUD|CAD|US\$|HK\$|A\$|C\$|£|€|¥|₹|\$)\)?\s*[:#]?\*{0,2}\s*\d{1,3}(?:,\d{3})*\.\d{1,2}\b/gi,
+        2,
+        "currency-anchored labeled amount",
+      ],
       [
         "BRAND",
         /(?<![A-Za-z0-9])[A-Z][A-Z0-9-]{2,}(?=(?:-|\s+)(?:brand|branded|related|trademarks?|products?|INTERNATIONAL|International|GLOBAL|Global))/g,
@@ -1953,11 +2050,48 @@ export class Detector {
         1,
         "contracting/signing officer label",
       ],
+      // Business documents name the responsible individual with a corporate
+      // role title and a colon: "Managing Director: Wei Chen", "Company
+      // Secretary: Priya Anand", "Operations Manager: Tom Bradley",
+      // "Owner: Sarah J. Connors", "Authorised Signatory: Marcus T. Bell".
+      // These are person-introducing labels; the name leaked because the role
+      // word is not a person title. Line-led with a colon, so a role used as a
+      // Title-field value ("Title: Company Secretary") and prose ("the manager
+      // will decide") stay readable.
+      [
+        /^\s*(?:Managing\s+Director|Executive\s+Director|Company\s+Secretary|Honorary\s+Secretary|Operations\s+Manager|Finance\s+Manager|Branch\s+Manager|General\s+Manager|Owner|Proprietor|Authori[sz]ed\s+Signatory|Principal\s+Officer)\s*[:：]\s*(.+)$/i,
+        "PERSON_OR_ORG",
+        1,
+        "corporate role label",
+      ],
+      // Contracts, trusts, wills, and loan documents name the party with a
+      // relationship label and a colon: "Guarantor: Marcus T. Bell", "Borrower:
+      // John Q. Public", "Trustee: Helen K. Park", "Grantor: Sarah J. Connors",
+      // "Petitioner: Elena Rodriguez". The value is a person or org and must
+      // redact. Line-led with a colon, so prose ("the guarantor must pay")
+      // stays readable.
+      [
+        /^\s*(?:Guarantor|Surety|Obligor|Petitioner|Mortgagor|Borrower|Trustee|Settlor|Grantor|Grantee|Testator|Executor|Administrator|Debtor|Insured|Policyholder)\s*[:：]\s*(.+)$/i,
+        "PERSON_OR_ORG",
+        1,
+        "party role label",
+      ],
       [
         /^\s*(?:Buyer\s+Name|Bidder\s+Name)\s*[:：]\s*(.+)$/i,
         "PERSON_OR_ORG",
         1,
         "procurement party-name label",
+      ],
+      // Bank and remittance forms name the account owner with a fixed label:
+      // "Account Holder: John Q. Public", "Beneficiary Name: Meridian Holdings
+      // LP", "Account Name: Dana R. Pelletier". The holder is a person or org
+      // and must redact. Line-led with a colon, so prose ("the account holder
+      // is unknown") stays readable.
+      [
+        /^\s*(?:Account\s+Holder|Account\s+Name|Beneficiary\s+Name|Beneficiary)\s*[:：]\s*(.+)$/i,
+        "PERSON_OR_ORG",
+        1,
+        "account holder/beneficiary label",
       ],
       // Correspondence header labels. From/To/Cc/Bcc/Attn carry person or org
       // names; Re/Subject/Via carry matter text; Date carries a date. These are
@@ -1975,6 +2109,12 @@ export class Detector {
         "PERSON",
         1,
         "attention list",
+      ],
+      [
+        /^\s*(?:Contact|Contact\s+Person|Email|E-mail)\.?\s*[:：]\s*(.+)$/i,
+        "PERSON",
+        1,
+        "contact label",
       ],
       [
         /^\s*(?:Re|Subject)\s*[:：]\s*(.+)$/i,
@@ -1997,6 +2137,20 @@ export class Detector {
         "PHONE",
         1,
         "direct-dial label",
+      ],
+      // Phone extensions after a label: "Extension: 1234", "Ext. 5678",
+      // "Ext: 9012". A short digit run on its own is not redacted (too many
+      // false positives), but a digit run after an explicit Extension/Ext label
+      // is a personal contact identifier. Two forms: a colon-led value
+      // ("Extension: 1234", "Ext: 9012"), or the abbreviated "Ext." form
+      // followed directly by digits ("Ext. 5678"). Prose ("the extension of the
+      // deadline", "Ext. weather conditions") stays readable because the value
+      // must be a digit run.
+      [
+        /^\s*(?:Extensions?|Ext)\.?\s*(?:[:：]\s*)?(\d{2,6})\b/i,
+        "PHONE",
+        1,
+        "phone extension label",
       ],
       [/^\s*(?:Email|E-mail)\s*[:：]\s*(.+)$/i, "EMAIL", 1, "email label"],
       [
@@ -3420,7 +3574,7 @@ export class Detector {
     // stitched across a sentence boundary. Generic tail suffixes (Group,
     // Capital, ...) may only follow a plain space; legal-form suffixes (Inc,
     // LLC, ...) may also follow ", " so "Name, Inc" survives.
-    const orgToken = String.raw`[A-Z][A-Za-z'&()-]*`;
+    const orgToken = String.raw`[A-Z0-9][A-Za-z0-9'&()-]*`;
     const ampersandOrgCore = String.raw`[A-Z][A-Za-z'()-]*(?:[^\S\r\n]+[A-Z][A-Za-z'()-]*){0,3}`;
     const ampersandOrgPattern = new RegExp(
       String.raw`(?<![A-Za-z0-9])${ampersandOrgCore}(?:[^\S\r\n]*&[^\S\r\n]*${ampersandOrgCore})+(?:[^\S\r\n]+(?:${GENERIC_TAIL_ORG_SUFFIX_ALT})|(?:[^\S\r\n]+|,\s+)(?:${LEGAL_FORM_ORG_SUFFIX_ALT}))(?![A-Za-z0-9])`,
@@ -4215,6 +4369,18 @@ export class Detector {
       "Procedure Note",
       "Plan",
       "Assessment",
+      // Legal correspondence privilege / confidentiality / governing rubrics.
+      // These sit on their own line in title case (or ALL CAPS) at the head of
+      // letters and were being swallowed by the standalone title-case person
+      // detector ("Without Prejudice" -> PERSON). They are boilerplate.
+      "Without Prejudice",
+      "Subject to Contract",
+      "Strictly Private",
+      "Private and Confidential",
+      "Governing Law",
+      "Force Majeure",
+      "Without Prejudice Save",
+      "Save As to Costs",
     ];
     if (badTerms.some((term) => name.includes(term))) return false;
     if (this.isExchangeEntityFragment(name)) return false;

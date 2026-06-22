@@ -3,6 +3,24 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.6.0 (general r31, chinese r24) - 2026-06-22
+
+English/general safe-rule integration: accepted r21-r31 only after aggregate
+NAIR-v2 review. Synthetic representative documents only; fabricated values.
+Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Integrated r21-r31: Markdown-bold label tolerance and currency-anchored
+  labeled amounts; label-bound bare-domain URLs and `www2`/`www3` variants;
+  Action/Suit/Index and Our/Your reference labels; legal boilerplate/person
+  guards; passport/tracking/booking identifier labels; routing-transit and
+  account-holder/beneficiary labels; corporate role labels; party-role labels;
+  phone-extension labels; messaging-handle labels; and the lease round's
+  day-of dates, numeric-prefix limited partnerships, and contact-label fixes.
+- Conservatively excluded English r32-r35 from this integration because r32
+  introduced an aggregate NAIR-v2 ORG recall regression. Those rounds remain
+  dev-loop material until repaired and rescored.
+- NAIR-v2 balanced held through r31 before the excluded r32 change.
+
 ## NoAI redaction engine 1.6.0 (general r20, chinese r24) - 2026-06-22
 
 Chinese Loop 24: Employment Contracts & HR Onboarding Forms.
