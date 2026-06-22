@@ -1,7 +1,112 @@
 # Redaction Engine Changelog
 
-The redaction engine uses semantic versioning independently from the app package,
-plus split ruleset counters for English/general and Chinese deterministic rules.
+Redaction behavior is tracked independently from the app package. Language
+ruleset-only changes bump only the relevant ruleset counter
+(`GENERAL_RULES_VERSION` or `CHINESE_RULES_VERSION`). The shared
+`ENGINE_VERSION` changes only for non-ruleset shared engine/API/review metadata
+changes.
+
+## NoAI redaction engine 1.6.0 (general r32, chinese r24) - 2026-06-22
+
+Mortgage / payroll follow-up round for deterministic redaction labels. Synthetic
+representative documents only; no real documents committed. Deterministic rule
+changes only. No AI/LLM/backend/telemetry added.
+
+- Added masked U.S. Social Security number handling for the `XXX-XX-4423` form as
+  NATIONAL_ID.
+- Added label-bound deposit account last-4 detection for `Account/Acct ending in` as
+  BANK_ACCOUNT.
+- Added mortgage/lending identifiers under explicit labels (`NMLS`, `Loan ID`,
+  `Loan Number`, `File Number`) as BUSINESS_ID.
+- Extended recorded-instrument file-number handling to accept `File Number:`
+  labels.
+- Expanded person-label coverage to include `Borrower`, `Co-Borrower`, and `Loan
+  Officer` with clean middle-initial handling.
+- Refined `Attention`/`Attn` block parsing to keep post-nominals and role labels
+  readable.
+
+## NoAI redaction engine 1.5.19 (general r14, chinese r10) - 2026-06-21
+
+Notice-block / counsel-letter round: a public SEC complaint, an executed
+commercial lease, and an SEC-filed asset purchase agreement. Synthetic
+representative documents only; no real documents committed. Deterministic rule
+changes only. No AI/LLM/backend/telemetry added.
+
+- Tightened the correspondence "Attention:"/"Attn:" addressee so the PERSON value
+  stops at a comma that introduces a post-nominal or an officer role. Contract
+  notice blocks and counsel letters write recipients as "Attention: Jane Doe,
+  Esq." or "Attention: John B. Pisaris, Esq. Secretary and General Counsel".
+  The label previously captured the whole addressee line as one PERSON value,
+  so the value ran through ", Esq." and into the following role title, masking
+  readable role labels ("Secretary and General Counsel", "CFO", "Esq.") and
+  leaving a dangling post-nominal. Group 1 now captures only the name run and a
+  non-capturing suffix consumes a trailing ", Esq.?" or ", <Capitalized role>"
+  so it stays visible. The bare name still anchors via the existing
+  "attention block name" and "name with esq suffix" detectors, so recall is
+  preserved.
+- Added 2 synthetic tests (role/post-nominal kept readable; plain-name
+  addressee still redacted), each with a counterexample.
+- Dev-round recall held at 67.2%; keep-span clean rate rose 92.3% -> 96.9%
+  (60/65 -> 63/65) on the public-docs round. Precision held.
+- Rejected (deferred): bare-domain URL detection ("kraken.com" without a
+  scheme). A word.tld rule is too risky for general prose (file extensions,
+  "version 1.0", "python.org"-style references) and scheme-prefixed URLs are
+  already caught. Not worth the over-redaction risk.
+- Residual (deferred): notice-block multi-line addresses are detected as
+  separate street/city/ZIP fragments while annotators mark one multi-line span,
+  so ADDRESS recall reads low (boundary artifact, not a true miss); bare
+  city/state tokens ("Menlo Park", "CA") in notice blocks stay readable to
+  avoid massive over-redaction of ordinary prose; defined-term role references
+  and governing-law jurisdictions ("State of Nevada", "County of Pulaski, AR")
+  are not LOCATION-redacted.
+
+## NoAI redaction engine 1.5.18 (general r13, chinese r10) - 2026-06-21
+
+Mortgage / payroll round: TRID Closing Disclosures and employee earnings
+statements. Synthetic representative documents only; no real documents committed.
+Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added masked US Social Security number detection (NATIONAL_ID). Paystubs,
+  W-2s, benefit letters, and tax forms print a masked SSN as "XXX-XX-4423".
+  Even though only the last four digits are visible, the masked shape is a
+  national-identifier marker and the trailing four digits are sensitive. The
+  XXX-XX- prefix is a distinctive anchor that never appears in ordinary text;
+  group 1 captures the digits so the generic masking marker stays readable and a
+  bare 4-digit figure is not caught.
+- Added deposit-account last-4 detection (BANK_ACCOUNT). Paystubs and deposit
+  advices print each direct-deposit destination as "Account ending in 9082
+  (Checking)" or the abbreviated "Acct ending in 3301". The existing card-brand
+  "ending in" rule did not fire because there is no brand/"card" keyword, so the
+  account fragment leaked. The "Account/Acct ending in" label is the trust
+  anchor; group 1 is the 3-4 digit run.
+- Added mortgage/lending NMLS and loan identifier detection (BUSINESS_ID). TRID
+  Closing Disclosures, loan estimates, servicing notices, and MLO disclosures
+  print licensed-lender and loan identifiers under explicit labels: "NMLS ID:
+  1568290", "NMLS 1845521" (loan officer), "Loan ID: 0034991172", "Loan Number".
+  The label (with an optional ID/No/Number qualifier before the separator) is the
+  trust anchor; the value must contain a digit so prose ("the NMLS registry is
+  public") and bare figures stay readable.
+- Extended the recorded-instrument file-number rule to accept the full word
+  "File Number" in addition to "File No." / "Clerk's File No.", so a mortgage
+  CD's "File Number: MHLC-2024-CD-4477188" is caught. Still label-bound and
+  digit/length-guarded.
+- Extended the form/benefits label-name detector to cover mortgage role labels
+  (PERSON): Borrower, Co-Borrower, and Loan Officer. TRID CDs, loan estimates,
+  and servicing notices introduce the named parties the same way as EOB/HR
+  forms; "Loan Officer" is matched as one two-word label alternative.
+- Added 4 synthetic tests (masked SSN; deposit-account last-4; NMLS/loan/file
+  identifiers; borrower/co-borrower/loan-officer names), each with a
+  counterexample.
+- Dev-round recall on the mortgage/payroll round rose 78.0% -> 89.9%; by-label,
+  BUSINESS_ID 37.5% -> 100%, BANK_ACCOUNT 60% -> 100%, CASE_REF 66.7% -> 100%,
+  PERSON 25% -> 87.5%. Keep-span clean rate held at 94.3%; precision held.
+- Residual (deferred): settlement-agent names in prose ("Settlement agent:
+  Rebecca L. Quintero") still leak (the "Settlement agent" label needs a
+  person-binding decision); tax-authority payee lines ("Recording Fees to City
+  of St. Louis", "Transfer Tax to State of Missouri") are not redacted as
+  LOCATION/ORG; bare loan-term durations ("360 months") and bare hourly rates
+  ("28.75") stay readable to avoid over-redacting ordinary figures; internal
+  department names ("Payroll Department") are weak identifiers and deferred.
 
 ## NoAI redaction engine 1.6.0 (general r31, chinese r24) - 2026-06-22
 

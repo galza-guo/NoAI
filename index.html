@@ -4,8 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f6f8fb" />
-    <meta name="description" content="A browser-only, locally run redaction tool for preparing documents before sharing them with AI. No uploads. No AI involved." />
+    <meta name="application-name" content="NoAI" />
+    <meta name="author" content="NoAI" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="description" content="NoAI is a browser-only document redaction tool for preparing Markdown before using ChatGPT, Claude, Gemini, or other AI tools. No uploads. No AI in the redaction path." />
     <link rel="canonical" href="https://noai.gallantguo.com/" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="NoAI overview for AI agents" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,500;6..72,600;6..72,700&display=swap" rel="stylesheet">
@@ -16,8 +20,8 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:site_name" content="NoAI" />
-    <meta property="og:title" content="NoAI" />
-    <meta property="og:description" content="A browser-only, locally run redaction tool for preparing documents before sharing them with AI. No uploads. No AI involved." />
+    <meta property="og:title" content="NoAI - Browser-Only Document Redaction for AI Tools" />
+    <meta property="og:description" content="Prepare documents for external AI tools with deterministic redaction that runs locally in your browser. No uploads. No AI in the redaction path." />
     <meta property="og:url" content="https://noai.gallantguo.com/" />
     <meta property="og:image" content="https://noai.gallantguo.com/noai-og-preview.png" />
     <meta property="og:image:secure_url" content="https://noai.gallantguo.com/noai-og-preview.png" />
@@ -26,14 +30,60 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="NoAI: You don't trust AI. Neither do we. Sanitize your documents locally. Nothing leaves your device." />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="NoAI" />
-    <meta name="twitter:description" content="A browser-only, locally run redaction tool for preparing documents before sharing them with AI. No uploads. No AI involved." />
+    <meta name="twitter:title" content="NoAI - Browser-Only Document Redaction for AI Tools" />
+    <meta name="twitter:description" content="Prepare documents for external AI tools with deterministic redaction that runs locally in your browser. No uploads. No AI in the redaction path." />
     <meta name="twitter:image" content="https://noai.gallantguo.com/noai-og-preview.png" />
     <meta name="twitter:image:alt" content="NoAI: You don't trust AI. Neither do we. Sanitize your documents locally. Nothing leaves your device." />
-    <title>NoAI</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "@id": "https://noai.gallantguo.com/#webapplication",
+        "name": "NoAI",
+        "url": "https://noai.gallantguo.com/",
+        "description": "NoAI is a browser-only deterministic redaction tool for preparing documents before sharing redacted Markdown with external AI tools.",
+        "applicationCategory": "SecurityApplication",
+        "operatingSystem": "Any modern browser",
+        "browserRequirements": "Requires JavaScript and a modern browser",
+        "isAccessibleForFree": true,
+        "license": "https://github.com/galza-guo/NoAI/blob/main/LICENSE",
+        "codeRepository": "https://github.com/galza-guo/NoAI",
+        "image": "https://noai.gallantguo.com/noai-og-preview.png",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "featureList": [
+          "Browser-only document reading and redaction",
+          "Deterministic rule-based redaction without AI model calls",
+          "Markdown export for use with external AI tools",
+          "Batch document processing",
+          "Custom redaction terms"
+        ],
+        "sameAs": [
+          "https://github.com/galza-guo/NoAI"
+        ]
+      }
+    </script>
+    <title>NoAI - Browser-Only Document Redaction for AI Tools</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <main>
+        <h1>NoAI: Browser-Only Document Redaction for AI Tools</h1>
+        <p>NoAI helps people prepare documents before using external AI tools. It reads supported files in the browser, applies deterministic redaction rules locally, and exports redacted Markdown for review and sharing.</p>
+        <h2>What NoAI Does</h2>
+        <ul>
+          <li>Reads Markdown, plain text, Word documents, and text-based PDFs in the browser.</li>
+          <li>Finds likely sensitive details such as names, emails, phone numbers, dates, amounts, addresses, case references, organizations, locations, and custom terms.</li>
+          <li>Exports combined Markdown so users can paste reviewed, redacted text into tools such as ChatGPT, Claude, Gemini, or other AI assistants.</li>
+        </ul>
+        <h2>Trust Boundaries</h2>
+        <p>NoAI's redaction path does not upload document contents, does not call an AI model, and does not use analytics or telemetry that can inspect document text. Users should still review the output before sharing it, especially for legal, financial, medical, or other high-risk documents.</p>
+        <p><a href="https://github.com/galza-guo/NoAI">Review the NoAI source code on GitHub</a>.</p>
+      </main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

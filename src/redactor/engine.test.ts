@@ -1788,6 +1788,38 @@ Re: matter for review.
     expect(output).toContain("PERSON_");
   });
 
+  it("keeps an officer role readable after 'Attention: Name, Esq. Role'", () => {
+    // Contract notice blocks write the recipient as "Attention: Jane Doe, Esq."
+    // or "Attention: John B. Pisaris, Esq. Secretary and General Counsel".
+    // The name must redact but the post-nominal "Esq." and the officer role
+    // label must stay readable instead of being swallowed into the PERSON value.
+    const output = redact(`
+Attention: Jane Doe, Esq.
+Attention: John B. Pisaris, Esq. Secretary and General Counsel
+Attention: Marcus Lee, CFO
+`);
+
+    expect(output).not.toContain("Jane Doe");
+    expect(output).not.toContain("John B. Pisaris");
+    expect(output).not.toContain("Marcus Lee");
+    expect(output).toContain("Esq.");
+    expect(output).toContain("Secretary and General Counsel");
+    expect(output).toContain("CFO");
+    expect(output).toContain("PERSON_");
+  });
+
+  it("does not lose the addressee name when an Attention line has no role suffix", () => {
+    // Counterexample: a plain "Attention: Name" line must still redact the name
+    // after the boundary tightening; the role-suffix guard must not break the
+    // common case.
+    const output = redact(`
+Attention: Olivia Reyes
+`);
+
+    expect(output).not.toContain("Olivia Reyes");
+    expect(output).toContain("PERSON_");
+  });
+
   it("matches names across non-breaking spaces emitted by HTML-to-text conversion", () => {
     // The \u00A0 between title and surname must not break replacement.
     const output = redact(`
@@ -2769,6 +2801,100 @@ Receipts filed in 2024 for review.
     expect(output).toContain("BANK_ACCOUNT_");
     // Counterexample: a bare year after "in" must stay readable.
     expect(output).toContain("filed in 2024");
+  });
+
+  it("redacts paystub direct-deposit account last-4 after 'Account ending in'", () => {
+    // Paystubs and deposit advices print each direct-deposit destination as
+    // "Account ending in 9082 (Checking)" / "Acct ending in 3301". The existing
+    // "ending in" rule required a card brand/keyword, so the bare account label
+    // leaked. The "Account/Acct ending in" label is the trust anchor; a 3-4
+    // digit run after it is the account fragment.
+    const output = redact(
+      `
+Account ending in 9082 (Checking)  $1,419.01
+Acct ending in 3301 (Savings)      $200.00
+The account ending period is monthly.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("9082");
+    expect(output).not.toContain("3301");
+    expect(output).toContain("BANK_ACCOUNT_");
+    // Counterexample: prose "account ending period" must stay readable.
+    expect(output).toContain("ending period");
+  });
+
+  it("redacts masked Social Security numbers in XXX-XX-dddd format", () => {
+    // Paystubs, W-2s, benefit letters, and tax forms print a masked SSN as
+    // "XXX-XX-4423" / "xxx-xx-4423". Even though only the last four digits are
+    // visible, the masked shape itself is a national-identifier marker and the
+    // trailing four digits are sensitive. The XXX-XX- prefix is the distinctive
+    // anchor; a bare last-4 figure is not caught.
+    const output = redact(
+      `
+SSN: XXX-XX-4423
+The box is marked XXX-XX for masking.
+Order total 9912 units shipped today.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("XXX-XX-4423");
+    expect(output).not.toContain("4423");
+    expect(output).toContain("NATIONAL_ID_");
+    // Counterexample: a bare 4-digit figure is not an SSN and stays readable.
+    expect(output).toContain("9912 units");
+  });
+
+  it("redacts borrower, co-borrower, and loan officer names after role labels", () => {
+    // Mortgage Closing Disclosures, loan estimates, and servicing notices label
+    // the named parties with fixed roles that are not person titles:
+    // "Borrower: Katherine A. Whitfield", "Co-Borrower: Daniel Whitfield",
+    // "Loan Officer: Tyler J. Brandt". The label is the trust anchor; the name
+    // may carry a middle initial.
+    const output = redact(
+      `
+Borrower: Katherine A. Whitfield
+Co-Borrower: Daniel Whitfield
+Loan Officer: Tyler J. Brandt, NMLS 1845521
+The borrower initialed page 3.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("Whitfield");
+    expect(output).not.toContain("Daniel");
+    expect(output).not.toContain("Brandt");
+    expect(output).toContain("PERSON_");
+    // Counterexample: the generic role word in prose must stay readable.
+    expect(output).toContain("borrower initialed");
+  });
+
+  it("redacts NMLS, loan ID, and file number identifiers from labels", () => {
+    // Mortgage Closing Disclosures and MLO notices print licensed-lender and
+    // loan identifiers under explicit labels: "NMLS ID: 1568290",
+    // "NMLS 1845521" (loan officer), "Loan ID: 0034991172",
+    // "File Number: MHLC-2024-CD-4477188". The label is the trust anchor; the
+    // value must contain a digit so prose stays readable.
+    const output = redact(
+      `
+Loan ID: 0034991172
+NMLS ID: 1568290
+Loan Officer: Tyler Brandt, NMLS 1845521
+File Number: MHLC-2024-CD-4477188
+Lender License: NMLS 1568290
+The NMLS registry is public.
+`,
+      "balanced",
+    );
+
+    expect(output).not.toContain("0034991172");
+    expect(output).not.toContain("1845521");
+    expect(output).not.toContain("1568290");
+    expect(output).not.toContain("MHLC-2024-CD-4477188");
+    // Counterexample: the bare acronym word in prose must stay readable.
+    expect(output).toContain("NMLS registry");
   });
 
   it("redacts confirmation and booking reference numbers from labels", () => {

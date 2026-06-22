@@ -2,7 +2,7 @@ export const ENGINE_VERSION = "1.6.0";
 
 export const ENGINE_VERSION_DATE = "2026-06-22";
 
-export const GENERAL_RULES_VERSION = 31;
+export const GENERAL_RULES_VERSION = 32;
 
 export const CHINESE_RULES_VERSION = 24;
 

@@ -1356,10 +1356,7 @@ function renderRoute(): void {
   }
   syncCoverAccessibility();
 
-  document.title =
-    state.route === "workspace"
-      ? "NoAI"
-      : `${INFO_PAGE_SCAFFOLDS[state.route].title} - NoAI`;
+  syncDocumentMetadata(state.route);
 
   renderSiteMenuState();
   if (state.route !== "workspace") {
@@ -1367,6 +1364,44 @@ function renderRoute(): void {
   } else {
     teardownReadingProgress();
   }
+}
+
+function syncDocumentMetadata(route: AppRoute): void {
+  const metadata = routeMetadata(route);
+  document.title = metadata.title;
+  setNamedMeta("description", metadata.description);
+  setNamedMeta("twitter:title", metadata.title);
+  setNamedMeta("twitter:description", metadata.description);
+  setPropertyMeta("og:title", metadata.title);
+  setPropertyMeta("og:description", metadata.description);
+}
+
+function routeMetadata(route: AppRoute): { title: string; description: string } {
+  if (route === "workspace") {
+    return {
+      title: "NoAI - Browser-Only Document Redaction for AI Tools",
+      description:
+        "NoAI prepares documents for ChatGPT, Claude, Gemini, and other AI tools with deterministic redaction that runs locally in your browser. No uploads. No AI in the redaction path.",
+    };
+  }
+
+  const page = INFO_PAGE_SCAFFOLDS[route];
+  return {
+    title: `${page.title} - NoAI`,
+    description: page.summary,
+  };
+}
+
+function setNamedMeta(name: string, content: string): void {
+  document
+    .querySelector<HTMLMetaElement>(`meta[name="${name}"]`)
+    ?.setAttribute("content", content);
+}
+
+function setPropertyMeta(property: string, content: string): void {
+  document
+    .querySelector<HTMLMetaElement>(`meta[property="${property}"]`)
+    ?.setAttribute("content", content);
 }
 
 function renderInfoBlocks(blocks: InfoBlock[]): string {

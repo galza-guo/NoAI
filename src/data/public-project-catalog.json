@@ -103,6 +103,40 @@
     "order": 30
   },
   {
+    "id": "noai",
+    "name": {
+      "zh-Hans": "NoAI",
+      "zh-Hant": "NoAI",
+      "en": "NoAI",
+      "ko": "NoAI",
+      "ja": "NoAI"
+    },
+    "tagline": {
+      "zh-Hans": "在把文档交给 AI 前，先在浏览器本地去除敏感信息。",
+      "zh-Hant": "在把文件交給 AI 前，先在瀏覽器本機去除敏感資訊。",
+      "en": "Browser-only redaction before documents are sent to AI tools.",
+      "ko": "AI 도구에 문서를 보내기 전에 브라우저 안에서 민감 정보를 제거합니다.",
+      "ja": "AIツールに渡す前に、ブラウザ内で文書の機密情報を伏せます。"
+    },
+    "platforms": ["web"],
+    "links": {
+      "website": "https://noai.gallantguo.com/"
+    },
+    "icon": {
+      "light": "/works/noai-logo.png",
+      "alt": {
+        "zh-Hans": "NoAI 标志",
+        "zh-Hant": "NoAI 標誌",
+        "en": "NoAI logo",
+        "ko": "NoAI 로고",
+        "ja": "NoAIロゴ"
+      }
+    },
+    "showOnSite": true,
+    "showInApps": true,
+    "order": 35
+  },
+  {
     "id": "quik-pro-chro",
     "name": {
       "zh-Hans": "Quick Pro Chro",

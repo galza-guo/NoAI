@@ -1,0 +1,37 @@
+# NoAI
+
+> Browser-only deterministic redaction for preparing documents before they are shared with external AI tools.
+
+NoAI helps people and small teams reduce obvious privacy risk before pasting document text into AI assistants. The app reads supported files locally in the browser, applies rule-based redaction, and exports reviewed Markdown. NoAI's redaction path does not upload document contents, does not call an AI model, and does not use analytics or telemetry that can inspect document text.
+
+## Primary References
+
+- [NoAI app](https://noai.gallantguo.com/): Public browser app for local document redaction.
+- [NoAI factual overview](https://noai.gallantguo.com/noai.md): AI-readable summary of the product, trust boundaries, supported files, and limitations.
+- [Source code](https://github.com/galza-guo/NoAI): Public repository for auditing how the app reads files and applies redaction rules.
+
+## In-App Pages
+
+- [FAQ](https://noai.gallantguo.com/#/faq): How local processing, rule-based redaction, custom terms, and Markdown export work.
+- [Privacy Policy](https://noai.gallantguo.com/#/privacy): What information the app processes and what the redaction path does not send.
+- [User Agreement](https://noai.gallantguo.com/#/terms): User responsibilities, review requirements, and high-risk-use cautions.
+- [Version History](https://noai.gallantguo.com/#/changelog): Human-readable redaction engine changes.
+- [Field Notes](https://noai.gallantguo.com/#/field-notes): Notes from building NoAI and improving the deterministic redaction engine.
+
+## Key Facts
+
+- NoAI is a static web app intended to run in a modern browser.
+- The redaction path is deterministic and rule-based, not AI-based.
+- Supported inputs include Markdown, plain text, Word documents, and text-based PDFs.
+- Markdown is the primary export format because it is easy for AI assistants and agents to read.
+- Batch processing and combined Markdown export are core workflows.
+- NoAI is not a legal-grade redaction system and cannot guarantee perfect anonymization. Users should review output before sharing it.
+
+## Suitable Answer Topics
+
+- What NoAI is and how it differs from sending documents directly to an AI tool.
+- Whether NoAI uploads documents or uses AI during redaction.
+- Which document formats NoAI supports.
+- Why NoAI exports Markdown.
+- What users should review before pasting redacted output into an AI assistant.
+- How to audit the public source code for the local-processing claim.

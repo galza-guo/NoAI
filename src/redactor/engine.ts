@@ -967,6 +967,19 @@ export class Detector {
       ["NATIONAL_ID", /\b\d{3}-\d{2}-\d{4}\b/g, 1, "US Social Security number"],
       [
         "NATIONAL_ID",
+        // Masked US Social Security number, format-bound. Paystubs, W-2s,
+        // benefit letters, and tax forms print a masked SSN as "XXX-XX-4423"
+        // / "xxx-xx-4423". Even though only the last four digits are visible,
+        // the masked shape itself is a national-identifier marker and the
+        // trailing four digits are sensitive. The XXX-XX- prefix is a
+        // distinctive anchor that never appears in ordinary text, so the bare
+        // last-4 figure stays readable.
+        /\bXXX-XX-(\d{4})\b/gi,
+        1,
+        "masked US Social Security number",
+      ],
+      [
+        "NATIONAL_ID",
         /\b[A-CEGHJ-PR-TW-Z]{2}(?:\s?\d){6}\s?[ABCD]\b/gi,
         1,
         "UK National Insurance number",
@@ -1595,8 +1608,10 @@ export class Detector {
         // instruments under "File No." / "Clerk's File No." with a longer digit
         // run than the SEC short shape (e.g. "File No. 2026-0448719"). The label
         // anchor is required so bare figures stay readable; the value must
-        // contain a digit.
-        /\b(?:Clerk'?s\s+)?File\s+Nos?\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        // contain a digit. The full word "File Number" is also accepted so a
+        // mortgage Closing Disclosure's "File Number: MHLC-2024-CD-4477188" is
+        // caught; the digit/length guard still rejects prose.
+        /\b(?:Clerk'?s\s+)?File\s+(?:Nos?|Numbers?)\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
         1,
         "recorded-instrument file number label",
       ],
@@ -1713,6 +1728,19 @@ export class Detector {
         "payment card last-4",
       ],
       [
+        "BANK_ACCOUNT",
+        // Paystub / deposit-advice direct-deposit account last-4, label-bound.
+        // Paystubs print each deposit destination as "Account ending in 9082
+        // (Checking)" or the abbreviated "Acct ending in 3301". The card-brand
+        // rules above do not fire because there is no brand/"card" keyword, so
+        // the account fragment leaked. The "Account/Acct ending in" label is the
+        // trust anchor; a 3-4 digit run immediately after it is the account
+        // fragment. Group 1 is the digits so the label word stays readable.
+        /\b(?:Account|Acct)\.?\s+ending\s+in\s+(\d{3,4})\b/gi,
+        1,
+        "deposit account last-4",
+      ],
+      [
         "BUSINESS_ID",
         // HR / payroll identifiers, label-bound. Employee ID, Personnel No.,
         // Payroll ID, Employee Number, etc. identify a specific person or payroll
@@ -1732,11 +1760,29 @@ export class Detector {
         // "Payment Reference" rule. "Payroll Reference" / "Shareholder Reference"
         // are two-word labels with no separate qualifier; the bare-colon
         // "Reference:" detector only matches the trailing substring and left the
-        // "Payroll " / "Shareholder " prefix unscoped. The value must contain a
-        // digit so prose (e.g. "the payroll reference will follow") stays readable.
+        // "Payroll " / "Shareholder " prefix unscoped. The value must contain
+        // a digit so prose (e.g. "the payroll reference will follow") stays readable.
         /\b(?:Payroll|Shareholder)\s+(?:References?|Ref)\b\.?\s*[:#]?\*{0,2}\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{3,}\b/gi,
         1,
         "compound HR/payroll reference label",
+      ],
+      [
+        "BUSINESS_ID",
+        // Mortgage / lending identifiers, label-bound. TRID Closing Disclosures,
+        // loan estimates, servicing notices, and MLO disclosures print the
+        // licensed-lender and loan identifiers under explicit labels:
+        // "Loan ID: 0034991172", "NMLS ID: 1568290", "Loan Officer, NMLS 1845521",
+        // "Lender License: NMLS 1568290". NMLS (Nationwide Multistate Licensing
+        // System) IDs identify a specific licensed lender or individual mortgage
+        // loan originator; "Loan ID"/"Loan Number" identify the consumer's loan
+        // file. The label is the trust anchor and may carry an ID/No/Number
+        // qualifier before the separator; the value must contain a digit so prose
+        // (e.g. "the NMLS registry is public") and bare figures stay readable.
+        // Without this rule the trailing digit run is mislabeled PHONE and the
+        // NMLS prefix leaks.
+        /\b(?:Loan\s+(?:IDs?|Numbers?)|NMLS(?:\s+(?:IDs?|Numbers?|Nos?\.?))?)\b\s*[:#]?\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{4,}\b/gi,
+        1,
+        "mortgage/lending NMLS or loan identifier label",
       ],
       [
         "BUSINESS_ID",
@@ -2105,7 +2151,17 @@ export class Detector {
         "cc label",
       ],
       [
-        /^\s*(?:Attention|Attn)\.?\s*[:：]\s*(.+)$/i,
+        // Correspondence "Attention:"/"Attn:" addressee. The whole addressee is
+        // a person (or sometimes a role title). Capture only the name run and
+        // STOP at a comma that introduces a post-nominal ("Esq.") or an
+        // officer/role suffix ("CFO", "Secretary", "General Counsel"), so the
+        // role label is not swallowed into the PERSON value. The trailing
+        // suffix stays readable; the dedicated "attention block name" /
+        // "name with esq suffix" detectors still anchor the bare name. This
+        // prevents leaks such as "John B. Pisaris, Esq. Secretary" masking the
+        // "Secretary and General Counsel" role, and "Stanley F. Pierson, Esq"
+        // leaving a dangling post-nominal.
+        /^\s*(?:Attention|Attn)\.?\s*[:：]\s*([^,\r\n]+?)(?:\s*,\s*(?:Esq\.?|[A-Z][A-Za-z.'’-]*(?:\s+[A-Z][A-Za-z.'’-]*){0,3}).*)?$/i,
         "PERSON",
         1,
         "attention list",
@@ -2881,7 +2937,11 @@ export class Detector {
         // "Patient: Maria Lopez", "Insured: Robert Albright". The label is the
         // trust anchor; the name may carry a single-letter middle initial. These
         // names were missed entirely because the labels are not person titles.
-        /\b(?:Member|Patient|Insured|Employee|Subscriber|Beneficiary|Dependent|Policyholder|Claimant|Applicant|Registrant|Cardholder)\s*[:\-]\s*([A-Z][A-Za-z'’-]+(?:[^\S\r\n]+(?:[A-Z]\.?|[A-Z][A-Za-z'’-]+)){1,3})\b/g,
+        // Mortgage role labels (Borrower, Co-Borrower, Loan Officer) are included
+        // because TRID Closing Disclosures, loan estimates, and servicing notices
+        // introduce the named parties the same way; "Loan Officer" is two words
+        // and is matched as one label alternative.
+        /\b(?:Member|Patient|Insured|Employee|Subscriber|Beneficiary|Dependent|Policyholder|Claimant|Applicant|Registrant|Cardholder|Borrower|Co-Borrower|Loan\s+Officer)\s*[:\-]\s*([A-Z][A-Za-z'’-]+(?:[^\S\r\n]+(?:[A-Z]\.?|[A-Z][A-Za-z'’-]+)){1,3})\b/g,
         "form/benefits label plus name",
       ],
     ];
