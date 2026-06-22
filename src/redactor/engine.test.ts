@@ -5733,15 +5733,15 @@ The parcel sits in Cedar Park, TX (US).`,
 
     // Case reference with long agency prefix
     expect(output).not.toContain("中国证券监督管理委员会上海监管局行政处罚决定书沪〔2025〕32号");
-    
+
     // ORG with bracketed suffix
     expect(output).not.toContain("大华会计师事务所（特殊普通合伙）");
     expect(output).not.toContain("大华会计师事务所"); // Alias redaction
-    
+
     // Identifiers
     expect(output).not.toContain("91110108590676050Q");
     expect(output).not.toContain("北京市海淀区西四环中路16号院");
-    
+
     // Person extraction from "当事人" and alias replacement
     expect(output).not.toContain("1980年1月1日出生");
     expect(output).not.toContain("李四");
@@ -5758,10 +5758,10 @@ The parcel sits in Cedar Park, TX (US).`,
 
     // The full labeled address is redacted
     expect(output).not.toContain("北京市朝阳区建国路88号院1号楼10层1101");
-    
+
     // The unlabeled prefix in prose is also redacted
     expect(output).not.toContain("北京市朝阳区建国路88号院1号楼");
-    
+
     // Check that we didn't wipe out innocent prose
     expect(output).toContain("我局执法人员对北京某某科技有限公司位于");
     expect(output).toContain("的经营场所进行现场检查。");
