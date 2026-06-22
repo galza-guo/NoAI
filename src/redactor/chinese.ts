@@ -244,6 +244,24 @@ const PERSON_LABELS = [
   "复核",
   "制单人",
   "经办人",
+  // Employment / HR party labels (introduce the named worker or emergency
+  // contact on labour contracts and onboarding forms):
+  "劳动者",
+  "员工",
+  "员工姓名",
+  "紧急联系人",
+  "人事经办",
+  "经办",
+  // Family-relation labels (introduce a named relative in HR family-member
+  // tables and insurance beneficiary sections):
+  "父亲",
+  "母亲",
+  "配偶",
+  "子女",
+  "丈夫",
+  "妻子",
+  "儿子",
+  "女儿",
 ];
 const ORG_LABELS = [
   "代理机构",
@@ -259,8 +277,11 @@ const ORG_LABELS = [
   "当事人",
   "中标人",
   "投标人",
-  "甲方",
-  "乙方",
+  // NOTE: 甲方 / 乙方 / 丙方 are intentionally NOT here. They are ambiguous
+  // party-role labels that can bind either an organization (大多数合同) or a
+  // person (劳动合同 where 乙方 is the worker). They are handled by
+  // detectPartyRoles, which classifies the value by shape: short Han names
+  // without an org suffix become PERSON, anything else stays ORG.
   "开户行",
   "开户银行",
   "收款行",
@@ -349,6 +370,13 @@ const PROCUREMENT_REF_LABELS = [
   "出生证编号",
   "出生医学证明编号",
   "出生证号",
+  // Employee / staff reference labels (CASE_REF). 员工编号 / 员工号 / 工号
+  // identify a specific worker on HR onboarding forms and payroll records.
+  "员工编号",
+  "员工号",
+  "工号",
+  "人员编号",
+  "工号牌",
   "挂号单号",
   "查询号",
   "查询码",
@@ -671,6 +699,21 @@ const CHINESE_DEMOGRAPHIC_TERMS = new Set([
   "无族",
   "男",
   "女",
+  // Status / occupation descriptors that appear as comma-separated fields in
+  // party/HR blocks (退休 / 在职 / 务农 / 经商 / 无业 / 学生). These are 2-char
+  // Han runs that pass PERSON_VALUE_RE but are not names.
+  "退休",
+  "在职",
+  "务农",
+  "经商",
+  "无业",
+  "学生",
+  "职员",
+  "教师",
+  "医生",
+  "护士",
+  "工人",
+  "干部",
 ]);
 
 // Context-organization detection (outside labels). Only STRONG suffixes that
@@ -880,6 +923,7 @@ export function detectChinese(doc: RedactionInput, add: AddCandidate): void {
   detectChineseLabelValues(doc, add);
   detectChineseAddressContinuations(doc, add);
   detectContextOrgs(doc, add);
+  detectPartyRoles(doc, add);
   detectAgreementParties(doc, add);
   detectSignatureNames(doc, add);
   detectCourtSignatureNames(doc, add);
@@ -1218,7 +1262,19 @@ function detectChineseLabelValues(
       PERSON_VALUE_RE.test(v) &&
       !CHINESE_DEMOGRAPHIC_TERMS.has(v) &&
       !CHINESE_ROLE_TERMS.has(v),
-    splitChineseList,
+    // Strip a trailing role/relation annotation (李建国（父亲）) per list item
+    // so the bare name validates; the annotation text stays readable in output.
+    // Strip a trailing role/relation annotation (李建国（父亲）) from each list
+    // item BEFORE cleanChineseValue would unbalance the parens, then apply the
+    // normal Chinese list splitter (handles 、, ，, ;, ／, and space-separated
+    // name lists). The annotation text stays readable in output.
+    (value) => {
+      const stripped = value
+        .split(/[、，,；;\/]/)
+        .map((part) => stripTrailingRoleAnnotation(part))
+        .join("、");
+      return splitChineseList(stripped);
+    },
   );
   applyLabelRules(
     doc,
@@ -1586,6 +1642,43 @@ function isPlausibleContextOrg(value: string): boolean {
   return hanCount >= 3;
 }
 
+// Ambiguous party-role labels (甲方/乙方/丙方/丁方) bind either an
+// organization (the common case in commercial contracts) or a person (the
+// worker on a 劳动合同). Classify by value shape:
+//   - short Han run (2-6 chars) with NO org suffix -> PERSON (worker/individual)
+//   - anything else plausibly org-shaped -> ORG
+// The first list item of a comma-spliced value is the decisive one, so a
+// person name followed by demographic fields (王丽娟，女，汉族) classifies PERSON.
+const PARTY_ROLE_LABELS = ["甲方", "乙方", "丙方", "丁方", "戊方", "己方"];
+const ORG_SUFFIX_HINT_RE = /(公司|集团|厂|银行|医院|大学|学院|中心|事务所|合作社|有限|股份|联社|商行|店|局|委员会|协会|基金会)$/;
+
+function detectPartyRoles(doc: RedactionInput, add: AddCandidate): void {
+  for (const label of PARTY_ROLE_LABELS) {
+    // Match the label, optional synonym parenthetical, a separator, then a
+    // value up to the next hard stop (same shape as applyLabelRules).
+    const labelRe = new RegExp(
+      label + "(?:\\s*[（(][^）)]*[）)])?\\s*[：:]\\s*([^\\n，,。；;]{1,80})",
+      "g",
+    );
+    for (const match of doc.text.matchAll(labelRe)) {
+      const firstItem = cleanChineseValue((match[1] ?? "").split(/[，,]/)[0] ?? "");
+      if (!firstItem) continue;
+      const index = (match.index ?? 0) + match[0].indexOf(firstItem);
+      // A short Han run with no org suffix looks like a person name (worker).
+      if (
+        PERSON_RE.test(firstItem) &&
+        !ORG_SUFFIX_HINT_RE.test(firstItem) &&
+        !CHINESE_DEMOGRAPHIC_TERMS.has(firstItem) &&
+        !CHINESE_ROLE_TERMS.has(firstItem)
+      ) {
+        add(firstItem, "PERSON", 2, "Chinese party role (individual)", doc.name, index);
+      } else if (isPlausibleOrg(firstItem)) {
+        add(firstItem, "ORG", 2, "Chinese party role (organization)", doc.name, index);
+      }
+    }
+  }
+}
+
 // Returns true if `index` sits inside an unmatched 《 … 》 book/statute title.
 // Statute names (《中华人民共和国公司法》) must stay readable even if they end
 // in a strong suffix (e.g. 《某大学章程》). The test is: the nearest title
@@ -1878,6 +1971,14 @@ const HONORIFIC_TRIGGER_AT_END_RE = new RegExp(
     .sort((a, b) => b.length - a.length)
     .join("|")})$`,
 );
+
+// Strip a trailing inline role/relation annotation so a labeled person value
+// like "李建国（父亲）" or "王丽娟（经理）" validates as a plain name. Only a
+// single trailing parenthetical that follows the name directly is stripped;
+// mid-value parentheticals (legal-party notes) are left intact for the splitter.
+function stripTrailingRoleAnnotation(value: string): string {
+  return value.replace(/[（(][^（）()]*[）)]\s*$/, "").trim();
+}
 
 function applyLabelRules(
   doc: RedactionInput,

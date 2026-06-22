@@ -266,7 +266,7 @@ const REGULATOR_NUMBER_LABEL_RE =
 // labels (发票代码：031001800111 / 校验码：25605123), the label-bound CASE_REF
 // detector owns it and the bare PHONE candidate is skipped.
 const CHINESE_REF_LABEL_BEFORE_PHONE_RE =
-  /(?:发票代码|发票号码|发票号|校验码|流水号|凭证号|订单号|运单号|保单号|住院号|门诊号|病案号|病历号|出生证编号)\s*[：:#]\s*$/;
+  /(?:发票代码|发票号码|发票号|校验码|流水号|凭证号|订单号|运单号|保单号|住院号|门诊号|病案号|病历号|出生证编号|员工编号|员工号|工号|人员编号)\s*[：:#]\s*$/;
 
 // Priority used to pick a single kind when the same exact surface string is
 // detected under multiple kinds (lower wins). Keeps replacement tokens consistent.

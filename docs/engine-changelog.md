@@ -3,6 +3,16 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.6.0 (general r20, chinese r24) - 2026-06-22
+
+Chinese Loop 24: Employment Contracts & HR Onboarding Forms.
+
+- Added employment/HR party labels (`劳动者`, `员工`, `员工姓名`, `紧急联系人`, `人事经办`, `经办`) and family-relation labels (`父亲`, `母亲`, `配偶`, `子女`, `丈夫`, `妻子`, `儿子`, `女儿`) to `PERSON_LABELS`.
+- Added employee-number reference labels (`员工编号`, `员工号`, `工号`, `人员编号`, `工号牌`) to `PROCUREMENT_REF_LABELS` (CASE_REF), and extended `CHINESE_REF_LABEL_BEFORE_PHONE_RE` so the phone-shaped substring in `EMP-2026-0512-008` no longer wins.
+- Removed ambiguous party-role labels `甲方`/`乙方`/`丙方` from `ORG_LABELS` and added `detectPartyRoles`, which classifies the bound value by shape: a short Han run with no org suffix becomes `PERSON` (the worker on a 劳动合同), anything plausibly org-shaped stays `ORG`. Fixes the long-standing misclassification where `乙方：王丽娟` produced an `ORG_` placeholder.
+- Added `stripTrailingRoleAnnotation` to the `PERSON_LABELS` splitter so a trailing role/relation annotation (`李建国（父亲）`) is stripped per list item before `cleanChineseValue` unbalances the parens; the annotation text stays readable in output.
+- Extended `CHINESE_DEMOGRAPHIC_TERMS` with status/occupation descriptors (`退休`, `在职`, `务农`, `经商`, `无业`, `学生`, `职员`, `教师`, `医生`, `护士`, `工人`, `干部`) so these 2-char Han fields that appear after a party label are not promoted to `PERSON_` placeholders.
+
 ## NoAI redaction engine 1.6.0 (general r20, chinese r23) - 2026-06-22
 
 Shared engine: Chinese reference-label PHONE suppression.

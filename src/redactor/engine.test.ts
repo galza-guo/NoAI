@@ -6143,6 +6143,80 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).not.toContain("6225880123456789");
     expect(output).toContain("BANK_ACCOUNT_");
   });
+
+  // ----------------------------------------------------------------------
+  // Round 24 — employment contracts & HR onboarding forms. Labels for
+  // employee/worker parties, emergency contacts, family relations, and HR
+  // handler roles; employee-number reference label. All values invented.
+  // ----------------------------------------------------------------------
+
+  it("redacts employment party labels (劳动者/用人单位员工/乙方签字)", () => {
+    const output = redact(
+      [
+        "劳动者（乙方）：王丽娟，女，汉族。",
+        "乙方（签字）：王丽娟",
+        "用人单位（甲方）：北京某某科技有限公司。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("王丽娟");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("ORG_");
+    // Generic 汉族 demographic stays readable.
+    expect(output).toContain("汉族");
+  });
+
+  it("redacts emergency-contact and HR handler labels (紧急联系人/人事经办)", () => {
+    const output = redact(
+      [
+        "紧急联系人：李建国（父亲），联系电话：13805120001。",
+        "人事经办：孙小燕。",
+        "经办人：周海涛。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("李建国");
+    expect(output).not.toContain("孙小燕");
+    expect(output).not.toContain("周海涛");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("紧急联系人：");
+  });
+
+  it("redacts family-relation labels (父亲/母亲/配偶/子女) as PERSON", () => {
+    const output = redact(
+      [
+        "父亲：刘国强，1958年出生，退休。",
+        "母亲：周丽萍，1960年出生，退休。",
+        "配偶：陈志芳，1990年出生。",
+        "子女：刘小明，2018年出生。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("刘国强");
+    expect(output).not.toContain("周丽萍");
+    expect(output).not.toContain("陈志芳");
+    expect(output).not.toContain("刘小明");
+    expect(output).toContain("PERSON_");
+    // Birth years stay readable (counterexample for date over-redaction).
+    expect(output).toContain("1958年出生");
+    expect(output).toContain("退休");
+  });
+
+  it("redacts employee number label (员工编号) as CASE_REF (not PHONE)", () => {
+    const output = redact(
+      [
+        "员工编号：EMP-2026-0512-008。",
+        "员工号：E20260512008。",
+        "工号：G0512008。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("EMP-2026-0512-008");
+    expect(output).not.toContain("E20260512008");
+    expect(output).not.toContain("G0512008");
+    expect(output).toContain("CASE_REF_");
+    expect(output).not.toContain("PHONE_");
+  });
 });
 
 describe("PRC identifier checksum validators", () => {
