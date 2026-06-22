@@ -3,6 +3,106 @@
 The redaction engine uses semantic versioning independently from the app package,
 plus split ruleset counters for English/general and Chinese deterministic rules.
 
+## NoAI redaction engine 1.6.0 (general r20, chinese r24) - 2026-06-22
+
+Chinese Loop 24: Employment Contracts & HR Onboarding Forms.
+
+- Added employment/HR party labels (`劳动者`, `员工`, `员工姓名`, `紧急联系人`, `人事经办`, `经办`) and family-relation labels (`父亲`, `母亲`, `配偶`, `子女`, `丈夫`, `妻子`, `儿子`, `女儿`) to `PERSON_LABELS`.
+- Added employee-number reference labels (`员工编号`, `员工号`, `工号`, `人员编号`, `工号牌`) to `PROCUREMENT_REF_LABELS` (CASE_REF), and extended `CHINESE_REF_LABEL_BEFORE_PHONE_RE` so the phone-shaped substring in `EMP-2026-0512-008` no longer wins.
+- Removed ambiguous party-role labels `甲方`/`乙方`/`丙方` from `ORG_LABELS` and added `detectPartyRoles`, which classifies the bound value by shape: a short Han run with no org suffix becomes `PERSON` (the worker on a 劳动合同), anything plausibly org-shaped stays `ORG`. Fixes the long-standing misclassification where `乙方：王丽娟` produced an `ORG_` placeholder.
+- Added `stripTrailingRoleAnnotation` to the `PERSON_LABELS` splitter so a trailing role/relation annotation (`李建国（父亲）`) is stripped per list item before `cleanChineseValue` unbalances the parens; the annotation text stays readable in output.
+- Extended `CHINESE_DEMOGRAPHIC_TERMS` with status/occupation descriptors (`退休`, `在职`, `务农`, `经商`, `无业`, `学生`, `职员`, `教师`, `医生`, `护士`, `工人`, `干部`) so these 2-char Han fields that appear after a party label are not promoted to `PERSON_` placeholders.
+
+## NoAI redaction engine 1.6.0 (general r20, chinese r23) - 2026-06-22
+
+Shared engine: Chinese reference-label PHONE suppression.
+
+- Added `CHINESE_REF_LABEL_BEFORE_PHONE_RE` guard in the shared direct-pattern loop. When a phone-shaped digit run directly follows a Chinese document-reference label (`发票代码`/`发票号码`/`校验码`/`流水号`/`订单号`/`运单号`/`保单号`/`住院号`/`门诊号`/`病案号`/`病历号`/`出生证编号`), the bare PHONE candidate is skipped so the label-bound CASE_REF detector owns the value (e.g. `发票代码：031001800111` is no longer misclassified as PHONE).
+
+Chinese Loop 23: Real-Estate Lease & VAT Invoice Documents.
+
+- Added VAT invoice finance labels (`发票代码`, `校验码`) to `FINANCE_REF_LABELS`; `发票号码` was already present.
+- Added invoice signer role labels (`收款人`, `开票人`, `开票员`, `收款员`, `复核人`, `复核`, `制单人`, `经办人`) to `PERSON_LABELS`.
+- Extended `RMB_CN_NUMERAL_RE` to include 角/分 fractional units and 整/正 suffix so formal amounts like `壹拾玖万贰仟肆佰玖拾玖元叁角柒分` are redacted whole rather than leaking `叁角柒分` after the 元 anchor.
+- Added `BARE_ACCOUNT_ADJACENCY_RE` for bare 16-19 digit bank-card runs that directly follow the label `账号`/`卡号`/`银行卡号`/`银行账号` with no colon separator (lease/payment forms where fields are comma-spliced: `户名李建华，账号621700…`).
+
+## NoAI redaction engine 1.6.0 (general r20, chinese r22) - 2026-06-22
+
+Shared engine: IBAN checksum validation + clinical-percentage guard.
+
+- Added `isValidIban` MOD-97 (ISO 13616) check and an issuing-country-code allowlist for the IBAN direct pattern. The previous shape-only regex (`[A-Z]{2}\d{2}…`) matched any 2-letter-prefixed alphanumeric run, so Chinese hospital admission codes (`ZH202605000123`), outpatient numbers (`MZ2026-05012`), and similar document IDs were misclassified as `BANK_ACCOUNT`. Real IBANs (e.g. `GB29 NWBK 601613 31926819`) still match.
+- Added a clinical-context guard to the shared percentage pattern: `X%` is kept readable when it directly follows a clinical narrowing/stenosis/fraction noun (狭窄/阻塞/梗阻/钙化/闭塞/狭窄度/阻塞度/射血分数/阻塞比例), so coronary-stenosis findings (`前降支中段狭窄85%`) are no longer over-redacted as financial amounts.
+
+Chinese Loop 22: Healthcare & Medical Records.
+
+- Added healthcare reference labels (`住院号`, `门诊号`, `病案号`, `病历号`, `就诊号`, `急诊号`) and birth-certificate labels (`出生证编号`, `出生医学证明编号`, `出生证号`) to `PROCUREMENT_REF_LABELS` so hospital/document numbers bind to `CASE_REF` (the IBAN validator now also prevents these from being misclassified as `BANK_ACCOUNT`).
+- Added physician role labels (`主治医师`, `住院医师`, `签发医师`, `经治医师`, `主治医生`, `住院医生`, `接生人员`, `体检医师`, `主检医师`) to `PERSON_LABELS` so signing clinicians on discharge summaries, medical certificates, and birth certificates are redacted.
+- Widened `PROJECT_REF_RE` to allow internal single-space groups so formatted document numbers such as birth-certificate refs (`O2026 0512 0034`) validate while still requiring alphanumeric boundaries and a digit.
+
+## NoAI redaction engine 1.5.25 (general r20, chinese r21) - 2026-06-22
+
+Chinese Loop 21: Insurance Claim Decisions & Social-Security Notices.
+
+- Added insurance claim reference labels (`赔案编号`, `赔案号`, `理赔案号`, `报案号`, `理赔编号`) to `PROCUREMENT_REF_LABELS` so insurance claim numbers bind to `CASE_REF` instead of being misclassified as `PHONE` when the value contains a phone-shaped substring (e.g. `CL-2026-0512-0034567`).
+- Added insurance party labels (`投保人`, `被保险人`, `受益人`, `户名`, `账户名`, `开户名`) to `PERSON_LABELS` so named individuals on claim decisions, underwriting forms, and disbursement notices are redacted.
+- Added `公民身份号码` to `PRC_ID_LABELS` — the formal GB/T 17744 wording used on social-security, medical-insurance, and household-registration documents.
+- Added benefit-disbursement bank-account labels (`待遇发放账号`, `养老金发放账号`, `发放账号`, `待遇领取账号`) to `BANK_ACCOUNT_LABELS`.
+- Promoted label-bound Chinese bank accounts from `heavy` (level 3) to `balanced` (level 2). A 16-19 digit card number under an explicit account label is a clear identifier and should be redacted at the default level; the `BANK_ACCOUNT_RE` validator still rejects shorter runs.
+
+## NoAI redaction engine 1.5.25 (general r20, chinese r20) - 2026-06-22
+
+Chinese Loop 20: Labour Arbitration Awards & Regulatory Decisions.
+
+- Added `ARBITRATION_CASE_NO_RE` to redact Chinese arbitration/labour case numbers that use full-width `【】` brackets (e.g. `深劳人仲案【2022】8836号`, `京海劳仲【2025】第1024号`). The existing `〔〕`/`［］`/`[]` bracket forms are unchanged, and the 2-8 char Han prefix guard keeps ordinary `【】` footnotes readable.
+- Added `trimOrgLeadingProse` in context-org detection so a strong-suffix org match no longer sweeps preceding verb-of-acquisition / connective phrases into the placeholder (e.g. `…可转换债券等方式收购北京聚利科技有限公司` → only `北京聚利科技有限公司` is redacted; leading `对`/`与`/`由` particles are also trimmed).
+- Added written-out Chinese-numeral RMB amount detection (`RMB_CN_NUMERAL_RE` / `RMB_CN_NUMERAL_WAN_YI_RE`) for formal/financial amounts on legal and arbitral documents (e.g. `一百五十万元`, `人民币伍万捌仟元整`, `贰佰叁拾万元`). A structure guard (`hasChineseNumeralAmountStructure`) keeps casual pocket-change prose like `一万元` / `一元` readable by requiring ≥3 numeral positions, an internal power-of-ten multiplier (十/百/千/拾/佰/仟), or a formal 大写 financial digit.
+- Added `CHINESE_DEMOGRAPHIC_TERMS` stopword set (PRC ethnic-group names plus gender descriptors) and applied it in both `isPlausibleContextPerson` and the `PERSON_LABELS` validator, so demographic fields that leak out of party blocks (e.g. `被申请人：李某某，女，汉族，…`) no longer become stray `PERSON_` placeholders.
+
+## NoAI redaction engine 1.5.25 (general r20, chinese r19) - 2026-06-21
+
+Chinese Loop 19: Synthetic Consolidation. Synthetic tests only.
+
+- Updated `addChineseAddressAliases` to support multi-character suffixes (e.g. 大厦, 广场, 园区) using `endsWith` rather than matching only single-character suffixes.
+
+## NoAI redaction engine 1.5.25 (general r20, chinese r18) - 2026-06-21
+
+Chinese Loop 18: International/Traditional Chinese Mix (Prada). Synthetic tests only.
+
+- Updated `isPlausibleAddress` to allow foreign addresses without Han characters or Chinese suffixes.
+- Updated `HONORIFIC_RE` to correctly extract foreign names (up to 40 Latin characters) preceding Chinese honorifics like 先生/女士/小姐, properly handling spaces as boundaries.
+- Added new corporate officer labels (公司秘书, 执行董事, 非执行董事, 独立非执行董事, 授权代表) and their Traditional Chinese variants to `PERSON_LABELS`.
+- Added location labels (居住地址, 工作单位及职务, 主要营业地点, 营业地点) to `ADDRESS_LABELS`.
+
+## NoAI redaction engine 1.5.25 (general r20, chinese r17) - 2026-06-21
+
+Chinese Loop 17: Hong Kong & Traditional Chinese (Tencent). Synthetic tests only.
+
+- Added Traditional Chinese address suffixes (區, 縣, 鎮, 鄉, 號, 樓, 棟, 大廈, 廣場) to `ADDRESS_SUFFIX_RE` to properly support HK address labels and Traditional Chinese address prefix aliasing.
+
+## NoAI redaction engine 1.5.25 (general r20, chinese r16) - 2026-06-21
+
+Chinese Loop 16: SAMR Penalties & Multiple Respondents. Synthetic tests only.
+
+- Added Chinese address prefix alias extraction: Automatically extracts prefixes from labeled Chinese addresses that end in common address suffixes (号, 楼, 层, 室, 院, 路, 街, 道) and uses them to redact unlabeled partial addresses in prose.
+
+## NoAI redaction engine 1.5.25 (general r20, chinese r15) - 2026-06-21
+
+Chinese Loop 15: Regulatory Penalty Decisions (CSRC/SAMR). Synthetic tests only.
+
+- Added `当事人` to `PERSON_LABELS` to capture both individual and corporate respondents correctly.
+- Added `事务所` as a strong organization suffix.
+- Increased max length for agency prefixes in Chinese bracketed case references to 30 characters (supports full regulatory agency names like `中国证券监督管理委员会上海监管局`).
+- Added org alias inference: automatically infers an alias for organizations detected with a trailing parenthetical (e.g. extracts `大华会计师事务所` from `大华会计师事务所（特殊普通合伙）`).
+
+## NoAI redaction engine 1.5.25 (general r20, chinese r14) - 2026-06-21
+
+Chinese procurement round: corporate disclosure, procurement, and regulatory documents. Synthetic tests only, no real identifiers committed. Deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Added support for Chinese amount labels (合同总金额, 采购预算, etc.) to detect bare numbers following these labels.
+- Added `中标供应商统一社会信用代码` as a recognized USCC label prefix.
+- Added `采购人地址`, `供应商地址` as recognized address labels.
+- Added `采购人联系方式`, `供应商联系方式` as recognized phone labels.
+
 ## NoAI redaction engine 1.5.25 (general r20, chinese r13) - 2026-06-21
 
 Clinical correspondence round: an explanation of benefits (EOB), a clinical

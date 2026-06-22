@@ -22,12 +22,15 @@ const VALUE_UNTIL_HARD_STOP = String.raw`([^\r\n。；;]+)`;
 // does not fire. Both （）and () brackets are accepted.
 const LABEL_SYNONYM_PARENS = String.raw`(?:\s*[（(][^）)]*[）)])?`;
 
-const USCC_LABELS = ["统一社会信用代码", "社会信用代码"];
+const USCC_LABELS = ["统一社会信用代码", "社会信用代码", "中标供应商统一社会信用代码"];
 const PRC_ID_LABELS = [
   "身份证件号码",
   "居民身份证号",
   "身份证号码",
   "身份证号",
+  // Formal / administrative variant used on social-security, medical-insurance,
+  // and household-registration documents (公民身份号码 is the GB/T 17744 wording).
+  "公民身份号码",
   // Traditional / HK / TW aliases (same kind, same validator):
   "身分證號",
   "身分證字號",
@@ -38,7 +41,9 @@ const PHONE_LABELS = [
   "联系方式",
   "项目联系电话",
   "采购单位联系方式",
+  "采购人联系方式",
   "代理机构联系方式",
+  "供应商联系方式",
   "手机号码",
   "电话",
   // 手机 alone is too short (it matches "手机号码" as a substring and the
@@ -66,6 +71,13 @@ const BANK_ACCOUNT_LABELS = [
   "开户账号",
   "对公账号",
   "收款账号",
+  // Social-security / pension / benefit disbursement account labels
+  // (待遇发放账号 / 养老金发放账号 / 抚恤金发放账号). The value is always a
+  // long bank card number, so the BANK_ACCOUNT_RE validator still applies.
+  "待遇发放账号",
+  "养老金发放账号",
+  "发放账号",
+  "待遇领取账号",
   "账号",
 ];
 const ADDRESS_LABELS = [
@@ -76,10 +88,17 @@ const ADDRESS_LABELS = [
   "送达地址",
   "住所",
   "住址",
+  "居住地址",
+  "工作单位及职务", // A mix of org and title, but fundamentally an address/location field
+  "主要营业地点",
+  "主要營業地點",
+  "营业地点",
+  "營業地點",
   "地址",
   // Common procurement/corporate address labels:
   "供应商地址",
   "采购单位地址",
+  "采购人地址",
   "代理机构地址",
   // Shareholder-meeting / conference venue labels (listed-company notices,
   // AGM convening notices). These carry the on-site address the same way an
@@ -109,7 +128,6 @@ const PERSON_LABELS = [
   "委托诉讼代理人",
   "诉讼代理人",
   "经办律师",
-  "授权代表",
   "联系人",
   "项目联系人",
   "负责人",
@@ -121,6 +139,7 @@ const PERSON_LABELS = [
   "被申请人",
   "原告",
   "被告",
+  "当事人",
   "代表",
   "代表人",
   "项目经理",
@@ -174,6 +193,17 @@ const PERSON_LABELS = [
   "担保人",
   "借款人",
   "贷款人",
+  // Corporate officer labels:
+  "公司秘书",
+  "公司秘書",
+  "执行董事",
+  "執行董事",
+  "非执行董事",
+  "非執行董事",
+  "独立非执行董事",
+  "獨立非執行董事",
+  "授权代表",
+  "授權代表",
   "抵押人",
   "出借人",
   "出质人",
@@ -185,6 +215,53 @@ const PERSON_LABELS = [
   "担保方",
   "借款方",
   "贷款方",
+  // Insurance party labels (introduce a named individual on life-insurance
+  // claim decisions, underwriting forms, and benefit notices):
+  "投保人",
+  "被保险人",
+  "受益人",
+  "户名", // bank-account holder name on payment/disbursement forms
+  "账户名",
+  "开户名",
+  // Healthcare physician role labels (introduce the signing clinician on
+  // discharge summaries, medical certificates, and birth certificates):
+  "主治医师",
+  "住院医师",
+  "签发医师",
+  "经治医师",
+  "主治医生",
+  "住院医生",
+  "接生人员",
+  "体检医师",
+  "主检医师",
+  // VAT invoice signer role labels (introduce the named individual at the
+  // bottom of a 增值税专用发票 / 普通发票):
+  "收款人",
+  "开票人",
+  "开票员",
+  "收款员",
+  "复核人",
+  "复核",
+  "制单人",
+  "经办人",
+  // Employment / HR party labels (introduce the named worker or emergency
+  // contact on labour contracts and onboarding forms):
+  "劳动者",
+  "员工",
+  "员工姓名",
+  "紧急联系人",
+  "人事经办",
+  "经办",
+  // Family-relation labels (introduce a named relative in HR family-member
+  // tables and insurance beneficiary sections):
+  "父亲",
+  "母亲",
+  "配偶",
+  "子女",
+  "丈夫",
+  "妻子",
+  "儿子",
+  "女儿",
 ];
 const ORG_LABELS = [
   "代理机构",
@@ -200,8 +277,11 @@ const ORG_LABELS = [
   "当事人",
   "中标人",
   "投标人",
-  "甲方",
-  "乙方",
+  // NOTE: 甲方 / 乙方 / 丙方 are intentionally NOT here. They are ambiguous
+  // party-role labels that can bind either an organization (大多数合同) or a
+  // person (劳动合同 where 乙方 is the worker). They are handled by
+  // detectPartyRoles, which classifies the value by shape: short Han names
+  // without an org suffix become PERSON, anything else stays ORG.
   "开户行",
   "开户银行",
   "收款行",
@@ -267,6 +347,36 @@ const PROCUREMENT_REF_LABELS = [
   "保单编号",
   "保函号",
   "保函编号",
+  // Insurance claim references (CASE_REF). 赔案编号 / 赔案号 identify a
+  // specific claim file on life/P&C insurance decision notices; the value is
+  // an alphanumeric reference (CL-2026-0512-0034567), never prose.
+  "赔案编号",
+  "赔案号",
+  "理赔案号",
+  "报案号",
+  "理赔编号",
+  // Healthcare / medical record references (CASE_REF). 住院号 / 门诊号 / 病案号
+  // identify a specific encounter or chart on hospital paperwork; the value
+  // is a short alphanumeric code, never prose.
+  "住院号",
+  "门诊号",
+  "病案号",
+  "病历号",
+  "就诊号",
+  "急诊号",
+  // Birth-certificate document references (CASE_REF). 出生证编号 /
+  // 出生医学证明编号 identify a specific certificate; the value is a
+  // formatted document number with spaces (O2026 0512 0034).
+  "出生证编号",
+  "出生医学证明编号",
+  "出生证号",
+  // Employee / staff reference labels (CASE_REF). 员工编号 / 员工号 / 工号
+  // identify a specific worker on HR onboarding forms and payroll records.
+  "员工编号",
+  "员工号",
+  "工号",
+  "人员编号",
+  "工号牌",
   "挂号单号",
   "查询号",
   "查询码",
@@ -274,6 +384,7 @@ const PROCUREMENT_REF_LABELS = [
 const FINANCE_REF_LABELS = [
   "发票号",
   "发票号码",
+  "发票代码",
   "票据号",
   "票据编号",
   "报关单号",
@@ -285,6 +396,9 @@ const FINANCE_REF_LABELS = [
   "许可证编号",
   "批准文号",
   "备案文号",
+  // VAT invoice verification code (校验码) is a 20-24 digit string printed
+  // on the lower-right of 专票/普票; always a digit run, never prose.
+  "校验码",
 ];
 // Cross-border / social identifiers (label-bound only; bare detection would be
 // too FP-prone). WeChat IDs are arbitrary usernames, passport numbers vary by
@@ -344,6 +458,27 @@ const TAX_ID_LABELS = [
   "税号",
 ];
 
+const AMOUNT_LABELS = [
+  "合同总金额",
+  "合同金额",
+  "中标金额",
+  "成交金额",
+  "采购预算",
+  "预算金额",
+  "项目预算",
+  "注册资本",
+  "投资总额",
+  // Traditional / HK aliases
+  "合同總金額",
+  "中標金額",
+  "成交金額",
+  "採購預算",
+  "預算金額",
+  "項目預算",
+  "註冊資本",
+  "投資總額",
+];
+
 const PLACEHOLDER_VALUES = new Set([
   "见附件",
   "详见附件",
@@ -372,6 +507,52 @@ const RMB_WAN_YUAN_RE =
   /(?:人民币\s*)?[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?\s*万元/g;
 const RMB_YI_YUAN_RE =
   /(?:人民币\s*)?[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?\s*亿元/g;
+// Chinese-numeral RMB amounts written out in formal/financial form
+// (处以一百五十万元罚款 / 支付人民币伍万捌仟元整 / 违法所得贰佰叁拾万元).
+// Combined digit set: everyday numerals (一二三…十百千万亿, 〇/零) and the
+// formal "大写" financial digits (壹贰叁肆伍陆柒捌玖拾佰仟) used on legal and
+// arbitral documents. The regex matches any numeral run anchored by 元/元整;
+// a structure guard (hasChineseNumeralAmountStructure) then rejects casual
+// pocket-change phrases (一万元 / 一元 / 几元) so ordinary prose stays readable
+// while formal multi-position amounts (一百五十万 / 伍万捌仟 / 贰佰叁拾万) are
+// caught. Requires the trailing 元 anchor so 年/月/日 fragments are not swept.
+const CN_NUMERAL_AMT_CHARS =
+  "[零〇一二三四五六七八九十百千万亿壹贰叁肆伍陆柒捌玖拾佰仟]";
+// Suffix for formal RMB amounts: 元 may be followed by 角(N×10 cents) and/or
+// 分(N cents), optionally ending in 整/正 (壹佰贰拾元伍角整 / 叁角柒分).
+const CN_NUMERAL_AMT_SUFFIX =
+  "元(?:" + CN_NUMERAL_AMT_CHARS + "?角)?" + "(?:" + CN_NUMERAL_AMT_CHARS + "?分)?(?:整|正)?";
+const RMB_CN_NUMERAL_RE = new RegExp(
+  "(?:人民币\\s*)?" + CN_NUMERAL_AMT_CHARS + "+" + CN_NUMERAL_AMT_SUFFIX,
+  "g",
+);
+const RMB_CN_NUMERAL_WAN_YI_RE = new RegExp(
+  "(?:人民币\\s*)?" + CN_NUMERAL_AMT_CHARS + "+[万亿]" + CN_NUMERAL_AMT_SUFFIX,
+  "g",
+);
+
+// Structure guard: returns the numeral run (text before 元/万元/亿元, including
+// any 角/分 fractional numerals) from a full Chinese-numeral amount match, so
+// the allow() filter can decide whether the amount carries enough compounding
+// structure to redact.
+function chineseNumeralRun(fullMatch: string): string {
+  // Strip an optional 人民币 prefix and everything from the 元 anchor onward
+  // (元 + optional 角/分 + optional 整/正).
+  return fullMatch
+    .replace(/^人民币\s*/, "")
+    .replace(/元.*$/, "");
+}
+
+// A written-out Chinese-numeral amount looks formal when the numeral run has
+// real compounding structure: ≥3 numeral positions, an internal power-of-ten
+// multiplier (十/百/千/拾/佰/仟), or at least one formal 大写 financial digit.
+// Bare 一万/一百/几万 without that structure stays readable as pocket-change.
+function hasChineseNumeralAmountStructure(numeralRun: string): boolean {
+  if (numeralRun.length >= 3) return true;
+  if (/[十百千拾佰仟]/.test(numeralRun)) return true;
+  if (/[壹贰叁肆伍陆柒捌玖拾佰仟]/.test(numeralRun)) return true;
+  return false;
+}
 // Bare 万/亿 amounts with NO trailing 元 (合同金额80万 / 市值约80亿). The digit
 // run must be directly followed by 万 or 亿, and the char after that must not be
 // a counter (万人/1万个/3万年) nor 元 (covered by the 万元/亿元 rules). The counter
@@ -387,6 +568,13 @@ const FULLWIDTH_YEN_RE =
   /\uFFE5\s*[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})*(?:\.[0-9０-９]+)?/g;
 const REGULATORY_DOC_NO_RE =
   /[\u3400-\u9fff]{1,8}[〔［\[]\d{4}[〕］\]]\d{1,5}号/g;
+// Same shape as REGULATORY_DOC_NO_RE but using full-width 【】 brackets, the
+// dominant form in Chinese labour-arbitration awards (深劳人仲案【2022】8836号)
+// and some court notices. The leading Han run is the case-type prefix
+// (深劳人仲案 / 京海劳仲 / 沪一仲案), so 2-8 chars keeps 注释 / 说明 / 概述 prose
+// out even when it happens to use 【】 footnotes.
+const ARBITRATION_CASE_NO_RE =
+  /[\u3400-\u9fff]{2,8}【\d{4}】(?:第?\d{1,6}(?:-\d{1,4})?)号/g;
 const COURT_CASE_NO_RE =
   /[（(]\d{4}[)）][\u3400-\u9fff]{1,4}\d{0,4}[\u3400-\u9fff]{1,8}第?\d{1,6}号/g;
 const AGREEMENT_PARTY_RE =
@@ -445,6 +633,89 @@ const CHINESE_ROLE_TERMS = new Set([
   "本人",
 ]);
 
+// Demographic descriptors that appear as comma-separated fields inside a
+// party/subject block (被申请人：李某某，女，汉族，住址：…). These are NOT names
+// even though they pass the 2-6 Han-char PERSON_RE shape, so they must be
+// excluded from person candidates to avoid leaking gender/ethnicity into a
+// PERSON_ placeholder. Includes the official PRC ethnic-group names plus the
+// common gender/age descriptors 男/女/老/少.
+const CHINESE_DEMOGRAPHIC_TERMS = new Set([
+  "汉族",
+  "回族",
+  "满族",
+  "蒙古族",
+  "藏族",
+  "维吾尔族",
+  "苗族",
+  "彝族",
+  "壮族",
+  "布依族",
+  "侗族",
+  "瑶族",
+  "白族",
+  "土家族",
+  "哈尼族",
+  "哈萨克族",
+  "傣族",
+  "黎族",
+  "傈僳族",
+  "佤族",
+  "畲族",
+  "高山族",
+  "拉祜族",
+  "水族",
+  "东乡族",
+  "纳西族",
+  "景颇族",
+  "柯尔克孜族",
+  "土族",
+  "达斡尔族",
+  "仫佬族",
+  "羌族",
+  "布朗族",
+  "撒拉族",
+  "毛南族",
+  "仡佬族",
+  "锡伯族",
+  "阿昌族",
+  "普米族",
+  "塔吉克族",
+  "怒族",
+  "乌孜别克族",
+  "俄罗斯族",
+  "鄂温克族",
+  "德昂族",
+  "保安族",
+  "裕固族",
+  "京族",
+  "塔塔尔族",
+  "独龙族",
+  "鄂伦春族",
+  "赫哲族",
+  "门巴族",
+  "珞巴族",
+  "基诺族",
+  "外籍",
+  "无族",
+  "男",
+  "女",
+  // Status / occupation descriptors that appear as comma-separated fields in
+  // party/HR blocks (退休 / 在职 / 务农 / 经商 / 无业 / 学生). These are 2-char
+  // Han runs that pass PERSON_VALUE_RE but are not names.
+  "退休",
+  "在职",
+  "务农",
+  "经商",
+  "无业",
+  "学生",
+  "职员",
+  "教师",
+  "医生",
+  "护士",
+  "工人",
+  "干部",
+]);
+
 // Context-organization detection (outside labels). Only STRONG suffixes that
 // are essentially organizational are used; weak common-noun suffixes such as
 // 公司 / 局 / 中心 / 部 / 会 are intentionally excluded because they appear in
@@ -458,6 +729,7 @@ const ORG_STRONG_SUFFIXES = [
   "有限公司",
   "普通合伙",
   "合伙企业",
+  "事务所",
   "研究院",
   "研究所",
   "实验室",
@@ -471,6 +743,7 @@ const ORG_STRONG_SUFFIXES = [
   "有限責任公司",
   "普通合夥",
   "合夥企業",
+  "事務所",
   "研究所",
   "實驗室",
   "醫院",
@@ -505,7 +778,20 @@ const PHONE_RE = /^(?:\+?86[-\s]?)?(?:1[3-9]\d{9}|0\d{2,3}[-\s]?\d{7,8})$/;
 // stripping spaces before the length check; a single regex with backreferences
 // would be more brittle than the two-shape union below.
 const BANK_ACCOUNT_RE = /^(?:\d{16,19}|(?:\d{4}\s){3}\d{4}(?:\s\d{1,3})?)$/;
-const PROJECT_REF_RE = /^(?=[A-Za-z0-9._/-]*\d)[A-Za-z0-9._/-]{4,50}$/;
+// Bare account-number adjacency: a 16-19 digit run that directly follows the
+// label 账号 / 卡号 / 银行卡号 with NO colon separator (户名李建华，账号621700…),
+// common on lease/payment forms where fields are comma-spliced. A lookbehind
+// anchors the label without consuming it, so match[0] is just the digit run.
+const BARE_ACCOUNT_ADJACENCY_RE =
+  /(?<=账号|卡号|银行卡号|银行账号)(?:[，,]?\s*)\d{16,19}\b/g;
+// Procurement / contract / document reference shape. Must contain at least
+// one digit (lookahead) so prose such as 订单管理 / 快递送达 stays readable.
+// Internal single-space groups are allowed so formatted document numbers such
+// as birth-certificate refs (O2026 0512 0034) and serialised IDs validate,
+// but the value must still start and end on an alphanumeric and be dominated
+// by alphanumerics (≥60%), so prose phrases cannot slip through.
+const PROJECT_REF_RE =
+  /^(?=[A-Za-z0-9._/ -]*\d)[A-Za-z0-9](?:[A-Za-z0-9._/ -]{2,48}[A-Za-z0-9])?$/;
 // WeChat IDs: must start with a letter, 6-20 chars, letters/digits/_/-.
 const WECHAT_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{5,19}$/;
 // Passport numbers: a letter followed by 8 digits (PRC E/G shape) is the most
@@ -543,9 +829,10 @@ const STOCK_CODE_RE = /^\d{4,6}(?:\.(?:HK|SS|SH|SZ))?$/;
 const TAX_ID_RE = /^[A-Za-z0-9]{15,20}$/;
 const POSTCODE_RE = /^\d{6}$/;
 const PERSON_RE = /^[\u3400-\u9fff·]{2,6}$/;
+const PERSON_VALUE_RE = /^([\u3400-\u9fff·]{2,6}|[A-Za-z \-'.]{2,40})$/;
 const ORG_RE = /^[\u3400-\u9fffA-Za-z0-9()（）·.&' -]{2,60}$/;
 const ADDRESS_SUFFIX_RE =
-  /省|市|区|县|镇|乡|村|路|街|道|号|室|楼|栋|幢|大厦|广场|中心|工业区|开发区|园区/;
+  /省|市|区|县|镇|乡|村|路|街|道|号|室|楼|栋|幢|大厦|广场|中心|工业区|开发区|园区|區|縣|鎮|鄉|號|樓|棟|大廈|廣場|工業區|開發區|園區/;
 
 // --- PRC identifier checksum validators (GB 32100-2015 USCC, GB 11643-1999
 //     resident ID). Deterministic, browser-only, no backend/AI. Exported so they
@@ -636,6 +923,7 @@ export function detectChinese(doc: RedactionInput, add: AddCandidate): void {
   detectChineseLabelValues(doc, add);
   detectChineseAddressContinuations(doc, add);
   detectContextOrgs(doc, add);
+  detectPartyRoles(doc, add);
   detectAgreementParties(doc, add);
   detectSignatureNames(doc, add);
   detectCourtSignatureNames(doc, add);
@@ -712,6 +1000,28 @@ function detectChineseDirectPatterns(
   );
   applyRegex(doc, RMB_WAN_YUAN_RE, "AMOUNT", 2, "RMB wan-yuan amount", add);
   applyRegex(doc, RMB_YI_YUAN_RE, "AMOUNT", 2, "RMB yi-yuan amount", add);
+  // Written-out Chinese-numeral RMB amounts (一百五十万元 / 人民币伍万捌仟元整 /
+  // 贰佰叁拾万元). The wan/yi variant is scored first so the longer anchored
+  // form wins over the plain 元 form. The allow() filter rejects casual
+  // pocket-change phrases (一万元 / 一元) via the structure guard.
+  applyRegex(
+    doc,
+    RMB_CN_NUMERAL_WAN_YI_RE,
+    "AMOUNT",
+    2,
+    "Chinese-numeral wan/yi RMB amount",
+    add,
+    (match) => hasChineseNumeralAmountStructure(chineseNumeralRun(match.text)),
+  );
+  applyRegex(
+    doc,
+    RMB_CN_NUMERAL_RE,
+    "AMOUNT",
+    2,
+    "Chinese-numeral RMB amount",
+    add,
+    (match) => hasChineseNumeralAmountStructure(chineseNumeralRun(match.text)),
+  );
   applyRegex(doc, FULLWIDTH_YEN_RE, "AMOUNT", 2, "fullwidth-yen amount", add);
   applyRegex(doc, RMB_YUAN_RE, "AMOUNT", 2, "RMB yuan amount", add, (match) => {
     const before = doc.text.slice(Math.max(0, match.index - 4), match.index);
@@ -730,12 +1040,32 @@ function detectChineseDirectPatterns(
     add,
     (match) => isPlausibleBareWanYi(doc.text, match),
   );
+  // Bare account-number adjacency (账号621700… with no colon). A lookbehind
+  // anchors the label so match[0] starts at the digit run; cleanChineseValue
+  // trims any leading comma/space so the placeholder keeps just the digits.
+  applyRegex(
+    doc,
+    BARE_ACCOUNT_ADJACENCY_RE,
+    "BANK_ACCOUNT",
+    2,
+    "bare Chinese bank account adjacency",
+    add,
+    (match) => /\d{16,19}/.test(match.text),
+  );
   applyRegex(
     doc,
     REGULATORY_DOC_NO_RE,
     "CASE_REF",
     1,
     "Chinese regulatory document number",
+    add,
+  );
+  applyRegex(
+    doc,
+    ARBITRATION_CASE_NO_RE,
+    "CASE_REF",
+    1,
+    "Chinese arbitration case number",
     add,
   );
   applyRegex(
@@ -781,7 +1111,7 @@ function detectChineseDirectPatterns(
   // 8 chars allowed by REGULATORY_DOC_NO_RE.
   applyRegex(
     doc,
-    /[\u3400-\u9fff]{2,10}[〔［[][(]?(?:19|20)\d{2}[)）]?[〕］\]]\d{1,5}号/g,
+    /[\u3400-\u9fff]{2,30}[〔［[][(]?(?:19|20)\d{2}[)）]?[〕］\]]\d{1,5}号/g,
     "CASE_REF",
     1,
     "Chinese agency-prefixed bracketed case reference",
@@ -905,7 +1235,7 @@ function detectChineseLabelValues(
     doc,
     BANK_ACCOUNT_LABELS,
     "BANK_ACCOUNT",
-    3,
+    2,
     "Chinese bank account label",
     add,
     (v) => BANK_ACCOUNT_RE.test(v),
@@ -928,8 +1258,23 @@ function detectChineseLabelValues(
     2,
     "Chinese person label",
     add,
-    (v) => PERSON_RE.test(v),
-    splitChineseList,
+    (v) =>
+      PERSON_VALUE_RE.test(v) &&
+      !CHINESE_DEMOGRAPHIC_TERMS.has(v) &&
+      !CHINESE_ROLE_TERMS.has(v),
+    // Strip a trailing role/relation annotation (李建国（父亲）) per list item
+    // so the bare name validates; the annotation text stays readable in output.
+    // Strip a trailing role/relation annotation (李建国（父亲）) from each list
+    // item BEFORE cleanChineseValue would unbalance the parens, then apply the
+    // normal Chinese list splitter (handles 、, ，, ;, ／, and space-separated
+    // name lists). The annotation text stays readable in output.
+    (value) => {
+      const stripped = value
+        .split(/[、，,；;\/]/)
+        .map((part) => stripTrailingRoleAnnotation(part))
+        .join("、");
+      return splitChineseList(stripped);
+    },
   );
   applyLabelRules(
     doc,
@@ -1060,10 +1405,19 @@ function detectChineseLabelValues(
     doc,
     TAX_ID_LABELS,
     "BUSINESS_ID",
-    1,
-    "Chinese taxpayer / tax registration identifier label",
+    1, // light
+    "Chinese taxpayer identifier label",
     add,
     (v) => TAX_ID_RE.test(v),
+  );
+  applyLabelRules(
+    doc,
+    AMOUNT_LABELS,
+    "AMOUNT",
+    2, // balanced
+    "Chinese amount label",
+    add,
+    (v) => /\d/.test(v),
   );
 }
 
@@ -1207,6 +1561,48 @@ function isPlausibleAddressFragment(line: string): boolean {
   );
 }
 
+// Leading phrases that the strong-suffix org regex can sweep into a match when
+// the org name follows a verb-of-acquisition / connective in prose. These are
+// generic connective tails, not part of any entity name, so trimming them keeps
+// the org span tight without leaking the preceding sentence into the placeholder
+// (e.g. "可转换债券等方式收购北京聚利科技有限公司" -> "北京聚利科技有限公司").
+// Each entry must end on a boundary that an entity name would not start with.
+const ORG_LEADING_PROSE_RE =
+  /^(?:可?转换债券|公司债券|股权|现金|资产|增资|发行股份|股份|债券|等方式)?(?:等?(?:方式|形式|途径)?)?(?:收购|并购|重组|购买|受让|增持|入股|投资|取得|受让|划转|置换)+/;
+// Single-char particles / prepositions / conjunctions that glue directly to the
+// front of an org name in running prose (对…给予警告 / 与…签订 / 由…承担).
+const ORG_LEADING_PARTICLE_RE = /^(?:对|与|由|向|为|替|给|把|被|将|让|使|按|据|沿|顺)$/;
+
+function trimOrgLeadingProse(value: string): {
+  value: string;
+  trimmed: number;
+} {
+  let trimmed = 0;
+  // First pass: strip a verb-of-acquisition connective tail (greediest).
+  const proseMatch = value.match(ORG_LEADING_PROSE_RE);
+  if (proseMatch) {
+    trimmed = proseMatch[0].length;
+    value = value.slice(trimmed);
+  }
+  // Second pass: repeatedly strip leading single-char particles / punctuation
+  // so "对上海…" / "、北京…" / "，深圳…" collapse to the entity itself.
+  while (value.length > 0) {
+    const head = value[0] ?? "";
+    if (ORG_LEADING_PARTICLE_RE.test(head)) {
+      value = value.slice(1);
+      trimmed += 1;
+      continue;
+    }
+    if (/[\s,.;:()[\]{}<>"'“”‘’、，。；：（）《》【】、]/.test(head)) {
+      value = value.slice(1);
+      trimmed += 1;
+      continue;
+    }
+    break;
+  }
+  return { value, trimmed };
+}
+
 // Context-organization detection: redact organizations mentioned in prose via
 // a strong suffix, WITHOUT requiring a label. This closes the consistency gap
 // where the labeled mention of a vendor is redacted but its body-text mentions
@@ -1219,12 +1615,12 @@ function isPlausibleAddressFragment(line: string): boolean {
 function detectContextOrgs(doc: RedactionInput, add: AddCandidate): void {
   ORG_STRONG_SUFFIX_RE.lastIndex = 0;
   for (const match of doc.text.matchAll(ORG_STRONG_SUFFIX_RE)) {
-    const value = cleanChineseValue(match[1] ?? "");
-    const index =
+    const rawValue = match[1] ?? "";
+    const rawStart =
       (match.index ?? 0) +
-      (match[0].indexOf(match[1] ?? "") >= 0
-        ? match[0].indexOf(match[1] ?? "")
-        : 0);
+      (match[0].indexOf(rawValue) >= 0 ? match[0].indexOf(rawValue) : 0);
+    const { value, trimmed } = trimOrgLeadingProse(cleanChineseValue(rawValue));
+    const index = rawStart + trimmed;
     if (!isPlausibleContextOrg(value)) continue;
     if (isInsideBookTitle(doc.text, index)) continue;
     add(
@@ -1244,6 +1640,43 @@ function isPlausibleContextOrg(value: string): boolean {
   if (COMMON_NOUN_PREFIX_RE.test(value)) return false;
   const hanCount = (value.match(/[㐀-鿿]/g) ?? []).length;
   return hanCount >= 3;
+}
+
+// Ambiguous party-role labels (甲方/乙方/丙方/丁方) bind either an
+// organization (the common case in commercial contracts) or a person (the
+// worker on a 劳动合同). Classify by value shape:
+//   - short Han run (2-6 chars) with NO org suffix -> PERSON (worker/individual)
+//   - anything else plausibly org-shaped -> ORG
+// The first list item of a comma-spliced value is the decisive one, so a
+// person name followed by demographic fields (王丽娟，女，汉族) classifies PERSON.
+const PARTY_ROLE_LABELS = ["甲方", "乙方", "丙方", "丁方", "戊方", "己方"];
+const ORG_SUFFIX_HINT_RE = /(公司|集团|厂|银行|医院|大学|学院|中心|事务所|合作社|有限|股份|联社|商行|店|局|委员会|协会|基金会)$/;
+
+function detectPartyRoles(doc: RedactionInput, add: AddCandidate): void {
+  for (const label of PARTY_ROLE_LABELS) {
+    // Match the label, optional synonym parenthetical, a separator, then a
+    // value up to the next hard stop (same shape as applyLabelRules).
+    const labelRe = new RegExp(
+      label + "(?:\\s*[（(][^）)]*[）)])?\\s*[：:]\\s*([^\\n，,。；;]{1,80})",
+      "g",
+    );
+    for (const match of doc.text.matchAll(labelRe)) {
+      const firstItem = cleanChineseValue((match[1] ?? "").split(/[，,]/)[0] ?? "");
+      if (!firstItem) continue;
+      const index = (match.index ?? 0) + match[0].indexOf(firstItem);
+      // A short Han run with no org suffix looks like a person name (worker).
+      if (
+        PERSON_RE.test(firstItem) &&
+        !ORG_SUFFIX_HINT_RE.test(firstItem) &&
+        !CHINESE_DEMOGRAPHIC_TERMS.has(firstItem) &&
+        !CHINESE_ROLE_TERMS.has(firstItem)
+      ) {
+        add(firstItem, "PERSON", 2, "Chinese party role (individual)", doc.name, index);
+      } else if (isPlausibleOrg(firstItem)) {
+        add(firstItem, "ORG", 2, "Chinese party role (organization)", doc.name, index);
+      }
+    }
+  }
 }
 
 // Returns true if `index` sits inside an unmatched 《 … 》 book/statute title.
@@ -1451,15 +1884,16 @@ const HONORIFIC_NON_NAME = new Set([
 // "选举张三"). Real names never begin with these tokens.
 const HONORIFIC_NAME_BAD_PREFIX =
   /^(?:欢迎|感谢|提名|选举|聘任|任命|委派|委聘|介绍|邀请|请教|咨询|代表|主持|审查|关于|对于|通过|各位|大家|所有|这位|那位|每位|这些|那些)/;
-const HONORIFIC_RE = /([\u3400-\u9fff·]{2,4}?)(先生|女士|小姐)/g;
+const HONORIFIC_RE = /([\u3400-\u9fff·]{2,4}?|[A-Za-z \-'.]{2,40}?)(先生|女士|小姐)/g;
 function detectHonorificNames(doc: RedactionInput, add: AddCandidate): void {
   const text = doc.text;
   // Scan each honorific with a NON-GREEDY 2-4 Han name so the shortest name run
   // before the honorific is preferred (董事长李铁先生 -> "李铁"). Then clean and
   // anchor the result.
   for (const match of text.matchAll(HONORIFIC_RE)) {
-    let name = match[1] ?? "";
-    let nameStart = match.index ?? 0;
+    const origName = match[1] ?? "";
+    let name = origName.trim();
+    let nameStart = (match.index ?? 0) + origName.indexOf(name);
     // The honorific begins right after the captured name run.
     const honorificStart = nameStart + name.length;
     // 1. If the name absorbed a preceding verb/trigger (提名李四女士 ->
@@ -1482,7 +1916,8 @@ function detectHonorificNames(doc: RedactionInput, add: AddCandidate): void {
       nameStart = snapped;
       name = text.slice(nameStart, honorificStart);
     }
-    if (name.length < 2 || name.length > 4) continue;
+    const isHan = /[\u3400-\u9fff]/.test(name);
+    if (name.length < 2 || (isHan ? name.length > 4 : name.length > 40)) continue;
     if (HONORIFIC_NON_NAME.has(name)) continue;
     if (SIGNATURE_NON_NAME.has(name)) continue;
     if (HONORIFIC_NAME_BAD_PREFIX.test(name)) continue;
@@ -1537,6 +1972,14 @@ const HONORIFIC_TRIGGER_AT_END_RE = new RegExp(
     .join("|")})$`,
 );
 
+// Strip a trailing inline role/relation annotation so a labeled person value
+// like "李建国（父亲）" or "王丽娟（经理）" validates as a plain name. Only a
+// single trailing parenthetical that follows the name directly is stripped;
+// mid-value parentheticals (legal-party notes) are left intact for the splitter.
+function stripTrailingRoleAnnotation(value: string): string {
+  return value.replace(/[（(][^（）()]*[）)]\s*$/, "").trim();
+}
+
 function applyLabelRules(
   doc: RedactionInput,
   labels: string[],
@@ -1585,7 +2028,11 @@ function splitChineseList(value: string): string[] {
 }
 
 function isPlausibleContextPerson(value: string): boolean {
-  return PERSON_RE.test(value) && !CHINESE_ROLE_TERMS.has(value);
+  return (
+    PERSON_RE.test(value) &&
+    !CHINESE_ROLE_TERMS.has(value) &&
+    !CHINESE_DEMOGRAPHIC_TERMS.has(value)
+  );
 }
 
 function isPlausibleOrg(value: string): boolean {
@@ -1596,7 +2043,7 @@ function isPlausibleAddress(value: string): boolean {
   return (
     value.length >= 4 &&
     value.length <= 80 &&
-    ADDRESS_SUFFIX_RE.test(value) &&
+    (ADDRESS_SUFFIX_RE.test(value) || /[A-Za-z]{3,}/.test(value)) &&
     !isPlaceholder(value)
   );
 }
@@ -1672,6 +2119,7 @@ function isPlausibleRefValue(value: string): boolean {
   return (
     PROJECT_REF_RE.test(value) ||
     /[（(]\d{4}[)）][\u3400-\u9fff]{0,8}\d{0,6}号/.test(value) ||
-    /[\u3400-\u9fff]{1,8}[〔［[]\d{4}[〕］\]]\d{1,5}号/.test(value)
+    /[\u3400-\u9fff]{1,8}[〔［[]\d{4}[〕］\]]\d{1,5}号/.test(value) ||
+    /[\u3400-\u9fff]{2,8}【\d{4}】(?:第?\d{1,6}(?:-\d{1,4})?)号/.test(value)
   );
 }

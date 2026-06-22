@@ -3611,11 +3611,18 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("CASE_REF_");
   });
 
-  it("redacts Chinese bank account labels only at heavy level", () => {
+  it("redacts Chinese bank account labels at balanced level when account-shaped", () => {
+    // Label-bound 16-19 digit bank card numbers are redacted at balanced.
     const balancedOutput = redact("账号：9999999999999999999", "balanced");
 
-    expect(balancedOutput).toContain("账号：9999999999999999999");
-    expect(balancedOutput).not.toContain("BANK_ACCOUNT_");
+    expect(balancedOutput).not.toContain("9999999999999999999");
+    expect(balancedOutput).toContain("账号：");
+    expect(balancedOutput).toContain("BANK_ACCOUNT_");
+
+    // A too-short run (not account-shaped) stays readable at balanced.
+    const shortOutput = redact("账号：12345", "balanced");
+    expect(shortOutput).toContain("账号：12345");
+    expect(shortOutput).not.toContain("BANK_ACCOUNT_");
 
     const heavyOutput = redact("账号：9999999999999999999", "heavy");
 
@@ -5689,6 +5696,526 @@ The parcel sits in Cedar Park, TX (US).`,
     );
     expect(output).toContain("Compliance Department");
     expect(output).not.toContain("compliance@example.org");
+  });
+  it("redacts Chinese procurement amount and contact labels", () => {
+    const output = redact(
+      [
+        "采购人联系方式：010-12345678",
+        "供应商联系方式：13812345678",
+        "采购人地址：北京市海淀区中关村大街1号",
+        "合同总金额（单位万元）：79.1",
+        "中标供应商统一社会信用代码：91110000123456789X",
+      ].join("\n"),
+    );
+    expect(output).not.toContain("010-12345678");
+    expect(output).not.toContain("13812345678");
+    expect(output).not.toContain("北京市海淀区中关村大街1号");
+    expect(output).not.toContain("79.1");
+    expect(output).not.toContain("91110000123456789X");
+    expect(output).toContain("采购人联系方式");
+    expect(output).toContain("供应商联系方式");
+    expect(output).toContain("采购人地址");
+    expect(output).toContain("合同总金额");
+    expect(output).toContain("中标供应商统一社会信用代码");
+  });
+
+  // Loop 15 — CSRC Penalty Decisions
+  it("redacts long agency-prefixed case references, bracketed org suffixes, and infers org aliases", () => {
+    const output = redact(
+      [
+        "中国证券监督管理委员会上海监管局行政处罚决定书沪〔2025〕32号",
+        "当事人：大华会计师事务所（特殊普通合伙），统一社会信用代码：91110108590676050Q，住所：北京市海淀区西四环中路16号院7号楼1101。",
+        "依据《中华人民共和国证券法》（以下简称《证券法》）的有关规定，我局对大华会计师事务所执行的A公司2023年年度审计未勤勉尽责一案进行了立案调查。",
+        "当事人：李四，男，1980年1月1日出生。",
+        "李四利用未公开信息交易股票。",
+      ].join("\n"),
+    );
+
+    // Case reference with long agency prefix
+    expect(output).not.toContain("中国证券监督管理委员会上海监管局行政处罚决定书沪〔2025〕32号");
+
+    // ORG with bracketed suffix
+    expect(output).not.toContain("大华会计师事务所（特殊普通合伙）");
+    expect(output).not.toContain("大华会计师事务所"); // Alias redaction
+
+    // Identifiers
+    expect(output).not.toContain("91110108590676050Q");
+    expect(output).not.toContain("北京市海淀区西四环中路16号院");
+
+    // Person extraction from "当事人" and alias replacement
+    expect(output).not.toContain("1980年1月1日出生");
+    expect(output).not.toContain("李四");
+  });
+
+  // Loop 16 — SAMR Penalties & Multiple Respondents
+  it("infers Chinese address prefix aliases to redact partial addresses in prose", () => {
+    const output = redact(
+      [
+        "住所（住址）：北京市朝阳区建国路88号院1号楼10层1101",
+        "我局执法人员对北京某某科技有限公司位于北京市朝阳区建国路88号院1号楼的经营场所进行现场检查。",
+      ].join("\n"),
+    );
+
+    // The full labeled address is redacted
+    expect(output).not.toContain("北京市朝阳区建国路88号院1号楼10层1101");
+
+    // The unlabeled prefix in prose is also redacted
+    expect(output).not.toContain("北京市朝阳区建国路88号院1号楼");
+
+    // Check that we didn't wipe out innocent prose
+    expect(output).toContain("我局执法人员对北京某某科技有限公司位于");
+    expect(output).toContain("的经营场所进行现场检查。");
+  });
+
+  // Loop 17 — Hong Kong & Traditional Chinese
+  it("redacts Traditional Chinese addresses, org aliases, and roles", () => {
+    const output = redact(
+      [
+        "騰訊控股有限公司（於開曼群島註冊成立的有限公司）董事會宣佈以下變更：",
+        "李嘉誠先生辭任本公司獨立非執行董事，自2026年6月21日起生效。",
+        "通訊地址：香港銅鑼灣時代廣場辦公大樓1座29樓",
+        "傳真：+852 2810 1235",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("騰訊控股有限公司");
+    expect(output).not.toContain("李嘉誠");
+    expect(output).not.toContain("香港銅鑼灣時代廣場辦公大樓1座29樓");
+    expect(output).not.toContain("+852 2810 1235");
+
+    expect(output).toContain("董事會宣佈以下變更：");
+    expect(output).toContain("先生辭任本公司獨立非執行董事");
+  });
+
+  // Loop 18 — International/Traditional Chinese Mix
+  it("redacts foreign names and addresses in Chinese contexts", () => {
+    const output = redact(
+      [
+        "本公司董事會宣佈，Miuccia Prada Bianchi 女士與 Patrizio Bertelli 先生繼續擔任聯席行政總裁。",
+        "註冊地址：Via Antonio Fogazzaro, 28, 20135 Milan, Italy",
+        "香港主要營業地點：香港中環皇后大道中15號置地廣場公爵大廈36樓",
+        "公司秘書：Jane Doe 女士",
+        "授權代表：John Smith 先生",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("Miuccia Prada Bianchi");
+    expect(output).not.toContain("Patrizio Bertelli");
+    expect(output).not.toContain("Via Antonio Fogazzaro, 28, 20135 Milan, Italy");
+    expect(output).not.toContain("香港中環皇后大道中15號置地廣場公爵大廈36樓");
+    expect(output).not.toContain("Jane Doe");
+    expect(output).not.toContain("John Smith");
+
+    // The honorifics and labels should remain
+    expect(output).toContain("女士與");
+    expect(output).toContain("先生繼續擔任聯席行政總裁");
+    expect(output).toContain("註冊地址：");
+    expect(output).toContain("香港主要營業地點：");
+    expect(output).toContain("公司秘書：");
+    expect(output).toContain("授權代表：");
+  });
+
+  // Loop 19 — Synthetic Consolidation
+  it("redacts complex mixed Chinese aliases with multi-character address suffixes", () => {
+    const output = redact(
+      [
+        "主要營業地點：北京市海淀区中关村大街27号中关村大厦10层",
+        "同時，北京市海淀区中关村大街27号中关村大厦的辦公室也參與了此事。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("北京市海淀区中关村大街27号中关村大厦10层");
+    expect(output).not.toContain("北京市海淀区中关村大街27号中关村大厦");
+
+    // Check that we didn't wipe out innocent prose
+    expect(output).toContain("同時，");
+    expect(output).toContain("的辦公室也參與了此事。");
+  });
+
+  // ----------------------------------------------------------------------
+  // Round 20 — arbitration/court case refs with 【】 brackets, ORG prefix
+  // trimming, Chinese-numeral RMB amounts, and ethnicity-label guard.
+  // All values invented; patterns drawn from public labor-arbitration awards
+  // and regulatory decisions.
+  // ----------------------------------------------------------------------
+
+  it("redacts Chinese case refs using full-width 【】 brackets (arbitration/labour awards)", () => {
+    const output = redact(
+      [
+        "深劳人仲案【2022】8836号。",
+        "京海劳仲【2025】第1024号裁决书。",
+        "沪一仲案【2026】0512-001号。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("深劳人仲案【2022】8836号");
+    expect(output).not.toContain("京海劳仲【2025】第1024号");
+    expect(output).not.toContain("沪一仲案【2026】0512-001号");
+    expect(output).toContain("CASE_REF_");
+    // Surrounding prose stays readable.
+    expect(output).toContain("。");
+    expect(output).toContain("裁决书");
+  });
+
+  it("keeps ordinary 【】 prose readable (footnotes/glossaries, not case refs)", () => {
+    const output = redact("注释【2022】说明此为示例段落。");
+
+    expect(output).toContain("注释【2022】说明此为示例段落。");
+    expect(output).not.toContain("CASE_REF_");
+  });
+
+  it("trims leading verb/preposition prefixes from context organization matches", () => {
+    const output = redact(
+      [
+        // A verb phrase precedes the org name; only the org should be replaced.
+        "华铭智能通过发行股份、可转换债券等方式收购北京聚利科技有限公司股权。",
+        // A single-char preposition precedes the org name.
+        "对上海华铭智能终端设备股份有限公司给予警告。",
+      ].join("\n"),
+    );
+
+    // Org names gone.
+    expect(output).not.toContain("北京聚利科技有限公司");
+    expect(output).not.toContain("上海华铭智能终端设备股份有限公司");
+    expect(output).toContain("ORG_");
+    // Generic leading prose must NOT be swept into the org placeholder:
+    // the acquisition verb phrase and preposition stay readable.
+    expect(output).toContain("收购");
+    expect(output).toContain("股权");
+    expect(output).toContain("给予警告");
+    expect(output).not.toContain("收购北京");
+    expect(output).not.toContain("对上海");
+  });
+
+  it("redacts Chinese-numeral RMB amounts (一百五十万元 / 伍万捌仟元)", () => {
+    const output = redact(
+      [
+        "处以一百五十万元罚款。",
+        "支付赔偿金人民币伍万捌仟元整。",
+        "违法所得共计贰佰叁拾万元。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("一百五十万元");
+    expect(output).not.toContain("伍万捌仟元");
+    expect(output).not.toContain("贰佰叁拾万元");
+    expect(output).toContain("AMOUNT_");
+    expect(output).toContain("罚款");
+    expect(output).toContain("赔偿金");
+    // Surrounding prose stays readable; 人民币 prefix may travel with the
+    // amount span, which is acceptable and consistent with Arabic-digit form.
+    expect(output).toContain("支付赔偿金");
+    expect(output).toContain("违法所得共计");
+  });
+
+  it("does not redact ethnicity/gender labels (汉族/女) leaked from party blocks", () => {
+    const output = redact(
+      "被申请人：李某某，女，汉族，住址：广东省深圳市罗湖区人民南路99号。",
+    );
+
+    // Name and address redacted; generic demographics stay readable.
+    expect(output).not.toContain("李某某");
+    expect(output).not.toContain("广东省深圳市罗湖区人民南路99号");
+    expect(output).toContain("汉族");
+    expect(output).toContain("女");
+  });
+
+  // ----------------------------------------------------------------------
+  // Round 21 — insurance claim / social-security documents. Labels for claim
+  // numbers, insurance parties, citizen IDs, and benefit-disbursement bank
+  // accounts. All values invented; checksums hand-verified.
+  // ----------------------------------------------------------------------
+
+  it("redacts insurance claim and policy reference labels as CASE_REF", () => {
+    const output = redact(
+      [
+        "赔案编号：CL-2026-0512-0034567。",
+        "赔案号：CLM20260512ABC。",
+        "保单号：PA-2023-000123456789。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("CL-2026-0512-0034567");
+    expect(output).not.toContain("CLM20260512ABC");
+    expect(output).not.toContain("PA-2023-000123456789");
+    expect(output).toContain("CASE_REF_");
+    // Must NOT be misclassified as a phone (the 0512-0034567 substring looks
+    // phone-shaped).
+    expect(output).not.toContain("PHONE_");
+  });
+
+  it("redacts insurance party person labels (投保人/被保险人/受益人/户名)", () => {
+    const output = redact(
+      [
+        "投保人：陈建国，身份证号码：320583199003152627。",
+        "被保险人：李慧敏。",
+        "受益人：李慧敏。",
+        "户名：李慧敏",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("陈建国");
+    expect(output).not.toContain("李慧敏");
+    expect(output).toContain("PERSON_");
+    // Label text stays readable.
+    expect(output).toContain("投保人：");
+    expect(output).toContain("被保险人：");
+    expect(output).toContain("受益人：");
+    expect(output).toContain("户名：");
+  });
+
+  it("redacts 公民身份号码 and 居民身份证号 labels as NATIONAL_ID", () => {
+    const output = redact(
+      "参保人员：王建华，男，公民身份号码：110101196503072817。",
+    );
+
+    expect(output).not.toContain("110101196503072817");
+    expect(output).toContain("NATIONAL_ID_");
+    expect(output).toContain("公民身份号码：");
+  });
+
+  it("redacts bank account under 待遇发放账号 / 银行账号 labels at balanced level", () => {
+    const output = redact(
+      [
+        "银行账号：6222021102071953264。",
+        "待遇发放账号：6217001234567890123。",
+        "收款账号：6228480402564890018。",
+      ].join("\n"),
+      "balanced",
+    );
+
+    expect(output).not.toContain("6222021102071953264");
+    expect(output).not.toContain("6217001234567890123");
+    expect(output).not.toContain("6228480402564890018");
+    expect(output).toContain("BANK_ACCOUNT_");
+  });
+
+  it("keeps short digit runs under account labels readable when not account-shaped", () => {
+    const output = redact("待遇发放账号：12345。", "balanced");
+
+    // A 5-digit run is not a plausible bank account; the label stays but the
+    // value is not promoted to BANK_ACCOUNT at balanced level.
+    expect(output).toContain("待遇发放账号：12345。");
+    expect(output).not.toContain("BANK_ACCOUNT_");
+  });
+
+  // ----------------------------------------------------------------------
+  // Round 22 — healthcare / medical records. Labels for hospital admission
+  // and outpatient numbers, physician role labels, and birth-certificate
+  // reference numbers. All values invented.
+  // ----------------------------------------------------------------------
+
+  it("redacts hospital admission/outpatient numbers as CASE_REF (not BANK_ACCOUNT)", () => {
+    const output = redact(
+      [
+        "住院号：ZH202605000123。",
+        "门诊号：MZ2026-05012。",
+        "病案号：BA20260500001。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("ZH202605000123");
+    expect(output).not.toContain("MZ2026-05012");
+    expect(output).not.toContain("BA20260500001");
+    expect(output).toContain("CASE_REF_");
+    // Must NOT be misclassified as a bank account.
+    expect(output).not.toContain("BANK_ACCOUNT_");
+  });
+
+  it("redacts physician role labels (主治医师/住院医师/签发医师/经治医师)", () => {
+    const output = redact(
+      [
+        "主治医师：刘明远。",
+        "住院医师：孙小燕。",
+        "签发医师：赵慧芳。",
+        "经治医师：周建国。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("刘明远");
+    expect(output).not.toContain("孙小燕");
+    expect(output).not.toContain("赵慧芳");
+    expect(output).not.toContain("周建国");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("主治医师：");
+    expect(output).toContain("住院医师：");
+    expect(output).toContain("签发医师：");
+    expect(output).toContain("经治医师：");
+  });
+
+  it("redacts birth-certificate and document reference labels as CASE_REF", () => {
+    const output = redact(
+      [
+        "出生证编号：O2026 0512 0034。",
+        "出生医学证明编号：W202605120001。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("O2026 0512 0034");
+    expect(output).not.toContain("W202605120001");
+    expect(output).toContain("CASE_REF_");
+    // Must NOT be misclassified as a phone (the 0512-0034 substring is
+    // phone-shaped).
+    expect(output).not.toContain("PHONE_");
+  });
+
+  it("keeps medical clinical percentages readable (coronary stenosis finding)", () => {
+    // A percentage that follows a clinical narrowing/stenosis noun is a
+    // clinical finding, not a financial amount, and must stay readable.
+    const output = redact("冠脉造影提示前降支中段狭窄85%。");
+
+    expect(output).toContain("狭窄85%");
+    expect(output).not.toContain("AMOUNT");
+  });
+
+  // ----------------------------------------------------------------------
+  // Round 23 — real-estate lease & VAT invoice documents. Labels for invoice
+  // codes/numbers, verification codes, and invoice signer roles; bare
+  // account-number adjacency after 户名/账号; Chinese-numeral 角/分 fractions.
+  // All values invented.
+  // ----------------------------------------------------------------------
+
+  it("redacts VAT invoice code/number/verification labels as CASE_REF (not PHONE)", () => {
+    const output = redact(
+      [
+        "发票代码：031001800111。",
+        "发票号码：25605123。",
+        "校验码：03100180011156782345678901234。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("03100180011156782345678901234");
+    expect(output).not.toContain("031001800111");
+    expect(output).not.toContain("25605123");
+    expect(output).toContain("CASE_REF_");
+    expect(output).not.toContain("PHONE_");
+  });
+
+  it("redacts VAT invoice signer role labels (收款人/复核/开票人/开票员)", () => {
+    const output = redact(
+      [
+        "收款人：张敏。",
+        "复核：刘洋。",
+        "开票人：陈静。",
+        "开票员：周建华。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("张敏");
+    expect(output).not.toContain("刘洋");
+    expect(output).not.toContain("陈静");
+    expect(output).not.toContain("周建华");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("收款人：");
+    expect(output).toContain("复核：");
+    expect(output).toContain("开票人：");
+  });
+
+  it("redacts Chinese-numeral amounts including 角/分 fractional units", () => {
+    const output = redact(
+      [
+        "金额壹拾玖万贰仟肆佰玖拾玖元叁角柒分。",
+        "税额壹万壹仟肆佰陆拾元陆角叁分。",
+        "小写：人民币壹佰贰拾元伍角整。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("壹拾玖万贰仟肆佰玖拾玖元");
+    expect(output).not.toContain("壹万壹仟肆佰陆拾元");
+    expect(output).not.toContain("壹佰贰拾元");
+    // Fractional 角/分 / 整 must travel inside the amount placeholder rather
+    // than leak after it.
+    expect(output).not.toContain("叁角");
+    expect(output).not.toContain("陆角");
+    expect(output).toContain("AMOUNT_");
+  });
+
+  it("redacts bank account adjacent to 户名 label without a colon separator", () => {
+    const output = redact(
+      [
+        "户名李建华，账号6217001234567890123。",
+        "户名：王丽娟，账号6225880123456789。",
+      ].join("\n"),
+      "balanced",
+    );
+
+    expect(output).not.toContain("6217001234567890123");
+    expect(output).not.toContain("6225880123456789");
+    expect(output).toContain("BANK_ACCOUNT_");
+  });
+
+  // ----------------------------------------------------------------------
+  // Round 24 — employment contracts & HR onboarding forms. Labels for
+  // employee/worker parties, emergency contacts, family relations, and HR
+  // handler roles; employee-number reference label. All values invented.
+  // ----------------------------------------------------------------------
+
+  it("redacts employment party labels (劳动者/用人单位员工/乙方签字)", () => {
+    const output = redact(
+      [
+        "劳动者（乙方）：王丽娟，女，汉族。",
+        "乙方（签字）：王丽娟",
+        "用人单位（甲方）：北京某某科技有限公司。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("王丽娟");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("ORG_");
+    // Generic 汉族 demographic stays readable.
+    expect(output).toContain("汉族");
+  });
+
+  it("redacts emergency-contact and HR handler labels (紧急联系人/人事经办)", () => {
+    const output = redact(
+      [
+        "紧急联系人：李建国（父亲），联系电话：13805120001。",
+        "人事经办：孙小燕。",
+        "经办人：周海涛。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("李建国");
+    expect(output).not.toContain("孙小燕");
+    expect(output).not.toContain("周海涛");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("紧急联系人：");
+  });
+
+  it("redacts family-relation labels (父亲/母亲/配偶/子女) as PERSON", () => {
+    const output = redact(
+      [
+        "父亲：刘国强，1958年出生，退休。",
+        "母亲：周丽萍，1960年出生，退休。",
+        "配偶：陈志芳，1990年出生。",
+        "子女：刘小明，2018年出生。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("刘国强");
+    expect(output).not.toContain("周丽萍");
+    expect(output).not.toContain("陈志芳");
+    expect(output).not.toContain("刘小明");
+    expect(output).toContain("PERSON_");
+    // Birth years stay readable (counterexample for date over-redaction).
+    expect(output).toContain("1958年出生");
+    expect(output).toContain("退休");
+  });
+
+  it("redacts employee number label (员工编号) as CASE_REF (not PHONE)", () => {
+    const output = redact(
+      [
+        "员工编号：EMP-2026-0512-008。",
+        "员工号：E20260512008。",
+        "工号：G0512008。",
+      ].join("\n"),
+    );
+
+    expect(output).not.toContain("EMP-2026-0512-008");
+    expect(output).not.toContain("E20260512008");
+    expect(output).not.toContain("G0512008");
+    expect(output).toContain("CASE_REF_");
+    expect(output).not.toContain("PHONE_");
   });
 });
 

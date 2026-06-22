@@ -261,6 +261,13 @@ const REGULATOR_NUMBER_SPLIT_RE = /^\d{1,4}[\s-]\d{1,4}$/;
 const REGULATOR_NUMBER_LABEL_RE =
   /\b(?:File|Docket|Matter|Case|Charge|Claim|Reference)\s+Nos?\b\.?\s*[:#]?\s*$/i;
 
+// Chinese document-reference labels that bind a following digit run as a
+// CASE_REF, not a PHONE. When a phone-shaped run directly follows one of these
+// labels (发票代码：031001800111 / 校验码：25605123), the label-bound CASE_REF
+// detector owns it and the bare PHONE candidate is skipped.
+const CHINESE_REF_LABEL_BEFORE_PHONE_RE =
+  /(?:发票代码|发票号码|发票号|校验码|流水号|凭证号|订单号|运单号|保单号|住院号|门诊号|病案号|病历号|出生证编号|员工编号|员工号|工号|人员编号)\s*[：:#]\s*$/;
+
 // Priority used to pick a single kind when the same exact surface string is
 // detected under multiple kinds (lower wins). Keeps replacement tokens consistent.
 const KIND_PRIORITY: Record<CandidateKind, number> = {
@@ -293,6 +300,41 @@ const KIND_PRIORITY: Record<CandidateKind, number> = {
   PERSON: 26,
   PROPER_NOUN: 27,
 };
+
+// ISO 13616 IBAN country codes that issue IBANs today (SEPA + ROW). A
+// 2-letter Latin prefix NOT in this set cannot be an IBAN, so internal
+// document numbers such as Chinese hospital codes (ZH202605000123) and
+// tracking IDs (MZ2026-05012) are not misclassified as bank accounts.
+const IBAN_COUNTRY_CODES = new Set([
+  "AL", "AD", "AT", "AZ", "BH", "BY", "BE", "BA", "BR", "BG", "CR", "HR",
+  "CY", "CZ", "DK", "DO", "EG", "SV", "EE", "FI", "FR", "GE", "DE", "GI",
+  "GR", "GL", "GT", "HU", "IS", "IQ", "IE", "IL", "IT", "JO", "KZ", "XK",
+  "KW", "LV", "LB", "LI", "LT", "LU", "LY", "MK", "MT", "MR", "MU", "MD",
+  "MC", "ME", "MA", "NL", "NO", "PK", "PS", "PL", "PT", "QA", "RO", "RU",
+  "SM", "SA", "RS", "SK", "SI", "ES", "SE", "CH", "TL", "TN", "TR", "UA",
+  "AE", "GB", "VA", "VG",
+]);
+
+// ISO 13616 MOD-97 IBAN check. Rearranges the country-code + check digits +
+// BBAN to the numeric form (letters → 10..35), then verifies the remainder.
+// Returns false for any value that is not structurally an IBAN (length, chars,
+// country code) or whose check digits fail MOD-97.
+function isValidIban(value: string): boolean {
+  const iban = value.replace(/\s+/g, "").toUpperCase();
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban)) return false;
+  if (!IBAN_COUNTRY_CODES.has(iban.slice(0, 2))) return false;
+  const rearranged = iban.slice(4) + iban.slice(0, 4);
+  let decimal = "";
+  for (const ch of rearranged) {
+    decimal += ch >= "A" && ch <= "Z" ? String(ch.charCodeAt(0) - 55) : ch;
+  }
+  // Big-integer MOD-97 via running remainder (safe without BigInt).
+  let remainder = 0;
+  for (const digit of decimal) {
+    remainder = (remainder * 10 + Number(digit)) % 97;
+  }
+  return remainder === 1;
+}
 
 type DetectorConfig = {
   customTerms?: string[];
@@ -560,6 +602,8 @@ export class Detector {
       this.detectCustomTerms(doc);
     }
     this.addPersonAliases();
+    this.addOrgAliases();
+    this.addChineseAddressAliases();
     this.finalizeCandidates();
     return [...this.candidates.values()].sort(
       (a, b) =>
@@ -1821,6 +1865,28 @@ export class Detector {
         if (kind === "PHONE" && REGULATOR_NUMBER_SPLIT_RE.test(value)) {
           const before = doc.text.slice(Math.max(0, pos - 30), pos);
           if (REGULATOR_NUMBER_LABEL_RE.test(before)) continue;
+        }
+        // A phone-shaped digit run that directly follows a Chinese document
+        // reference label is a CASE_REF owned by the label-bound detector, not
+        // a phone (发票代码：031001800111 / 校验码：25605123).
+        if (kind === "PHONE") {
+          const before = doc.text.slice(Math.max(0, pos - 24), pos);
+          if (CHINESE_REF_LABEL_BEFORE_PHONE_RE.test(before)) continue;
+        }
+        // IBAN must pass MOD-97 and carry an issuing country code; otherwise
+        // the shape ([A-Z]{2}\d{2}…) catches Chinese hospital admission codes,
+        // tracking IDs, and other 2-letter-prefixed reference numbers.
+        if (kind === "BANK_ACCOUNT" && reason === "IBAN") {
+          if (!isValidIban(value)) continue;
+        }
+        // A percentage that directly follows a clinical narrowing / stenosis /
+        // fraction noun (Chinese 狭窄85% / 阻塞70% / 射血分数45%) is a medical
+        // finding, not a financial amount. Keep it readable.
+        if (kind === "AMOUNT" && reason === "percentage") {
+          const before = doc.text.slice(Math.max(0, pos - 12), pos);
+          if (/(?:狭窄|阻塞|梗阻|钙化|闭塞|狭窄度|阻塞度|射血分数|阻塞比例)$/.test(before)) {
+            continue;
+          }
         }
         this.add(value, kind, level, reason, doc.name, pos);
       }
@@ -3982,6 +4048,75 @@ export class Detector {
             doc.name,
             match.index ?? 0,
           );
+      }
+    }
+  }
+
+  private addOrgAliases(): void {
+    const orgs = new Set<string>();
+    for (const candidate of this.candidates.values()) {
+      if (candidate.kind !== "ORG") continue;
+      orgs.add(candidate.value);
+    }
+    for (const doc of this.docs) {
+      for (const org of orgs) {
+        const match = org.match(/^(.+?)\s*[(（]/);
+        if (!match || match[1].length < 2) continue;
+        const alias = match[1];
+        if (alias === org) continue;
+
+        const re = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(alias)}(?![A-Za-z0-9])`, "g");
+        for (const m of doc.text.matchAll(re)) {
+          const original = this.candidates.get(this.key("ORG", org));
+          this.add(
+            alias,
+            "ORG",
+            original ? original.minLevel : 2,
+            "organization bracket alias",
+            doc.name,
+            m.index ?? 0,
+          );
+        }
+      }
+    }
+  }
+
+  private addChineseAddressAliases(): void {
+    const addresses = new Set<string>();
+    for (const candidate of this.candidates.values()) {
+      if (candidate.kind !== "ADDRESS") continue;
+      if (!/[\u3400-\u9fff]/.test(candidate.value)) continue;
+      addresses.add(candidate.value);
+    }
+    const suffixes = ["号", "楼", "层", "室", "院", "路", "街", "道", "號", "樓", "層", "區", "鎮", "鄉", "縣", "棟", "大厦", "大廈", "广场", "廣場", "园区", "園區"];
+    for (const doc of this.docs) {
+      for (const addr of addresses) {
+        const prefixes = [];
+        for (let i = 6; i < addr.length; i++) {
+          const prefix = addr.slice(0, i);
+          if (suffixes.some((s) => prefix.endsWith(s)) && /\d/.test(prefix)) {
+            prefixes.push(prefix);
+          }
+        }
+        prefixes.sort((a, b) => b.length - a.length);
+
+        for (const prefix of prefixes) {
+          if (prefix === addr) continue;
+          let searchPos = 0;
+          let idx;
+          while ((idx = doc.text.indexOf(prefix, searchPos)) !== -1) {
+            const original = this.candidates.get(this.key("ADDRESS", addr));
+            this.add(
+              prefix,
+              "ADDRESS",
+              original ? original.minLevel : 2,
+              "Chinese address prefix alias",
+              doc.name,
+              idx,
+            );
+            searchPos = idx + prefix.length;
+          }
+        }
       }
     }
   }
