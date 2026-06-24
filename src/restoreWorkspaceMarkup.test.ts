@@ -15,4 +15,10 @@ describe("restore workspace markup", () => {
     expect(mainSource).toContain("Restored Draft");
     expect(mainSource).toContain("Restore Map");
   });
+
+  it("tracks restore outputs and selected restore output", () => {
+    expect(mainSource).toContain("restoreOutputs: RestoreOutput[];");
+    expect(mainSource).toContain("selectedRestoreOutputId: string | null;");
+    expect(mainSource).toContain("restoreKey: RestoreKey | null;");
+  });
 });

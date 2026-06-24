@@ -23,6 +23,14 @@ import {
   ENGINE_VERSION_LABEL,
   GENERAL_RULES_VERSION,
 } from "./redactor/version";
+import {
+  RestoreKey,
+  RestoreOutput,
+  buildRestoreKey,
+  parseRestoreKey,
+  restorePastedText,
+  scanRestoreMatches,
+} from "./restore";
 import projectCatalog from "./data/public-project-catalog.json";
 import packageMeta from "../package.json";
 
@@ -79,6 +87,11 @@ interface AppState {
   busy: boolean;
   /** Entry id currently shown in the preview popover. */
   selectedEntryId: string | null;
+  restoreKey: RestoreKey | null;
+  restoreKeySource: "session" | "imported" | null;
+  restoreOutputs: RestoreOutput[];
+  selectedRestoreOutputId: string | null;
+  showRedactedRestoreInput: boolean;
   showOriginalPreview: boolean;
   showPreviewSearch: boolean;
   changelogExpanded: boolean;
@@ -106,6 +119,11 @@ const state: AppState = {
   redactionsCollapsed: false,
   busy: false,
   selectedEntryId: null,
+  restoreKey: null,
+  restoreKeySource: null,
+  restoreOutputs: [],
+  selectedRestoreOutputId: null,
+  showRedactedRestoreInput: false,
   showOriginalPreview: false,
   showPreviewSearch: false,
   changelogExpanded: false,
@@ -2258,6 +2276,26 @@ function selectedReviewDoc() {
   if (!loaded) return undefined;
   const index = state.documents.findIndex((doc) => doc.id === loaded.id);
   return state.review.documents[index];
+}
+
+function selectedRestoreOutput(): RestoreOutput | undefined {
+  return state.restoreOutputs.find(
+    (output) => output.id === state.selectedRestoreOutputId,
+  );
+}
+
+function ensureSelectedRestoreOutput(): void {
+  if (state.restoreOutputs.length === 0) {
+    state.selectedRestoreOutputId = null;
+    return;
+  }
+  if (
+    !state.restoreOutputs.some(
+      (output) => output.id === state.selectedRestoreOutputId,
+    )
+  ) {
+    state.selectedRestoreOutputId = state.restoreOutputs[0].id;
+  }
 }
 
 function renderFiles(): void {
