@@ -1911,6 +1911,7 @@ function recompute(): void {
     state.review = null;
     state.entries = [];
     state.removedEntryIds.clear();
+    syncSessionRestoreKey();
     return;
   }
   const inputs = state.documents.map((doc) => ({
@@ -1924,6 +1925,24 @@ function recompute(): void {
   });
   state.review = result;
   state.entries = result.entries;
+  syncSessionRestoreKey();
+}
+
+function syncSessionRestoreKey(): void {
+  if (!state.review) {
+    if (state.restoreKeySource !== "imported") {
+      state.restoreKey = null;
+      state.restoreKeySource = null;
+    }
+    return;
+  }
+  state.restoreKey = buildRestoreKey({
+    appVersion: APP_VERSION,
+    engineVersion: state.review.engineVersion,
+    level: state.level,
+    entries: state.review.entries,
+  });
+  state.restoreKeySource = "session";
 }
 
 /* ----------------------------- Actions ----------------------------- */
