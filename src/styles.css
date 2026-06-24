@@ -426,6 +426,21 @@ h2 {
   color: var(--color-text-main);
 }
 
+.restore-output-actions {
+  padding: 10px 10px 6px;
+}
+
+.restore-new-output {
+  width: 100%;
+  justify-content: center;
+}
+
+.restore-output-status {
+  margin-left: auto;
+  font-size: 0.68rem;
+  text-transform: none;
+}
+
 .info-page-active {
   min-height: 100vh;
   height: auto;

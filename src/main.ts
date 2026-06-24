@@ -2379,23 +2379,103 @@ function ensureSelectedRestoreOutput(): void {
   }
 }
 
+function createRestoreOutput(text = ""): RestoreOutput {
+  const now = new Date().toISOString();
+  const nextNumber = state.restoreOutputs.length + 1;
+  return {
+    id: `restore-${crypto.randomUUID()}`,
+    title: `AI Output ${String(nextNumber).padStart(3, "0")}`,
+    redactedInput: text,
+    restoredDraft: state.restoreKey ? restorePastedText(text, state.restoreKey) : text,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function addRestoreOutput(text = ""): void {
+  const output = createRestoreOutput(text);
+  state.restoreOutputs.push(output);
+  state.selectedRestoreOutputId = output.id;
+  renderRestoreWorkspace();
+}
+
+function selectRestoreOutput(id: string): void {
+  if (!state.restoreOutputs.some((output) => output.id === id)) return;
+  state.selectedRestoreOutputId = id;
+  renderRestoreWorkspace();
+}
+
+function removeRestoreOutput(id: string): void {
+  const index = state.restoreOutputs.findIndex((output) => output.id === id);
+  if (index === -1) return;
+  state.restoreOutputs.splice(index, 1);
+  if (state.selectedRestoreOutputId === id) {
+    const next =
+      state.restoreOutputs[index] ?? state.restoreOutputs[index - 1] ?? null;
+    state.selectedRestoreOutputId = next ? next.id : null;
+  }
+  renderRestoreWorkspace();
+}
+
+function restoreOutputStatus(output: RestoreOutput): string {
+  const matches = scanRestoreMatches(output.restoredDraft, state.restoreKey);
+  const unknown = matches.filter((match) => match.status === "unknown").length;
+  if (unknown > 0) return `${unknown} unknown`;
+  const restorable = matches.filter(
+    (match) => match.status === "restorable",
+  ).length;
+  if (restorable > 0) return `${restorable} token`;
+  return output.restoredDraft.trim() ? "Draft" : "Empty";
+}
+
 function renderRestoreOutputs(): void {
-  filesBody.innerHTML =
-    state.restoreOutputs.length === 0
-      ? `<p class="placeholder empty-panel-placeholder">Paste AI output into the draft to start.</p>`
-      : state.restoreOutputs
-          .map((output) => {
-            const selected = output.id === state.selectedRestoreOutputId;
-            return `
-              <div class="file-row${selected ? " selected" : ""}" data-restore-output-id="${escapeHtml(output.id)}">
-                <button type="button" class="file-select" data-restore-output-id="${escapeHtml(output.id)}"${selected ? " disabled aria-current=\"true\"" : ""}>
-                  <i class="file-format-icon ph ph-file-text" aria-hidden="true"></i>
-                  <span class="file-name">${escapeHtml(output.title)}</span>
-                </button>
-              </div>
-            `;
-          })
-          .join("");
+  filesBody.innerHTML = `
+    <div class="restore-output-actions">
+      <button type="button" class="ghost-button restore-new-output" data-restore-new-output>
+        <i class="ph ph-plus" aria-hidden="true"></i>
+        <span>New output</span>
+      </button>
+    </div>
+    ${
+      state.restoreOutputs.length === 0
+        ? `<p class="placeholder empty-panel-placeholder">Paste AI output into the draft to start.</p>`
+        : state.restoreOutputs
+            .map((output) => {
+              const selected = output.id === state.selectedRestoreOutputId;
+              return `
+                <div class="file-row${selected ? " selected" : ""}" data-restore-output-id="${escapeHtml(output.id)}">
+                  <button type="button" class="file-select" data-restore-output-id="${escapeHtml(output.id)}"${selected ? " disabled aria-current=\"true\"" : ""}>
+                    <i class="file-format-icon ph ph-file-text" aria-hidden="true"></i>
+                    <span class="file-name">${escapeHtml(output.title)}</span>
+                    <span class="file-warning restore-output-status">${escapeHtml(restoreOutputStatus(output))}</span>
+                  </button>
+                  <button type="button" class="file-remove" data-restore-remove-output="${escapeHtml(output.id)}" aria-label="Remove ${escapeHtml(output.title)}">${icon.trash}</button>
+                </div>
+              `;
+            })
+            .join("")
+    }
+  `;
+
+  filesBody
+    .querySelector<HTMLButtonElement>("[data-restore-new-output]")
+    ?.addEventListener("click", () => addRestoreOutput());
+  filesBody
+    .querySelectorAll<HTMLButtonElement>("[data-restore-output-id]")
+    .forEach((button) => {
+      if (button.disabled) return;
+      button.addEventListener("click", () =>
+        selectRestoreOutput(button.dataset.restoreOutputId!),
+      );
+    });
+  filesBody
+    .querySelectorAll<HTMLButtonElement>("[data-restore-remove-output]")
+    .forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        removeRestoreOutput(button.dataset.restoreRemoveOutput!);
+      });
+    });
 }
 
 function renderRestoredDraft(): void {
