@@ -56,10 +56,12 @@ type AppRoute =
   | "terms"
   | "changelog";
 type InfoRoute = Exclude<AppRoute, "workspace">;
+type WorkspaceMode = "redact" | "restore";
 
 interface AppState {
   route: AppRoute;
   infoMenuOpen: boolean;
+  workspaceMode: WorkspaceMode;
   documents: LoadedDocument[];
   selectedDocumentId: string | null;
   /** User-controlled entries. Re-passed to the engine on every rebuild so
@@ -90,6 +92,7 @@ const FIRST_FIELD_NOTE_ROUTE = "field-notes/unredacted-01-why-we-built-noai";
 const state: AppState = {
   route: routeFromHash(),
   infoMenuOpen: false,
+  workspaceMode: "redact",
   documents: [],
   selectedDocumentId: null,
   entries: [],
@@ -969,6 +972,21 @@ app.innerHTML = `
     </section>
 
     <section class="workspace" id="workspace-view">
+      <div class="workspace-mode-switch" role="tablist" aria-label="Workspace mode">
+        <button type="button" class="mode-option selected" data-workspace-mode="redact" role="tab" aria-selected="true">
+          <i class="ph ph-highlighter" aria-hidden="true"></i>
+          <span>Redact</span>
+        </button>
+        <button type="button" class="mode-option" data-workspace-mode="restore" role="tab" aria-selected="false">
+          <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
+          <span>Restore</span>
+        </button>
+      </div>
+      <template id="restore-panel-labels">
+        <span>AI Outputs</span>
+        <span>Restored Draft</span>
+        <span>Restore Map</span>
+      </template>
 
       <section class="workspace-grid" id="workspace-grid" aria-live="polite">
 
