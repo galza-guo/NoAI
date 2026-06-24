@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ReplacementEntry } from "./redactor/types";
-import { buildRestoreKey, isSafeRestoreToken } from "./restore";
+import {
+  buildRestoreKey,
+  isSafeRestoreToken,
+  restorePastedText,
+  scanRestoreMatches,
+} from "./restore";
 
 function entry(overrides: Partial<ReplacementEntry>): ReplacementEntry {
   return {
@@ -85,5 +90,66 @@ describe("private restore keys", () => {
       replacement: "Client",
       safe: false,
     });
+  });
+});
+
+describe("restore text replacement", () => {
+  it("restores safe known tokens in pasted text", () => {
+    const key = buildRestoreKey({
+      appVersion: "0.0.0",
+      engineVersion: "test-engine",
+      level: "balanced",
+      entries: [entry({})],
+      now: () => new Date("2026-06-24T00:00:00.000Z"),
+    });
+
+    expect(restorePastedText("PERSON_001 signed.", key)).toBe(
+      "Jane Smith signed.",
+    );
+  });
+
+  it("leaves unknown, unsafe, and ambiguous labels unchanged", () => {
+    const key = buildRestoreKey({
+      appVersion: "0.0.0",
+      engineVersion: "test-engine",
+      level: "balanced",
+      entries: [
+        entry({ replacement: "Client" }),
+        entry({ value: "Jane Smith", replacement: "PERSON_001" }),
+        entry({
+          id: "PERSON:John%20Smith",
+          value: "John Smith",
+          replacement: "PERSON_001",
+        }),
+      ],
+      now: () => new Date("2026-06-24T00:00:00.000Z"),
+    });
+
+    expect(restorePastedText("Client PERSON_001 PERSON_999", key)).toBe(
+      "Client PERSON_001 PERSON_999",
+    );
+  });
+
+  it("scans draft text for restorable and unknown tokens", () => {
+    const key = buildRestoreKey({
+      appVersion: "0.0.0",
+      engineVersion: "test-engine",
+      level: "balanced",
+      entries: [entry({})],
+      now: () => new Date("2026-06-24T00:00:00.000Z"),
+    });
+
+    expect(scanRestoreMatches("PERSON_001 PERSON_001 ORG_999", key)).toEqual([
+      expect.objectContaining({
+        token: "ORG_999",
+        count: 1,
+        status: "unknown",
+      }),
+      expect.objectContaining({
+        token: "PERSON_001",
+        count: 2,
+        status: "restorable",
+      }),
+    ]);
   });
 });
