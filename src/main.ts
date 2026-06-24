@@ -362,6 +362,20 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
           },
           {
             type: "qa",
+            question: "What is Restore?",
+            answer: [
+              "Restore lets you paste AI-generated output back into NoAI so placeholder tokens like PERSON_001 can be replaced with the original text locally in your browser.",
+            ],
+          },
+          {
+            type: "qa",
+            question: "What is a private restore key?",
+            answer: [
+              "A private restore key is an optional file that lets NoAI restore later after the tab is closed. It contains original private text, so do not upload it to AI tools.",
+            ],
+          },
+          {
+            type: "qa",
             question: "What is Markdown and why?",
             answer: [
               "Markdown is a lightweight plain-text formatting syntax. It is the 'native' format for most AI agents and LLMs, making it the most reliable way to feed structured text into them.",

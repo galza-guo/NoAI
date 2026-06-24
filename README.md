@@ -31,6 +31,7 @@ The goal is not perfect anonymization. The goal is a fast, understandable pre-pr
 - **Markdown Output:** Exports combined Markdown and per-document sanitized previews.
 - **Batch Processing:** Drop multiple files and export one combined Markdown pack.
 - **Customization:** Custom terms are supported and replaced deterministically.
+- **Local Restore:** Paste AI-generated output back into NoAI to restore safe placeholder tokens locally using the current session key or an imported private restore key.
 
 ### Redaction Levels
 - **Light:** Direct identifiers (emails, phone numbers, URLs, addresses, postcodes, national/business IDs, bank details, and case/registry references).
@@ -48,6 +49,8 @@ The main design constraint of NoAI is complete transparency and local processing
 - ❌ No remote OCR or conversion service.
 
 The source code is kept small and auditable so non-expert users can reasonably trust the public claim: documents are processed locally. 
+
+Private restore keys contain original text. They are optional backup files for restoring later and should not be uploaded to external AI tools.
 
 ### The Engine
 The redaction engine is rule-based:
