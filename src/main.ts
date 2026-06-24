@@ -2557,21 +2557,73 @@ function renderRestoreMap(): void {
     return;
   }
   const matches = scanRestoreMatches(output.restoredDraft, state.restoreKey);
+  const restorableCount = matches.filter(
+    (match) => match.status === "restorable",
+  ).length;
   replacementsBody.innerHTML =
     matches.length === 0
       ? `<p class="placeholder">No placeholder tokens found in this draft.</p>`
-      : matches
-          .map(
-            (match) => `
-              <div class="entry-row restore-match-row">
-                <div class="entry-source">
-                  <code class="entry-value">${escapeHtml(match.token)}</code>
-                </div>
-                <span class="panel-count">${escapeHtml(formatHits(match.count))}</span>
-              </div>
-            `,
-          )
-          .join("");
+      : `
+        ${
+          restorableCount > 0
+            ? `<button type="button" class="ghost-button restore-remaining-action" data-restore-remaining>
+                <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
+                <span>Restore remaining tokens</span>
+              </button>`
+            : ""
+        }
+        ${matches
+          .map((match) => renderRestoreMatchRow(match))
+          .join("")}
+      `;
+
+  replacementsBody
+    .querySelector<HTMLButtonElement>("[data-restore-remaining]")
+    ?.addEventListener("click", restoreRemainingTokens);
+}
+
+function renderRestoreMatchRow(
+  match: ReturnType<typeof scanRestoreMatches>[number],
+): string {
+  const status = restoreStatusLabel(match.status);
+  const original =
+    match.entry && match.status === "restorable"
+      ? `<span class="restore-match-original">${escapeHtml(match.entry.value)}</span>`
+      : `<span class="restore-match-original muted">${escapeHtml(restoreStatusHelp(match.status))}</span>`;
+  return `
+    <div class="entry-row restore-match-row ${match.status}">
+      <span class="entry-hit-count" aria-label="${escapeHtml(formatHits(match.count))}">${escapeHtml(formatHitMultiplier({ count: match.count }))}</span>
+      <div class="entry-source">
+        <code class="entry-value">${escapeHtml(match.token)}</code>
+        ${original}
+      </div>
+      <span class="restore-match-status">${escapeHtml(status)}</span>
+    </div>
+  `;
+}
+
+function restoreStatusLabel(status: ReturnType<typeof scanRestoreMatches>[number]["status"]): string {
+  if (status === "restorable") return "Restorable";
+  if (status === "unsafe") return "Unsafe label";
+  if (status === "ambiguous") return "Ambiguous";
+  return "Unknown";
+}
+
+function restoreStatusHelp(status: ReturnType<typeof scanRestoreMatches>[number]["status"]): string {
+  if (status === "unsafe") return "Not restored automatically";
+  if (status === "ambiguous") return "More than one original";
+  if (status === "unknown") return "No matching restore key";
+  return "";
+}
+
+function restoreRemainingTokens(): void {
+  const output = selectedRestoreOutput();
+  if (!output || !state.restoreKey) return;
+  output.restoredDraft = restorePastedText(output.restoredDraft, state.restoreKey);
+  output.updatedAt = new Date().toISOString();
+  renderRestoredDraft();
+  renderRestoreOutputs();
+  renderRestoreMap();
 }
 
 function handleRestoreDraftPaste(event: ClipboardEvent): void {
