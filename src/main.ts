@@ -2041,6 +2041,19 @@ downloadButton.addEventListener("click", () => {
 });
 
 copyDocButton.addEventListener("click", () => {
+  if (state.workspaceMode === "restore") {
+    const output = selectedRestoreOutput();
+    if (!output) return;
+    navigator.clipboard
+      .writeText(output.restoredDraft)
+      .then(() => {
+        showToast("Copied restored draft.");
+      })
+      .catch(() => {
+        showToast("Failed to copy text.");
+      });
+    return;
+  }
   const reviewDoc = selectedReviewDoc();
   if (!reviewDoc) return;
   navigator.clipboard
@@ -2063,6 +2076,12 @@ previewVisibilityToggle.addEventListener("click", () => {
 });
 
 downloadDocButton.addEventListener("click", () => {
+  if (state.workspaceMode === "restore") {
+    const output = selectedRestoreOutput();
+    if (!output) return;
+    downloadText(output.restoredDraft, restoredFilename(output.title));
+    return;
+  }
   const loaded = selectedLoadedDoc();
   const reviewDoc = selectedReviewDoc();
   if (!loaded || !reviewDoc) return;
@@ -2399,6 +2418,27 @@ function addRestoreOutput(text = ""): void {
   renderRestoreWorkspace();
 }
 
+function ensureActiveRestoreOutput(): RestoreOutput {
+  const selected = selectedRestoreOutput();
+  if (selected) return selected;
+  const output = createRestoreOutput();
+  state.restoreOutputs.push(output);
+  state.selectedRestoreOutputId = output.id;
+  return output;
+}
+
+function updateSelectedRestoreOutputDraft(
+  restoredDraft: string,
+  rawPaste?: string,
+): void {
+  const output = ensureActiveRestoreOutput();
+  output.restoredDraft = restoredDraft;
+  if (rawPaste !== undefined && !output.redactedInput) {
+    output.redactedInput = rawPaste;
+  }
+  output.updatedAt = new Date().toISOString();
+}
+
 function selectRestoreOutput(id: string): void {
   if (!state.restoreOutputs.some((output) => output.id === id)) return;
   state.selectedRestoreOutputId = id;
@@ -2486,9 +2526,24 @@ function renderRestoredDraft(): void {
   previewSearchToggle.disabled = true;
   copyDocButton.disabled = !output;
   downloadDocButton.disabled = !output;
-  previewBody.innerHTML = output
-    ? `<pre class="restore-draft-placeholder">${escapeHtml(output.restoredDraft)}</pre>`
-    : `<p class="placeholder empty-panel-placeholder">Paste redacted AI output here.</p>`;
+  previewBody.innerHTML = `
+    <textarea
+      id="restore-draft-editor"
+      class="restore-draft-editor"
+      placeholder="Paste redacted AI output here."
+      spellcheck="true"
+      aria-label="Restored draft"
+    ></textarea>
+  `;
+  const editor =
+    previewBody.querySelector<HTMLTextAreaElement>("#restore-draft-editor")!;
+  if (output) {
+    editor.value = state.showRedactedRestoreInput
+      ? output.redactedInput
+      : output.restoredDraft;
+  }
+  editor.addEventListener("paste", handleRestoreDraftPaste);
+  editor.addEventListener("input", handleRestoreDraftInput);
 }
 
 function renderRestoreMap(): void {
@@ -2517,6 +2572,31 @@ function renderRestoreMap(): void {
             `,
           )
           .join("");
+}
+
+function handleRestoreDraftPaste(event: ClipboardEvent): void {
+  if (state.showRedactedRestoreInput) return;
+  const editor = event.currentTarget as HTMLTextAreaElement;
+  const pasted = event.clipboardData?.getData("text/plain") ?? "";
+  if (!pasted) return;
+  event.preventDefault();
+  const restored = restorePastedText(pasted, state.restoreKey);
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const nextValue = `${editor.value.slice(0, start)}${restored}${editor.value.slice(end)}`;
+  editor.value = nextValue;
+  editor.selectionStart = editor.selectionEnd = start + restored.length;
+  updateSelectedRestoreOutputDraft(nextValue, pasted);
+  renderRestoreOutputs();
+  renderRestoreMap();
+}
+
+function handleRestoreDraftInput(event: Event): void {
+  if (state.showRedactedRestoreInput) return;
+  const editor = event.currentTarget as HTMLTextAreaElement;
+  updateSelectedRestoreOutputDraft(editor.value);
+  renderRestoreOutputs();
+  renderRestoreMap();
 }
 
 function renderFiles(): void {
@@ -3607,6 +3687,11 @@ function unsupportedFileMessage(files: File[]): string {
 
 function sanitizedFilename(name: string): string {
   return `${name.replace(/\.[^.]+$/, "")}.redacted.md`;
+}
+
+function restoredFilename(name: string): string {
+  const base = name.trim().replace(/\.[^.]+$/, "") || "ai-output";
+  return `${base}.restored.md`;
 }
 
 function pluralize(count: number, singular: string): string {
