@@ -127,3 +127,39 @@ export function scanRestoreMatches(
     })
     .sort((a, b) => a.token.localeCompare(b.token));
 }
+
+export function parseRestoreKey(source: string): RestoreKey {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch {
+    throw new Error("This restore key is not valid JSON.");
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    (parsed as RestoreKey).kind !== RESTORE_KEY_KIND ||
+    (parsed as RestoreKey).version !== RESTORE_KEY_VERSION ||
+    !Array.isArray((parsed as RestoreKey).entries)
+  ) {
+    throw new Error("This file is not a NoAI private restore key.");
+  }
+
+  const key = parsed as RestoreKey;
+  for (const item of key.entries) {
+    if (
+      typeof item.replacement !== "string" ||
+      typeof item.value !== "string" ||
+      typeof item.kind !== "string" ||
+      typeof item.reason !== "string" ||
+      !Array.isArray(item.sources) ||
+      typeof item.safe !== "boolean" ||
+      typeof item.ambiguous !== "boolean"
+    ) {
+      throw new Error("This file is not a NoAI private restore key.");
+    }
+  }
+
+  return key;
+}

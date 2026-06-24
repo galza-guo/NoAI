@@ -3,6 +3,7 @@ import type { ReplacementEntry } from "./redactor/types";
 import {
   buildRestoreKey,
   isSafeRestoreToken,
+  parseRestoreKey,
   restorePastedText,
   scanRestoreMatches,
 } from "./restore";
@@ -151,5 +152,26 @@ describe("restore text replacement", () => {
         status: "restorable",
       }),
     ]);
+  });
+});
+
+describe("private restore key import", () => {
+  it("parses a valid restore key JSON file", () => {
+    const key = buildRestoreKey({
+      appVersion: "0.0.0",
+      engineVersion: "test-engine",
+      level: "balanced",
+      entries: [entry({})],
+      now: () => new Date("2026-06-24T00:00:00.000Z"),
+    });
+
+    expect(parseRestoreKey(JSON.stringify(key))).toEqual(key);
+  });
+
+  it("rejects invalid restore key JSON", () => {
+    expect(() => parseRestoreKey("{}")).toThrow(
+      "not a NoAI private restore key",
+    );
+    expect(() => parseRestoreKey("{")).toThrow("not valid JSON");
   });
 });
