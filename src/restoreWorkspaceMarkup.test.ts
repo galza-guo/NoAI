@@ -21,4 +21,10 @@ describe("restore workspace markup", () => {
     expect(mainSource).toContain("selectedRestoreOutputId: string | null;");
     expect(mainSource).toContain("restoreKey: RestoreKey | null;");
   });
+
+  it("renders restore-specific panels", () => {
+    expect(mainSource).toContain("function renderRestoreOutputs");
+    expect(mainSource).toContain("function renderRestoredDraft");
+    expect(mainSource).toContain("function renderRestoreMap");
+  });
 });

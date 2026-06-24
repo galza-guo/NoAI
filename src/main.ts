@@ -1010,7 +1010,7 @@ app.innerHTML = `
 
         <section class="panel files-panel">
           <div class="panel-head">
-            <h2>Documents</h2>
+            <h2 id="files-title">Documents</h2>
             <button id="documents-toggle" type="button" class="icon-button" aria-expanded="true" aria-label="Collapse documents sidebar">${icon.sidebar}</button>
           </div>
           <div class="files-content" id="files-content">
@@ -1028,7 +1028,7 @@ app.innerHTML = `
                 <span class="drop-meta" data-empty-only>Drop files here or click to open.</span>
               </label>
             </div>
-            <div class="document-controls">
+            <div class="document-controls" id="document-controls">
               <fieldset class="level-control" aria-label="Redaction level">
                 <legend>Redaction level</legend>
                 <div class="level-options">
@@ -1121,11 +1121,11 @@ app.innerHTML = `
           <div class="panel-head">
             <div class="panel-title-actions">
               <button id="redactions-toggle" type="button" class="icon-button redactions-toggle" aria-expanded="true" aria-label="Collapse redactions sidebar">${icon.sidebar}</button>
-              <h2>Redactions</h2>
+              <h2 id="replacements-title">Redactions</h2>
             </div>
             <span class="panel-count" id="replacements-count"></span>
           </div>
-          <div class="replacements-controls">
+          <div class="replacements-controls" id="replacements-controls">
             <label class="sr-only" for="search-input">Search or add term</label>
             <div class="omnibox-container">
               <input id="search-input" type="text" name="replacement-search" placeholder="Search or Add term ..." autocomplete="off" />
@@ -1179,16 +1179,27 @@ const siteMenu = document.querySelector<HTMLElement>("#site-menu")!;
 const siteMenuClose =
   document.querySelector<HTMLButtonElement>("#site-menu-close")!;
 const workspaceGrid = document.querySelector<HTMLElement>("#workspace-grid")!;
+const workspaceModeButtons = document.querySelectorAll<HTMLButtonElement>(
+  "[data-workspace-mode]",
+);
 const documentsToggle =
   document.querySelector<HTMLButtonElement>("#documents-toggle")!;
 const redactionsToggle =
   document.querySelector<HTMLButtonElement>("#redactions-toggle")!;
+const filesTitle = document.querySelector<HTMLElement>("#files-title")!;
 const filesContent = document.querySelector<HTMLElement>("#files-content")!;
 const filesBody = document.querySelector<HTMLElement>("#files-body")!;
 const documentsDropzone =
   document.querySelector<HTMLElement>("#documents-dropzone")!;
 const documentsDropTitle = document.querySelector<HTMLElement>(
   "[data-documents-drop-title]",
+)!;
+const documentControls =
+  document.querySelector<HTMLElement>("#document-controls")!;
+const replacementsTitle =
+  document.querySelector<HTMLElement>("#replacements-title")!;
+const replacementsControls = document.querySelector<HTMLElement>(
+  "#replacements-controls",
 )!;
 const replacementsBody =
   document.querySelector<HTMLElement>("#replacements-body")!;
@@ -1947,6 +1958,17 @@ function syncSessionRestoreKey(): void {
 
 /* ----------------------------- Actions ----------------------------- */
 
+workspaceModeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const mode = button.dataset.workspaceMode as WorkspaceMode;
+    if (state.workspaceMode === mode) return;
+    state.workspaceMode = mode;
+    hideOriginalPreview({ silent: true });
+    hidePopover();
+    renderAll();
+  });
+});
+
 levelButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.level = button.dataset.level as RedactionLevel;
@@ -2232,12 +2254,33 @@ function removeDocument(id: string): void {
 /* ---------------------------- Rendering ---------------------------- */
 
 function renderAll(): void {
+  renderWorkspaceModeSwitch();
+  if (state.workspaceMode === "restore") {
+    renderRestoreWorkspace();
+    return;
+  }
   ensureSelectedDocument();
   renderWorkspaceState();
   renderFiles();
   renderLevelControl();
   renderReplacements();
   renderPreview();
+}
+
+function renderWorkspaceModeSwitch(): void {
+  workspaceModeButtons.forEach((button) => {
+    const selected = button.dataset.workspaceMode === state.workspaceMode;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+}
+
+function renderRestoreWorkspace(): void {
+  ensureSelectedRestoreOutput();
+  renderWorkspaceState();
+  renderRestoreOutputs();
+  renderRestoredDraft();
+  renderRestoreMap();
 }
 
 function ensureSelectedDocument(): void {
@@ -2264,6 +2307,25 @@ function renderWorkspaceState(): void {
     "redactions-collapsed",
     state.redactionsCollapsed,
   );
+
+  if (state.workspaceMode === "restore") {
+    filesTitle.textContent = "AI Outputs";
+    previewTitle.textContent = "Restored Draft";
+    replacementsTitle.textContent = "Restore Map";
+    documentControls.hidden = true;
+    documentsDropzone.hidden = true;
+    replacementsControls.hidden = true;
+    replacementsCount.textContent = state.restoreKey
+      ? `${state.restoreKey.entries.length} keys`
+      : "";
+    return;
+  }
+
+  filesTitle.textContent = "Documents";
+  replacementsTitle.textContent = "Redactions";
+  documentControls.hidden = false;
+  documentsDropzone.hidden = false;
+  replacementsControls.hidden = false;
   documentsDropzone.classList.toggle("dropzone-empty", !hasDocs);
   documentsDropzone.classList.toggle("dropzone-small", hasDocs);
   documentsDropTitle.classList.toggle("drop-title", !hasDocs);
@@ -2315,6 +2377,66 @@ function ensureSelectedRestoreOutput(): void {
   ) {
     state.selectedRestoreOutputId = state.restoreOutputs[0].id;
   }
+}
+
+function renderRestoreOutputs(): void {
+  filesBody.innerHTML =
+    state.restoreOutputs.length === 0
+      ? `<p class="placeholder empty-panel-placeholder">Paste AI output into the draft to start.</p>`
+      : state.restoreOutputs
+          .map((output) => {
+            const selected = output.id === state.selectedRestoreOutputId;
+            return `
+              <div class="file-row${selected ? " selected" : ""}" data-restore-output-id="${escapeHtml(output.id)}">
+                <button type="button" class="file-select" data-restore-output-id="${escapeHtml(output.id)}"${selected ? " disabled aria-current=\"true\"" : ""}>
+                  <i class="file-format-icon ph ph-file-text" aria-hidden="true"></i>
+                  <span class="file-name">${escapeHtml(output.title)}</span>
+                </button>
+              </div>
+            `;
+          })
+          .join("");
+}
+
+function renderRestoredDraft(): void {
+  const output = selectedRestoreOutput();
+  previewSearch.hidden = true;
+  previewSearchInput.disabled = true;
+  previewVisibilityToggle.disabled = true;
+  previewSearchToggle.disabled = true;
+  copyDocButton.disabled = !output;
+  downloadDocButton.disabled = !output;
+  previewBody.innerHTML = output
+    ? `<pre class="restore-draft-placeholder">${escapeHtml(output.restoredDraft)}</pre>`
+    : `<p class="placeholder empty-panel-placeholder">Paste redacted AI output here.</p>`;
+}
+
+function renderRestoreMap(): void {
+  const output = selectedRestoreOutput();
+  if (!state.restoreKey) {
+    replacementsBody.innerHTML = `<p class="placeholder empty-panel-placeholder">No restore key yet. Return to Redact or import a private restore key.</p>`;
+    return;
+  }
+  if (!output) {
+    replacementsBody.innerHTML = `<p class="placeholder empty-panel-placeholder">Create an AI output to start.</p>`;
+    return;
+  }
+  const matches = scanRestoreMatches(output.restoredDraft, state.restoreKey);
+  replacementsBody.innerHTML =
+    matches.length === 0
+      ? `<p class="placeholder">No placeholder tokens found in this draft.</p>`
+      : matches
+          .map(
+            (match) => `
+              <div class="entry-row restore-match-row">
+                <div class="entry-source">
+                  <code class="entry-value">${escapeHtml(match.token)}</code>
+                </div>
+                <span class="panel-count">${escapeHtml(formatHits(match.count))}</span>
+              </div>
+            `,
+          )
+          .join("");
 }
 
 function renderFiles(): void {
