@@ -380,43 +380,43 @@ h2 {
 
 .workspace-mode-switch {
   display: inline-flex;
-  align-self: center;
-  gap: 4px;
-  margin: 10px 0;
-  padding: 4px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-panel);
-  box-shadow: var(--shadow-sm);
+  align-items: center;
+  gap: 12px;
+  margin-right: auto;
+  position: relative;
+  z-index: 2;
 }
 
 .mode-option {
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  min-height: 32px;
+  padding: 0;
+  border: 0;
   background: transparent;
   color: var(--color-text-muted);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   cursor: pointer;
   font: 600 0.86rem/1 var(--font-sans);
+  opacity: 0.72;
   transition:
-    background var(--duration-fast) var(--ease-standard),
     color var(--duration-fast) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard);
+    opacity var(--duration-fast) var(--ease-standard);
 }
 
 .mode-option:hover {
   color: var(--color-text-main);
-  background: var(--color-bg-sunken);
+  opacity: 1;
 }
 
 .mode-option.selected {
-  background: var(--color-accent-soft);
-  border-color: var(--color-border);
   color: var(--color-accent);
+  opacity: 1;
+}
+
+.mode-option:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 3px;
 }
 
 .restore-draft-placeholder {

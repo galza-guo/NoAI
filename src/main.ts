@@ -943,6 +943,16 @@ app.innerHTML = `
       <a class="brand-link" href="#/" aria-label="NoAI workspace">
         <img src="/logo.png" alt="NoAI Logo" class="brand-logo" />
       </a>
+      <div class="workspace-mode-switch" role="tablist" aria-label="Workspace mode">
+        <button type="button" class="mode-option selected" data-workspace-mode="redact" role="tab" aria-selected="true">
+          <i class="ph ph-highlighter" aria-hidden="true"></i>
+          <span>Redact</span>
+        </button>
+        <button type="button" class="mode-option" data-workspace-mode="restore" role="tab" aria-selected="false">
+          <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
+          <span>Restore</span>
+        </button>
+      </div>
       <div class="site-menu-wrap">
         <button id="site-menu-toggle" type="button" class="icon-button site-menu-toggle" aria-expanded="false" aria-controls="site-menu" aria-label="Open site menu">
           <i class="ph ph-list" aria-hidden="true"></i>
@@ -1004,16 +1014,6 @@ app.innerHTML = `
     </section>
 
     <section class="workspace" id="workspace-view">
-      <div class="workspace-mode-switch" role="tablist" aria-label="Workspace mode">
-        <button type="button" class="mode-option selected" data-workspace-mode="redact" role="tab" aria-selected="true">
-          <i class="ph ph-highlighter" aria-hidden="true"></i>
-          <span>Redact</span>
-        </button>
-        <button type="button" class="mode-option" data-workspace-mode="restore" role="tab" aria-selected="false">
-          <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
-          <span>Restore</span>
-        </button>
-      </div>
       <template id="restore-panel-labels">
         <span>AI Outputs</span>
         <span>Restored Draft</span>

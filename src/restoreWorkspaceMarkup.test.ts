@@ -8,6 +8,12 @@ describe("restore workspace markup", () => {
     expect(mainSource).toContain('type WorkspaceMode = "redact" | "restore";');
     expect(mainSource).toContain('data-workspace-mode="redact"');
     expect(mainSource).toContain('data-workspace-mode="restore"');
+    expect(mainSource).toMatch(
+      /<header class="topbar">[\s\S]*class="brand-link"[\s\S]*class="workspace-mode-switch"[\s\S]*class="site-menu-wrap"/,
+    );
+    expect(mainSource).not.toMatch(
+      /<h2 id="preview-title">Preview<\/h2>[\s\S]{0,800}class="workspace-mode-switch"/,
+    );
   });
 
   it("uses restore panel labels that mirror the redaction workspace", () => {
