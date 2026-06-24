@@ -2108,6 +2108,20 @@ restoreKeyInput.addEventListener("change", () => {
   void importPrivateRestoreKey(file);
 });
 
+window.addEventListener("beforeunload", (event) => {
+  if (!hasSessionRestoreRisk()) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
+function hasSessionRestoreRisk(): boolean {
+  return Boolean(
+    state.restoreKey &&
+      state.restoreKeySource === "session" &&
+      (state.documents.length > 0 || state.restoreOutputs.length > 0),
+  );
+}
+
 async function importPrivateRestoreKey(file: File): Promise<void> {
   try {
     const source = await file.text();
@@ -2628,9 +2642,14 @@ function renderRestoreKeyControls(): string {
       : state.restoreKeySource === "session"
         ? "Current session key"
         : "No restore key";
+  const sessionNote =
+    state.restoreKeySource === "session"
+      ? `<p class="restore-key-note">Keep this tab open to restore later.</p>`
+      : "";
   return `
     <div class="restore-key-controls">
       <p class="restore-key-status">${escapeHtml(keySource)}</p>
+      ${sessionNote}
       <div class="restore-key-actions">
         <button type="button" class="ghost-button" data-import-restore-key>
           <i class="ph ph-upload-simple" aria-hidden="true"></i>
