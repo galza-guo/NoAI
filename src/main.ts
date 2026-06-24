@@ -1164,6 +1164,7 @@ app.innerHTML = `
 
   <!-- Overlay notifications. Never render status inside the Documents panel. -->
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="false"></div>
+  <input id="restore-key-input" type="file" accept="application/json,.json" hidden />
 `;
 
 /* --------------------------- Element refs -------------------------- */
@@ -1249,6 +1250,8 @@ const downloadDocButton = document.querySelector<HTMLButtonElement>(
 const downloadButton =
   document.querySelector<HTMLButtonElement>("#download-button")!;
 const toastRegion = document.querySelector<HTMLElement>("#toast-region")!;
+const restoreKeyInput =
+  document.querySelector<HTMLInputElement>("#restore-key-input")!;
 
 const filesPanel = document.querySelector<HTMLElement>(".files-panel")!;
 const replacementsPanel = document.querySelector<HTMLElement>(
@@ -2098,6 +2101,29 @@ redactionsToggle.addEventListener("click", () => {
   renderReplacements();
 });
 
+restoreKeyInput.addEventListener("change", () => {
+  const file = restoreKeyInput.files?.[0];
+  restoreKeyInput.value = "";
+  if (!file) return;
+  void importPrivateRestoreKey(file);
+});
+
+async function importPrivateRestoreKey(file: File): Promise<void> {
+  try {
+    const source = await file.text();
+    state.restoreKey = parseRestoreKey(source);
+    state.restoreKeySource = "imported";
+    renderAll();
+    showToast("Imported private restore key.");
+  } catch (error) {
+    showToast(
+      error instanceof Error
+        ? error.message
+        : "Could not import private restore key.",
+    );
+  }
+}
+
 /* --------------------------- Resizing ------------------------------ */
 
 let isResizing = false;
@@ -2549,11 +2575,19 @@ function renderRestoredDraft(): void {
 function renderRestoreMap(): void {
   const output = selectedRestoreOutput();
   if (!state.restoreKey) {
-    replacementsBody.innerHTML = `<p class="placeholder empty-panel-placeholder">No restore key yet. Return to Redact or import a private restore key.</p>`;
+    replacementsBody.innerHTML = `
+      ${renderRestoreKeyControls()}
+      <p class="placeholder empty-panel-placeholder">No restore key yet. Return to Redact or import a private restore key.</p>
+    `;
+    wireRestoreKeyControls();
     return;
   }
   if (!output) {
-    replacementsBody.innerHTML = `<p class="placeholder empty-panel-placeholder">Create an AI output to start.</p>`;
+    replacementsBody.innerHTML = `
+      ${renderRestoreKeyControls()}
+      <p class="placeholder empty-panel-placeholder">Create an AI output to start.</p>
+    `;
+    wireRestoreKeyControls();
     return;
   }
   const matches = scanRestoreMatches(output.restoredDraft, state.restoreKey);
@@ -2562,8 +2596,12 @@ function renderRestoreMap(): void {
   ).length;
   replacementsBody.innerHTML =
     matches.length === 0
-      ? `<p class="placeholder">No placeholder tokens found in this draft.</p>`
+      ? `
+        ${renderRestoreKeyControls()}
+        <p class="placeholder">No placeholder tokens found in this draft.</p>
+      `
       : `
+        ${renderRestoreKeyControls()}
         ${
           restorableCount > 0
             ? `<button type="button" class="ghost-button restore-remaining-action" data-restore-remaining>
@@ -2577,9 +2615,43 @@ function renderRestoreMap(): void {
           .join("")}
       `;
 
+  wireRestoreKeyControls();
   replacementsBody
     .querySelector<HTMLButtonElement>("[data-restore-remaining]")
     ?.addEventListener("click", restoreRemainingTokens);
+}
+
+function renderRestoreKeyControls(): string {
+  const keySource =
+    state.restoreKeySource === "imported"
+      ? "Imported private key"
+      : state.restoreKeySource === "session"
+        ? "Current session key"
+        : "No restore key";
+  return `
+    <div class="restore-key-controls">
+      <p class="restore-key-status">${escapeHtml(keySource)}</p>
+      <div class="restore-key-actions">
+        <button type="button" class="ghost-button" data-import-restore-key>
+          <i class="ph ph-upload-simple" aria-hidden="true"></i>
+          <span>Import key</span>
+        </button>
+        <button type="button" class="ghost-button" data-download-restore-key${state.restoreKey ? "" : " disabled"}>
+          <i class="ph ph-download-simple" aria-hidden="true"></i>
+          <span>Private key</span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function wireRestoreKeyControls(): void {
+  replacementsBody
+    .querySelector<HTMLButtonElement>("[data-import-restore-key]")
+    ?.addEventListener("click", () => restoreKeyInput.click());
+  replacementsBody
+    .querySelector<HTMLButtonElement>("[data-download-restore-key]")
+    ?.addEventListener("click", downloadPrivateRestoreKey);
 }
 
 function renderRestoreMatchRow(
@@ -2624,6 +2696,19 @@ function restoreRemainingTokens(): void {
   renderRestoredDraft();
   renderRestoreOutputs();
   renderRestoreMap();
+}
+
+function downloadPrivateRestoreKey(): void {
+  if (!state.restoreKey) return;
+  const ok = window.confirm(
+    "This private restore key contains original text. Do not upload it to AI tools.",
+  );
+  if (!ok) return;
+  downloadText(
+    JSON.stringify(state.restoreKey, null, 2),
+    "noai-private-restore-key.json",
+    "application/json;charset=utf-8",
+  );
 }
 
 function handleRestoreDraftPaste(event: ClipboardEvent): void {
@@ -3800,8 +3885,12 @@ function redactionsOnlyStatus(count: number): string {
   return `${formatMatches(count)} in redactions only.`;
 }
 
-function downloadText(text: string, filename: string): void {
-  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+function downloadText(
+  text: string,
+  filename: string,
+  type = "text/markdown;charset=utf-8",
+): void {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
