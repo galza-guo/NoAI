@@ -1113,7 +1113,7 @@ app.innerHTML = `
               <button id="copy-doc-button" type="button" class="icon-button" disabled title="Copy redacted text">
                 <i class="ph ph-copy" aria-hidden="true"></i>
               </button>
-              <button id="download-doc-button" type="button" class="icon-button download-action" disabled title="Download this document">
+              <button id="download-doc-button" type="button" class="icon-button" disabled title="Download this document">
                 <i class="download-icon ph ph-download-simple" aria-hidden="true"></i>
               </button>
             </div>
