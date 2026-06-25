@@ -191,28 +191,28 @@ input {
 button {
   min-height: 44px;
   padding: 0 18px;
-  color: var(--color-bg-panel);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
+  color: inherit;
+  background: transparent;
+  border-color: transparent;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
-button:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
-  box-shadow: var(--shadow-hover);
+button:hover {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
-button:active:not(:disabled) {
-  transform: translateY(1px);
+button:active {
+  transform: none;
 }
 
 button:disabled {
   color: var(--color-text-soft);
-  background: var(--color-bg-subtle);
+  background: transparent;
   border-color: var(--color-border-soft);
   cursor: not-allowed;
   box-shadow: none;
@@ -1381,12 +1381,18 @@ button.info-toggle:focus-visible {
 .start-redacting-btn {
   min-height: 52px;
   padding: 0 32px;
+  color: var(--color-bg-panel);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-hover);
   font-size: 1.1rem;
 }
 
-.start-redacting-btn:hover {
+.start-redacting-btn:hover:not(:disabled) {
+  color: var(--color-bg-panel);
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
   box-shadow:
     0 12px 24px rgba(19, 32, 51, 0.15),
     0 4px 8px rgba(19, 32, 51, 0.1);
@@ -2260,6 +2266,17 @@ button.preview-search-more:hover:not(:disabled) {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  color: var(--color-bg-panel);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.download-action:hover:not(:disabled) {
+  color: var(--color-bg-panel);
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  box-shadow: var(--shadow-hover);
 }
 
 .download-icon {
@@ -3171,6 +3188,7 @@ button.text-button:hover:not(:disabled) {
   min-height: 44px;
   padding: 0 14px;
   font-size: 0.85rem;
+  color: var(--color-bg-panel);
   background: var(--color-danger);
   border-color: var(--color-danger);
   box-shadow: var(--shadow-popover);
@@ -3180,6 +3198,7 @@ button.text-button:hover:not(:disabled) {
   font-size: 16px;
 }
 .redact-selection:hover:not(:disabled) {
+  color: var(--color-bg-panel);
   background: var(--color-redaction-hover);
   border-color: var(--color-redaction-hover);
 }
