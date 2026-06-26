@@ -13,6 +13,7 @@ export interface RestoreEntry {
   kind: CandidateKind;
   reason: string;
   sources: string[];
+  count: number;
   safe: boolean;
   ambiguous: boolean;
 }
@@ -81,6 +82,7 @@ export function buildRestoreKey(options: BuildRestoreKeyOptions): RestoreKey {
         kind: entry.kind,
         reason: entry.reason,
         sources: entry.sources,
+        count: entry.count,
         safe: isSafeRestoreToken(entry.replacement),
         ambiguous: (counts.get(entry.replacement) ?? 0) > 1,
       })),
@@ -133,7 +135,7 @@ export function parseRestoreKey(source: string): RestoreKey {
   try {
     parsed = JSON.parse(source);
   } catch {
-    throw new Error("This restore key is not valid JSON.");
+    throw new Error("This Restore file is not valid JSON.");
   }
 
   if (
@@ -143,7 +145,7 @@ export function parseRestoreKey(source: string): RestoreKey {
     (parsed as RestoreKey).version !== RESTORE_KEY_VERSION ||
     !Array.isArray((parsed as RestoreKey).entries)
   ) {
-    throw new Error("This file is not a NoAI private restore key.");
+    throw new Error("This is not a NoAI Restore file.");
   }
 
   const key = parsed as RestoreKey;
@@ -154,11 +156,13 @@ export function parseRestoreKey(source: string): RestoreKey {
       typeof item.kind !== "string" ||
       typeof item.reason !== "string" ||
       !Array.isArray(item.sources) ||
+      (item.count !== undefined && typeof item.count !== "number") ||
       typeof item.safe !== "boolean" ||
       typeof item.ambiguous !== "boolean"
     ) {
-      throw new Error("This file is not a NoAI private restore key.");
+      throw new Error("This is not a NoAI Restore file.");
     }
+    item.count ??= 1;
   }
 
   return key;

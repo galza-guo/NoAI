@@ -24,13 +24,12 @@ import {
   GENERAL_RULES_VERSION,
 } from "./redactor/version";
 import {
-  RestoreKey,
-  RestoreOutput,
   buildRestoreKey,
   parseRestoreKey,
   restorePastedText,
   scanRestoreMatches,
 } from "./restore";
+import type { RestoreEntry, RestoreKey, RestoreOutput } from "./restore";
 import projectCatalog from "./data/public-project-catalog.json";
 import packageMeta from "../package.json";
 
@@ -52,6 +51,7 @@ interface LoadedDocument {
   fileName: string;
   text: string;
   warnings: string[];
+  source?: "file" | "text";
 }
 
 type AppRoute =
@@ -364,14 +364,14 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
             type: "qa",
             question: "What is Restore?",
             answer: [
-              "Restore lets you paste AI-generated output back into NoAI so placeholder tokens like PERSON_001 can be replaced with the original text locally in your browser.",
+              "Restore lets you paste AI-generated output back into NoAI and put the original text back locally in your browser.",
             ],
           },
           {
             type: "qa",
-            question: "What is a private restore key?",
+            question: "How do I restore later?",
             answer: [
-              "A private restore key is an optional file that lets NoAI restore later after the tab is closed. It contains original private text, so do not upload it to AI tools.",
+              "Save Restore file downloads the redacted labels and original text NoAI needs to restore later after the tab is closed. Open Restore file loads it again. It contains original private text, so do not upload it to AI tools.",
             ],
           },
           {
@@ -882,6 +882,10 @@ import "@phosphor-icons/web/fill";
 
 const icon = {
   alert: '<i class="ph ph-warning" aria-hidden="true"></i>',
+  arrowSquareIn:
+    '<i class="button-icon ph ph-arrow-square-in" aria-hidden="true"></i>',
+  arrowSquareOut:
+    '<i class="button-icon ph ph-arrow-square-out" aria-hidden="true"></i>',
   chevronLeft:
     '<i class="button-icon ph ph-caret-left" aria-hidden="true"></i>',
   chevronRight:
@@ -945,11 +949,9 @@ app.innerHTML = `
       </a>
       <div class="workspace-mode-switch" role="tablist" aria-label="Workspace mode">
         <button type="button" class="mode-option selected" data-workspace-mode="redact" role="tab" aria-selected="true">
-          <i class="ph ph-highlighter" aria-hidden="true"></i>
           <span>Redact</span>
         </button>
         <button type="button" class="mode-option" data-workspace-mode="restore" role="tab" aria-selected="false">
-          <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
           <span>Restore</span>
         </button>
       </div>
@@ -1017,7 +1019,7 @@ app.innerHTML = `
       <template id="restore-panel-labels">
         <span>AI Outputs</span>
         <span>Restored Draft</span>
-        <span>Restore Map</span>
+        <span>Restorations</span>
       </template>
 
       <section class="workspace-grid" id="workspace-grid" aria-live="polite">
@@ -1030,6 +1032,10 @@ app.innerHTML = `
           <div class="files-content" id="files-content">
             <div class="files-scroll-area" data-dropzone>
               <div class="files-body" id="files-body"></div>
+              <button type="button" class="add-new-button" id="new-text-document-button">
+                <i class="ph ph-plus" aria-hidden="true"></i>
+                <span>New Document</span>
+              </button>
               <label class="dropzone documents-dropzone dropzone-small" id="documents-dropzone" data-dropzone>
                 <input type="file" multiple accept=".md,.markdown,.txt,.docx,.pdf" data-file-input />
                 <span class="supported-file-icons" data-empty-only aria-hidden="true">
@@ -1038,8 +1044,23 @@ app.innerHTML = `
                   <i class="ph ph-file-doc"></i>
                   <i class="ph ph-file-pdf"></i>
                 </span>
-                <span class="drop-title" data-documents-drop-title>Add more documents</span>
-                <span class="drop-meta" data-empty-only>Drop files here or click to open.</span>
+                <span class="drop-title" data-documents-drop-title>Import or Drop files here</span>
+                <span class="drop-meta" data-empty-only>Markdown, text, Word, or PDF.</span>
+              </label>
+              <button type="button" class="add-new-button" id="new-restore-output-button" hidden>
+                <i class="ph ph-plus" aria-hidden="true"></i>
+                <span>New Output</span>
+              </button>
+              <label class="dropzone documents-dropzone restore-outputs-dropzone dropzone-small" id="restore-outputs-dropzone" data-dropzone hidden>
+                <input type="file" multiple accept=".md,.markdown,.txt,.docx,.pdf" data-file-input />
+                <span class="supported-file-icons" data-empty-only aria-hidden="true">
+                  <i class="ph ph-file-md"></i>
+                  <i class="ph ph-file-txt"></i>
+                  <i class="ph ph-file-doc"></i>
+                  <i class="ph ph-file-pdf"></i>
+                </span>
+                <span class="drop-title" data-restore-outputs-drop-title>Import or Drop files here</span>
+                <span class="drop-meta" data-empty-only>Markdown, text, Word, or PDF.</span>
               </label>
             </div>
             <div class="document-controls" id="document-controls">
@@ -1137,7 +1158,10 @@ app.innerHTML = `
               <button id="redactions-toggle" type="button" class="icon-button redactions-toggle" aria-expanded="true" aria-label="Collapse redactions sidebar">${icon.sidebar}</button>
               <h2 id="replacements-title">Redactions</h2>
             </div>
-            <span class="panel-count" id="replacements-count"></span>
+            <div class="panel-actions replacements-panel-actions">
+              <button id="restore-file-action" type="button" class="icon-button restore-file-action" disabled aria-label="Save Restore file" title="Save Restore file">${icon.arrowSquareOut}</button>
+              <span class="panel-count" id="replacements-count"></span>
+            </div>
           </div>
           <div class="replacements-controls" id="replacements-controls">
             <label class="sr-only" for="search-input">Search or add term</label>
@@ -1204,10 +1228,22 @@ const redactionsToggle =
 const filesTitle = document.querySelector<HTMLElement>("#files-title")!;
 const filesContent = document.querySelector<HTMLElement>("#files-content")!;
 const filesBody = document.querySelector<HTMLElement>("#files-body")!;
+const newTextDocumentButton = document.querySelector<HTMLButtonElement>(
+  "#new-text-document-button",
+)!;
 const documentsDropzone =
   document.querySelector<HTMLElement>("#documents-dropzone")!;
 const documentsDropTitle = document.querySelector<HTMLElement>(
   "[data-documents-drop-title]",
+)!;
+const newRestoreOutputButton = document.querySelector<HTMLButtonElement>(
+  "#new-restore-output-button",
+)!;
+const restoreOutputsDropzone = document.querySelector<HTMLElement>(
+  "#restore-outputs-dropzone",
+)!;
+const restoreOutputsDropTitle = document.querySelector<HTMLElement>(
+  "[data-restore-outputs-drop-title]",
 )!;
 const documentControls =
   document.querySelector<HTMLElement>("#document-controls")!;
@@ -1221,6 +1257,9 @@ const replacementsBody =
 const replacementsCount = document.querySelector<HTMLElement>(
   "#replacements-count",
 )!;
+const restoreFileAction = document.querySelector<HTMLButtonElement>(
+  "#restore-file-action",
+)!;
 const searchInput = document.querySelector<HTMLInputElement>("#search-input")!;
 const omniboxAddAction = document.querySelector<HTMLElement>(
   "#omnibox-add-action",
@@ -1229,6 +1268,9 @@ const firstVisitCover =
   document.querySelector<HTMLElement>("#first-visit-cover")!;
 const startRedactingBtn = document.querySelector<HTMLButtonElement>(
   "#start-redacting-btn",
+)!;
+const workspaceModeSwitch = document.querySelector<HTMLElement>(
+  ".workspace-mode-switch",
 )!;
 
 const levelButtons =
@@ -1334,6 +1376,8 @@ function syncCoverAccessibility(): void {
   );
   appShell.classList.toggle("first-cover-mounted", coverMounted);
   workspaceView.toggleAttribute("inert", coverActive);
+  workspaceModeSwitch.toggleAttribute("inert", coverMounted);
+  workspaceModeSwitch.toggleAttribute("aria-hidden", coverMounted);
   if (coverActive) {
     workspaceView.setAttribute("aria-hidden", "true");
   } else {
@@ -1878,16 +1922,24 @@ document.querySelectorAll<HTMLElement>("[data-dropzone]").forEach((zone) => {
     event.stopPropagation();
     zone.classList.remove("dragging");
     const files = Array.from(event.dataTransfer?.files ?? []);
-    void handleFiles(files);
+    void handleDroppedFiles(files);
   });
   if (input) {
     input.addEventListener("change", () => {
       const files = Array.from(input.files ?? []);
       input.value = "";
-      void handleFiles(files);
+      void handleDroppedFiles(files);
     });
   }
 });
+
+async function handleDroppedFiles(fileList: File[]): Promise<void> {
+  if (state.workspaceMode === "restore") {
+    await handleRestoreOutputFiles(fileList);
+    return;
+  }
+  await handleFiles(fileList);
+}
 
 async function handleFiles(fileList: File[]): Promise<void> {
   const supported = fileList.filter(isSupportedFile);
@@ -1908,6 +1960,7 @@ async function handleFiles(fileList: File[]): Promise<void> {
         fileName: result.name,
         text: result.text,
         warnings: result.warnings,
+        source: "file",
       });
     }
     ensureSelectedDocument();
@@ -1923,6 +1976,41 @@ async function handleFiles(fileList: File[]): Promise<void> {
       error instanceof Error
         ? error.message
         : "Something went wrong while reading files.",
+    );
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleRestoreOutputFiles(fileList: File[]): Promise<void> {
+  const supported = fileList.filter(isSupportedFile);
+  const unsupported = fileList.filter((file) => !isSupportedFile(file));
+  const unsupportedMessage = unsupportedFileMessage(unsupported);
+
+  if (supported.length === 0) {
+    if (fileList.length > 0) setStatus(unsupportedMessage);
+    return;
+  }
+
+  setBusy(true, "Reading AI outputs locally…");
+  try {
+    const readResults = await readFiles(supported);
+    for (const result of readResults) {
+      const output = createRestoreOutput(result.text, result.name);
+      state.restoreOutputs.push(output);
+      state.selectedRestoreOutputId = output.id;
+    }
+    renderRestoreWorkspace();
+    setStatus(
+      unsupportedMessage
+        ? `Read ${pluralize(readResults.length, "AI output")} locally. ${unsupportedMessage}`
+        : `Read ${pluralize(readResults.length, "AI output")} locally.`,
+    );
+  } catch (error) {
+    setStatus(
+      error instanceof Error
+        ? error.message
+        : "Something went wrong while reading AI outputs.",
     );
   } finally {
     setBusy(false);
@@ -2084,7 +2172,7 @@ copyDocButton.addEventListener("click", () => {
 });
 
 previewVisibilityToggle.addEventListener("click", () => {
-  if (!selectedReviewDoc()) return;
+  if (!selectedReviewDoc() && selectedLoadedDoc()?.source !== "text") return;
   if (state.showOriginalPreview) {
     hideOriginalPreview();
   } else {
@@ -2115,11 +2203,28 @@ redactionsToggle.addEventListener("click", () => {
   renderReplacements();
 });
 
+restoreFileAction.addEventListener("click", () => {
+  if (state.workspaceMode === "restore") {
+    restoreKeyInput.click();
+    return;
+  }
+  downloadRestoreFile();
+});
+
 restoreKeyInput.addEventListener("change", () => {
   const file = restoreKeyInput.files?.[0];
   restoreKeyInput.value = "";
   if (!file) return;
   void importPrivateRestoreKey(file);
+});
+
+newTextDocumentButton.addEventListener("click", () => {
+  addTextDocument();
+});
+
+newRestoreOutputButton.addEventListener("click", () => {
+  addRestoreOutput();
+  focusRestoreDraftEditor();
 });
 
 window.addEventListener("beforeunload", (event) => {
@@ -2142,12 +2247,12 @@ async function importPrivateRestoreKey(file: File): Promise<void> {
     state.restoreKey = parseRestoreKey(source);
     state.restoreKeySource = "imported";
     renderAll();
-    showToast("Imported private restore key.");
+    showToast("Opened Restore file.");
   } catch (error) {
     showToast(
       error instanceof Error
         ? error.message
-        : "Could not import private restore key.",
+        : "Could not open Restore file.",
     );
   }
 }
@@ -2301,12 +2406,48 @@ function nextCustomReplacement(): string {
 /* ------------------------- Document actions ------------------------ */
 
 function selectDocument(id: string): void {
-  if (!state.documents.some((doc) => doc.id === id)) return;
+  const doc = state.documents.find((item) => item.id === id);
+  if (!doc) return;
   state.selectedDocumentId = id;
-  hideOriginalPreview({ silent: true });
+  if (doc.source === "text") {
+    cancelOriginalPreviewTimer();
+    state.showOriginalPreview = true;
+  } else {
+    hideOriginalPreview({ silent: true });
+  }
   hidePopover();
   renderFiles();
   renderPreview();
+}
+
+function addTextDocument(): void {
+  const nextNumber =
+    state.documents.filter((doc) => doc.source === "text").length + 1;
+  const doc: LoadedDocument = {
+    id: nextDocId(),
+    fileName: `Text ${String(nextNumber).padStart(3, "0")}.md`,
+    text: "",
+    warnings: [],
+    source: "text",
+  };
+  state.documents.push(doc);
+  state.selectedDocumentId = doc.id;
+  cancelOriginalPreviewTimer();
+  state.showOriginalPreview = true;
+  hidePopover();
+  recompute();
+  renderAll();
+  focusSourceDocumentEditor();
+}
+
+function updateTextDocument(id: string, text: string): void {
+  const doc = state.documents.find((item) => item.id === id);
+  if (!doc || doc.source !== "text") return;
+  doc.text = text;
+  doc.warnings = [];
+  recompute();
+  renderFiles();
+  renderReplacements();
 }
 
 function removeDocument(id: string): void {
@@ -2384,12 +2525,20 @@ function renderWorkspaceState(): void {
   if (state.workspaceMode === "restore") {
     filesTitle.textContent = "AI Outputs";
     previewTitle.textContent = "Restored Draft";
-    replacementsTitle.textContent = "Restore Map";
+    replacementsTitle.textContent = "Restorations";
     documentControls.hidden = true;
+    newTextDocumentButton.hidden = true;
     documentsDropzone.hidden = true;
+    newRestoreOutputButton.hidden = false;
+    restoreOutputsDropzone.hidden = false;
     replacementsControls.hidden = true;
+    restoreFileAction.innerHTML = icon.arrowSquareIn;
+    restoreFileAction.disabled = false;
+    restoreFileAction.setAttribute("aria-label", "Open Restore file");
+    restoreFileAction.setAttribute("title", "Open Restore file");
+    syncRestoreOutputsDropzone();
     replacementsCount.textContent = state.restoreKey
-      ? `${state.restoreKey.entries.length} keys`
+      ? `${state.restoreKey.entries.length} ${state.restoreKey.entries.length === 1 ? "redaction" : "redactions"}`
       : "";
     return;
   }
@@ -2397,15 +2546,20 @@ function renderWorkspaceState(): void {
   filesTitle.textContent = "Documents";
   replacementsTitle.textContent = "Redactions";
   documentControls.hidden = false;
+  newTextDocumentButton.hidden = false;
   documentsDropzone.hidden = false;
+  newRestoreOutputButton.hidden = true;
+  restoreOutputsDropzone.hidden = true;
   replacementsControls.hidden = false;
+  restoreFileAction.innerHTML = icon.arrowSquareOut;
+  restoreFileAction.disabled = !state.restoreKey;
+  restoreFileAction.setAttribute("aria-label", "Save Restore file");
+  restoreFileAction.setAttribute("title", "Save Restore file");
   documentsDropzone.classList.toggle("dropzone-empty", !hasDocs);
   documentsDropzone.classList.toggle("dropzone-small", hasDocs);
   documentsDropTitle.classList.toggle("drop-title", !hasDocs);
   documentsDropTitle.classList.toggle("drop-meta", hasDocs);
-  documentsDropTitle.textContent = hasDocs
-    ? "Add more documents"
-    : "Add Documents to Start";
+  documentsDropTitle.textContent = "Import or Drop files here";
   documentsDropzone
     .querySelectorAll<HTMLElement>("[data-empty-only]")
     .forEach((element) => {
@@ -2418,6 +2572,20 @@ function renderWorkspaceState(): void {
     downloadText.textContent =
       state.documents.length === 1 ? "Markdown" : "Combined Markdown";
   }
+}
+
+function syncRestoreOutputsDropzone(): void {
+  const hasOutputs = state.restoreOutputs.length > 0;
+  restoreOutputsDropzone.classList.toggle("dropzone-empty", !hasOutputs);
+  restoreOutputsDropzone.classList.toggle("dropzone-small", hasOutputs);
+  restoreOutputsDropTitle.classList.toggle("drop-title", !hasOutputs);
+  restoreOutputsDropTitle.classList.toggle("drop-meta", hasOutputs);
+  restoreOutputsDropTitle.textContent = "Import or Drop files here";
+  restoreOutputsDropzone
+    .querySelectorAll<HTMLElement>("[data-empty-only]")
+    .forEach((element) => {
+      element.hidden = hasOutputs;
+    });
 }
 
 function selectedLoadedDoc(): LoadedDocument | undefined {
@@ -2452,12 +2620,12 @@ function ensureSelectedRestoreOutput(): void {
   }
 }
 
-function createRestoreOutput(text = ""): RestoreOutput {
+function createRestoreOutput(text = "", title?: string): RestoreOutput {
   const now = new Date().toISOString();
   const nextNumber = state.restoreOutputs.length + 1;
   return {
     id: `restore-${crypto.randomUUID()}`,
-    title: `AI Output ${String(nextNumber).padStart(3, "0")}`,
+    title: title?.trim() || `AI Output ${String(nextNumber).padStart(3, "0")}`,
     redactedInput: text,
     restoredDraft: state.restoreKey ? restorePastedText(text, state.restoreKey) : text,
     createdAt: now,
@@ -2518,42 +2686,30 @@ function restoreOutputStatus(output: RestoreOutput): string {
   const restorable = matches.filter(
     (match) => match.status === "restorable",
   ).length;
-  if (restorable > 0) return `${restorable} token`;
+  if (restorable > 0) return `${restorable} left`;
   return output.restoredDraft.trim() ? "Draft" : "Empty";
 }
 
 function renderRestoreOutputs(): void {
+  syncRestoreOutputsDropzone();
   filesBody.innerHTML = `
-    <div class="restore-output-actions">
-      <button type="button" class="ghost-button restore-new-output" data-restore-new-output>
-        <i class="ph ph-plus" aria-hidden="true"></i>
-        <span>New output</span>
-      </button>
-    </div>
-    ${
-      state.restoreOutputs.length === 0
-        ? `<p class="placeholder empty-panel-placeholder">Paste AI output into the draft to start.</p>`
-        : state.restoreOutputs
-            .map((output) => {
-              const selected = output.id === state.selectedRestoreOutputId;
-              return `
-                <div class="file-row${selected ? " selected" : ""}" data-restore-output-id="${escapeHtml(output.id)}">
-                  <button type="button" class="file-select" data-restore-output-id="${escapeHtml(output.id)}"${selected ? " disabled aria-current=\"true\"" : ""}>
-                    <i class="file-format-icon ph ph-file-text" aria-hidden="true"></i>
-                    <span class="file-name">${escapeHtml(output.title)}</span>
-                    <span class="file-warning restore-output-status">${escapeHtml(restoreOutputStatus(output))}</span>
-                  </button>
-                  <button type="button" class="file-remove" data-restore-remove-output="${escapeHtml(output.id)}" aria-label="Remove ${escapeHtml(output.title)}">${icon.trash}</button>
-                </div>
-              `;
-            })
-            .join("")
-    }
+    ${state.restoreOutputs
+      .map((output) => {
+        const selected = output.id === state.selectedRestoreOutputId;
+        return `
+          <div class="file-row${selected ? " selected" : ""}" data-restore-output-id="${escapeHtml(output.id)}">
+            <button type="button" class="file-select" data-restore-output-id="${escapeHtml(output.id)}"${selected ? " disabled aria-current=\"true\"" : ""}>
+              ${fileFormatIcon(output.title)}
+              <span class="file-name">${escapeHtml(output.title)}</span>
+              <span class="file-warning restore-output-status">${escapeHtml(restoreOutputStatus(output))}</span>
+            </button>
+            <button type="button" class="file-remove" data-restore-remove-output="${escapeHtml(output.id)}" aria-label="Remove ${escapeHtml(output.title)}">${icon.trash}</button>
+          </div>
+        `;
+      })
+      .join("")}
   `;
 
-  filesBody
-    .querySelector<HTMLButtonElement>("[data-restore-new-output]")
-    ?.addEventListener("click", () => addRestoreOutput());
   filesBody
     .querySelectorAll<HTMLButtonElement>("[data-restore-output-id]")
     .forEach((button) => {
@@ -2604,87 +2760,132 @@ function renderRestoreMap(): void {
   const output = selectedRestoreOutput();
   if (!state.restoreKey) {
     replacementsBody.innerHTML = `
-      ${renderRestoreKeyControls()}
-      <p class="placeholder empty-panel-placeholder">No restore key yet. Return to Redact or import a private restore key.</p>
+      <p class="placeholder empty-panel-placeholder">Open a Restore file saved from Redact.</p>
     `;
-    wireRestoreKeyControls();
     return;
   }
-  if (!output) {
-    replacementsBody.innerHTML = `
-      ${renderRestoreKeyControls()}
-      <p class="placeholder empty-panel-placeholder">Create an AI output to start.</p>
-    `;
-    wireRestoreKeyControls();
-    return;
-  }
-  const matches = scanRestoreMatches(output.restoredDraft, state.restoreKey);
+
+  const matches = output
+    ? scanRestoreMatches(output.restoredDraft, state.restoreKey)
+    : [];
+  const matchesByToken = new Map(matches.map((match) => [match.token, match]));
   const restorableCount = matches.filter(
     (match) => match.status === "restorable",
   ).length;
-  replacementsBody.innerHTML =
-    matches.length === 0
-      ? `
-        ${renderRestoreKeyControls()}
-        <p class="placeholder">No placeholder tokens found in this draft.</p>
-      `
-      : `
-        ${renderRestoreKeyControls()}
-        ${
-          restorableCount > 0
-            ? `<button type="button" class="ghost-button restore-remaining-action" data-restore-remaining>
-                <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
-                <span>Restore remaining tokens</span>
-              </button>`
-            : ""
-        }
-        ${matches
-          .map((match) => renderRestoreMatchRow(match))
-          .join("")}
-      `;
+  const unknownMatches = matches.filter((match) => match.status === "unknown");
 
-  wireRestoreKeyControls();
+  if (state.restoreKey.entries.length === 0) {
+    replacementsBody.innerHTML = `
+      <p class="placeholder empty-panel-placeholder">No restorations saved here.</p>
+    `;
+    return;
+  }
+
+  const groups = groupRestoreEntriesByKind(state.restoreKey.entries);
+  const orderedKinds = Object.keys(groups).sort(sortKinds);
+  replacementsBody.innerHTML = `
+    ${
+      restorableCount > 0
+        ? `<button type="button" class="ghost-button restore-remaining-action" data-restore-remaining>
+            <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
+            <span>Restore remaining text</span>
+          </button>`
+        : ""
+    }
+    ${orderedKinds
+      .map((kind) => {
+        const items = groups[kind];
+        const collapsed = !state.expandedKinds.has(kind);
+        const style = kindStyle(kind);
+        return `
+          <section class="cat-group" data-kind="${escapeHtml(kind)}">
+            <div class="cat-head-row">
+              <button type="button" class="cat-head cat-head-name${collapsed ? " collapsed" : ""}" data-toggle-kind="${escapeHtml(kind)}">
+                <span class="cat-name" style="${style.labelCss}">${escapeHtml(kindLabel(kind))}</span>
+              </button>
+              <button type="button" class="cat-head cat-head-meta${collapsed ? " collapsed" : ""}" data-toggle-kind="${escapeHtml(kind)}" aria-label="Toggle ${escapeHtml(kindLabel(kind))} original text">
+                <span class="cat-count">${items.length}</span>
+                <span class="cat-chevron">${icon.chevronDown}</span>
+              </button>
+            </div>
+            <div class="cat-items-grid${collapsed ? " collapsed" : ""}">
+              <div class="cat-items">${items
+                .map((entry, i) =>
+                  renderRestoreKeyEntryRow(
+                    entry,
+                    i,
+                    matchesByToken.get(entry.replacement),
+                  ),
+                )
+                .join("")}</div>
+            </div>
+          </section>
+        `;
+      })
+      .join("")}
+    ${
+      unknownMatches.length > 0
+        ? `
+          <section class="restore-token-issues" aria-label="Unknown redactions">
+            ${unknownMatches.map((match) => renderRestoreMatchRow(match)).join("")}
+          </section>
+        `
+        : ""
+    }
+    ${renderRestoreFooter()}
+  `;
+
+  replacementsBody
+    .querySelectorAll<HTMLButtonElement>("[data-toggle-kind]")
+    .forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const kind = button.dataset.toggleKind!;
+        const section = button.closest(".cat-group")!;
+        toggleCategory(section, kind);
+      });
+    });
+
+  replacementsBody
+    .querySelectorAll<HTMLElement>(".cat-head-row")
+    .forEach((row) => {
+      row.addEventListener("click", () => {
+        const section = row.closest(".cat-group")!;
+        toggleCategory(section, section.getAttribute("data-kind")!);
+      });
+    });
   replacementsBody
     .querySelector<HTMLButtonElement>("[data-restore-remaining]")
     ?.addEventListener("click", restoreRemainingTokens);
 }
 
-function renderRestoreKeyControls(): string {
-  const keySource =
-    state.restoreKeySource === "imported"
-      ? "Imported private key"
-      : state.restoreKeySource === "session"
-        ? "Current session key"
-        : "No restore key";
-  const sessionNote =
-    state.restoreKeySource === "session"
-      ? `<p class="restore-key-note">Keep this tab open to restore later.</p>`
-      : "";
-  return `
-    <div class="restore-key-controls">
-      <p class="restore-key-status">${escapeHtml(keySource)}</p>
-      ${sessionNote}
-      <div class="restore-key-actions">
-        <button type="button" class="ghost-button" data-import-restore-key>
-          <i class="ph ph-upload-simple" aria-hidden="true"></i>
-          <span>Import key</span>
-        </button>
-        <button type="button" class="ghost-button" data-download-restore-key${state.restoreKey ? "" : " disabled"}>
-          <i class="ph ph-download-simple" aria-hidden="true"></i>
-          <span>Private key</span>
-        </button>
-      </div>
-    </div>
-  `;
+function groupRestoreEntriesByKind(
+  entries: RestoreEntry[],
+): Record<string, RestoreEntry[]> {
+  const groups: Record<string, RestoreEntry[]> = {};
+  for (const entry of entries) {
+    (groups[entry.kind] ??= []).push(entry);
+  }
+  return groups;
 }
 
-function wireRestoreKeyControls(): void {
-  replacementsBody
-    .querySelector<HTMLButtonElement>("[data-import-restore-key]")
-    ?.addEventListener("click", () => restoreKeyInput.click());
-  replacementsBody
-    .querySelector<HTMLButtonElement>("[data-download-restore-key]")
-    ?.addEventListener("click", downloadPrivateRestoreKey);
+function renderRestoreFooter(): string {
+  const entries = state.restoreKey?.entries ?? [];
+  const ruleCount = entries.length;
+  const replacementCount = entries.reduce(
+    (total, entry) => total + entry.count,
+    0,
+  );
+  const source =
+    state.restoreKeySource === "imported"
+      ? "imported Restore file"
+      : "live Redact session";
+  const text = `${pluralize(ruleCount, "rule")} from ${source}, ${pluralize(replacementCount, "replacement")}`;
+  return `
+    <div class="replacements-footer restore-footer" aria-label="${escapeHtml(text)}">
+      ${escapeHtml(text)}
+    </div>
+  `;
 }
 
 function renderRestoreMatchRow(
@@ -2707,6 +2908,38 @@ function renderRestoreMatchRow(
   `;
 }
 
+function renderRestoreKeyEntryRow(
+  entry: RestoreEntry,
+  index: number = 0,
+  match?: ReturnType<typeof scanRestoreMatches>[number],
+): string {
+  const style = kindStyle(entry.kind);
+  const status = entry.ambiguous
+    ? "Ambiguous"
+    : entry.safe
+      ? match
+        ? formatHitMultiplier({ count: match.count })
+        : "Ready"
+      : "Manual";
+  const statusTitle =
+    match && match.count > 0
+      ? `${match.count} ${match.count === 1 ? "redaction" : "redactions"} left in this draft`
+      : entry.safe
+        ? "Available for Restore"
+        : "Custom labels are kept for reference but are not restored automatically";
+  return `
+    <div class="entry-row restore-key-entry-row" style="--anim-index: ${index}">
+      <span class="entry-hit-count restore-key-entry-status" aria-label="${escapeHtml(statusTitle)}">${escapeHtml(status)}</span>
+      <div class="entry-source">
+        <s class="entry-value" style="--strike-color: ${style.color}">${escapeHtml(entry.value)}</s>
+      </div>
+      <div class="entry-controls">
+        <code class="entry-replacement restore-key-token">${escapeHtml(entry.replacement)}</code>
+      </div>
+    </div>
+  `;
+}
+
 function restoreStatusLabel(status: ReturnType<typeof scanRestoreMatches>[number]["status"]): string {
   if (status === "restorable") return "Restorable";
   if (status === "unsafe") return "Unsafe label";
@@ -2717,7 +2950,7 @@ function restoreStatusLabel(status: ReturnType<typeof scanRestoreMatches>[number
 function restoreStatusHelp(status: ReturnType<typeof scanRestoreMatches>[number]["status"]): string {
   if (status === "unsafe") return "Not restored automatically";
   if (status === "ambiguous") return "More than one original";
-  if (status === "unknown") return "No matching restore key";
+  if (status === "unknown") return "No matching original";
   return "";
 }
 
@@ -2731,15 +2964,15 @@ function restoreRemainingTokens(): void {
   renderRestoreMap();
 }
 
-function downloadPrivateRestoreKey(): void {
+function downloadRestoreFile(): void {
   if (!state.restoreKey) return;
   const ok = window.confirm(
-    "This private restore key contains original text. Do not upload it to AI tools.",
+    "This file contains redacted labels and original text so NoAI can restore later. Keep it private and do not upload it to AI tools.",
   );
   if (!ok) return;
   downloadText(
     JSON.stringify(state.restoreKey, null, 2),
-    "noai-private-restore-key.json",
+    restoreFileName(),
     "application/json;charset=utf-8",
   );
 }
@@ -3051,8 +3284,11 @@ function renderInfoHeroSummary(route: InfoRoute, summary: string): string {
 
 function renderPreview(): void {
   const reviewDoc = selectedReviewDoc();
+  const loadedDoc = selectedLoadedDoc();
+  const isEditableSource =
+    loadedDoc?.source === "text" && state.showOriginalPreview;
   previewTitle.textContent = "Preview";
-  previewVisibilityToggle.disabled = !reviewDoc;
+  previewVisibilityToggle.disabled = !reviewDoc && loadedDoc?.source !== "text";
   previewVisibilityToggle.classList.toggle("active", state.showOriginalPreview);
   previewVisibilityToggle.setAttribute(
     "aria-pressed",
@@ -3060,18 +3296,29 @@ function renderPreview(): void {
   );
   previewVisibilityToggle.setAttribute(
     "aria-label",
-    state.showOriginalPreview ? "Hide original text" : "Show original text",
+    loadedDoc?.source === "text"
+      ? state.showOriginalPreview
+        ? "Show redacted preview"
+        : "Edit source text"
+      : state.showOriginalPreview
+        ? "Hide original text"
+        : "Show original text",
   );
-  previewVisibilityToggle.title = state.showOriginalPreview
-    ? "Hide original text"
-    : "Show original text";
+  previewVisibilityToggle.title =
+    loadedDoc?.source === "text"
+      ? state.showOriginalPreview
+        ? "Show redacted preview"
+        : "Edit source text"
+      : state.showOriginalPreview
+        ? "Hide original text"
+        : "Show original text";
   const toggleIcon = previewVisibilityToggle.querySelector("i");
   if (toggleIcon) {
     toggleIcon.className = state.showOriginalPreview
       ? "ph ph-eye-slash"
       : "ph ph-eye";
   }
-  previewSearchToggle.disabled = !reviewDoc;
+  previewSearchToggle.disabled = !reviewDoc || isEditableSource;
   previewSearchToggle.classList.toggle("active", state.showPreviewSearch);
   previewSearchToggle.setAttribute(
     "aria-pressed",
@@ -3086,9 +3333,15 @@ function renderPreview(): void {
     : "Show preview search";
   copyDocButton.disabled = !reviewDoc;
   downloadDocButton.disabled = !reviewDoc;
-  previewSearchInput.disabled = !reviewDoc;
+  previewSearchInput.disabled = !reviewDoc || isEditableSource;
   previewSearchClear.hidden = state.previewQuery.length === 0;
-  previewSearch.hidden = !reviewDoc || !state.showPreviewSearch;
+  previewSearch.hidden = !reviewDoc || !state.showPreviewSearch || isEditableSource;
+
+  if (loadedDoc?.source === "text" && state.showOriginalPreview) {
+    renderSourceDocumentEditor(loadedDoc);
+    renderPreviewSearch();
+    return;
+  }
 
   if (!reviewDoc) {
     previewBody.innerHTML = `<p class="placeholder empty-panel-placeholder">Add a document to start.</p>`;
@@ -3143,6 +3396,25 @@ function renderPreview(): void {
   previewBody.innerHTML = "";
   previewBody.appendChild(fragment);
   renderPreviewSearch();
+}
+
+function renderSourceDocumentEditor(doc: LoadedDocument): void {
+  previewTitle.textContent = "Source Text";
+  previewBody.innerHTML = `
+    <textarea
+      id="source-document-editor"
+      class="source-document-editor"
+      placeholder="Paste or type text to redact."
+      spellcheck="true"
+      aria-label="Source text"
+    ></textarea>
+  `;
+  const editor =
+    previewBody.querySelector<HTMLTextAreaElement>("#source-document-editor")!;
+  editor.value = doc.text;
+  editor.addEventListener("input", () => {
+    updateTextDocument(doc.id, editor.value);
+  });
 }
 
 function renderPreviewSearch(): void {
@@ -3503,13 +3775,18 @@ function jumpToSearchHit(id: string): void {
 }
 
 function showOriginalPreview(): void {
-  if (!selectedReviewDoc()) return;
+  const selectedDoc = selectedLoadedDoc();
+  if (!selectedReviewDoc() && selectedDoc?.source !== "text") return;
   if (originalPreviewTimer !== undefined) {
     window.clearTimeout(originalPreviewTimer);
   }
   state.showOriginalPreview = true;
   hidePopover();
   renderPreview();
+  if (selectedDoc?.source === "text") {
+    focusSourceDocumentEditor();
+    return;
+  }
   showToast("", {
     durationMs: 10000,
     progress: true,
@@ -3521,11 +3798,15 @@ function showOriginalPreview(): void {
   }, 10000);
 }
 
-function hideOriginalPreview(options: { silent?: boolean } = {}): void {
+function cancelOriginalPreviewTimer(): void {
   if (originalPreviewTimer !== undefined) {
     window.clearTimeout(originalPreviewTimer);
     originalPreviewTimer = undefined;
   }
+}
+
+function hideOriginalPreview(options: { silent?: boolean } = {}): void {
+  cancelOriginalPreviewTimer();
   if (!state.showOriginalPreview) {
     renderPreview();
     return;
@@ -3533,6 +3814,22 @@ function hideOriginalPreview(options: { silent?: boolean } = {}): void {
   state.showOriginalPreview = false;
   renderPreview();
   if (!options.silent) showToast("Preview is redacted again.");
+}
+
+function focusSourceDocumentEditor(): void {
+  window.requestAnimationFrame(() => {
+    const editor =
+      previewBody.querySelector<HTMLTextAreaElement>("#source-document-editor");
+    editor?.focus();
+  });
+}
+
+function focusRestoreDraftEditor(): void {
+  window.requestAnimationFrame(() => {
+    const editor =
+      previewBody.querySelector<HTMLTextAreaElement>("#restore-draft-editor");
+    editor?.focus();
+  });
 }
 
 function renderLevelControl(): void {
@@ -3862,6 +4159,37 @@ function sanitizedFilename(name: string): string {
 function restoredFilename(name: string): string {
   const base = name.trim().replace(/\.[^.]+$/, "") || "ai-output";
   return `${base}.restored.md`;
+}
+
+function restoreFileName(): string {
+  const firstDocumentName = state.documents[0]?.fileName ?? "session";
+  const base = safeFilenamePart(
+    state.documents.length > 1
+      ? `${baseDocumentName(firstDocumentName)}, et al`
+      : baseDocumentName(firstDocumentName),
+  );
+  return `noai_restore-${base}-${restoreFileDate()}.json`;
+}
+
+function baseDocumentName(name: string): string {
+  return name.trim().replace(/\.[^.]+$/, "") || "document";
+}
+
+function restoreFileDate(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
+function safeFilenamePart(value: string): string {
+  return (
+    value
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\s+/g, " ")
+      .replace(/^\.+|\.+$/g, "") || "document"
+  );
 }
 
 function pluralize(count: number, singular: string): string {

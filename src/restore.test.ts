@@ -24,8 +24,8 @@ function entry(overrides: Partial<ReplacementEntry>): ReplacementEntry {
   };
 }
 
-describe("restore token safety", () => {
-  it("accepts machine-style tokens", () => {
+describe("restore replacement safety", () => {
+  it("accepts machine-style redaction labels", () => {
     expect(isSafeRestoreToken("PERSON_001")).toBe(true);
     expect(isSafeRestoreToken("ORG_002")).toBe(true);
     expect(isSafeRestoreToken("CUSTOM_123")).toBe(true);
@@ -39,8 +39,8 @@ describe("restore token safety", () => {
   });
 });
 
-describe("private restore keys", () => {
-  it("builds a restore key from countable entries", () => {
+describe("Restore files", () => {
+  it("builds restore data from countable entries", () => {
     const key = buildRestoreKey({
       appVersion: "0.0.0",
       engineVersion: "test-engine",
@@ -53,6 +53,7 @@ describe("private restore keys", () => {
       expect.objectContaining({
         replacement: "PERSON_001",
         value: "Jane Smith",
+        count: 2,
         safe: true,
         ambiguous: false,
       }),
@@ -95,7 +96,7 @@ describe("private restore keys", () => {
 });
 
 describe("restore text replacement", () => {
-  it("restores safe known tokens in pasted text", () => {
+  it("restores safe known redactions in pasted text", () => {
     const key = buildRestoreKey({
       appVersion: "0.0.0",
       engineVersion: "test-engine",
@@ -131,7 +132,7 @@ describe("restore text replacement", () => {
     );
   });
 
-  it("scans draft text for restorable and unknown tokens", () => {
+  it("scans draft text for restorable and unknown redactions", () => {
     const key = buildRestoreKey({
       appVersion: "0.0.0",
       engineVersion: "test-engine",
@@ -155,8 +156,8 @@ describe("restore text replacement", () => {
   });
 });
 
-describe("private restore key import", () => {
-  it("parses a valid restore key JSON file", () => {
+describe("Restore file import", () => {
+  it("parses a valid restore JSON file", () => {
     const key = buildRestoreKey({
       appVersion: "0.0.0",
       engineVersion: "test-engine",
@@ -168,9 +169,25 @@ describe("private restore key import", () => {
     expect(parseRestoreKey(JSON.stringify(key))).toEqual(key);
   });
 
-  it("rejects invalid restore key JSON", () => {
+  it("opens older Restore files without saved counts", () => {
+    const key = buildRestoreKey({
+      appVersion: "0.0.0",
+      engineVersion: "test-engine",
+      level: "balanced",
+      entries: [entry({})],
+      now: () => new Date("2026-06-24T00:00:00.000Z"),
+    });
+    const legacy = {
+      ...key,
+      entries: key.entries.map(({ count: _count, ...item }) => item),
+    };
+
+    expect(parseRestoreKey(JSON.stringify(legacy)).entries[0].count).toBe(1);
+  });
+
+  it("rejects invalid restore JSON", () => {
     expect(() => parseRestoreKey("{}")).toThrow(
-      "not a NoAI private restore key",
+      "not a NoAI Restore file",
     );
     expect(() => parseRestoreKey("{")).toThrow("not valid JSON");
   });
