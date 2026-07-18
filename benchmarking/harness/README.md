@@ -33,7 +33,27 @@ into the product runtime.
 
 `compare-dev-round.mjs` compares independent Claude and second-agent annotation
 batches against engine output, then writes `comparison/engine-gap-report.json`
-and `comparison/round-summary.md`.
+and `comparison/round-summary.md`. Headline metrics score the engine against
+annotator-consensus spans only: same document, action, label, and severity,
+with spans overlapping by at least 50%. Boundary differences merge into the
+shared intersection, so swapping annotator roles cannot change the target.
+Overlapping label/severity disagreements and single-annotator leads are
+reported separately for human judgment. Prediction support distinguishes
+confirmed spans, uncertain spans backed by a lead or disagreement, and spans
+unsupported by either annotator; character precision is shown as a
+confirmed-to-possible range.
+
+`gate-dev-round.mjs` is the hard gate between dev-loop rounds. It compares a
+candidate NAIR score report against the last accepted score report for the
+same suite/level and fails (exit 1) on regressions the overall recall number
+hides: per-label covered-span losses, critical/high severity losses, document-
+category losses, new keep-span violations, and precision drops. Loss
+tolerances default to zero. Changed benchmark targets and invalid gate options
+are configuration errors (exit 2); score reports carry a suite fingerprint for
+identity checking. Explicitly tolerated losses produce `PASS WITH WARNINGS`
+(exit 3), which stops unattended loops for integrator review. Only a clean
+`PASS` exits 0. On acceptance, the integrator snapshots the candidate report
+as the new accepted baseline (e.g. `reports/accepted-score-balanced.json`).
 
 Example:
 

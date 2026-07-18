@@ -49,6 +49,41 @@ documents are examples that reveal possible weaknesses; they are not targets to
 fit. Every rule should explain the broader pattern it covers and the
 counterexamples it must avoid.
 
+Read `benchmarking/rejected-patterns.md` before proposing changes. It records
+what past rounds got rejected for and why. If a planned change resembles a
+rejected pattern, redesign it or justify explicitly why it does not repeat the
+mistake.
+
+## Two Change Lanes
+
+Declare every change in your round report as one of two lanes:
+
+- **Vocabulary lane**: positive label strings added to existing detector
+  families (label lists and suffix tables). Lower risk, cheap to audit, and can
+  be batch-merged. A vocabulary entry must still be a plausible label — not a
+  generic everyday word used bare.
+- **Logic lane**: new detectors, new guards/suppressions, validator changes,
+  priority changes, regex rewrites, and suppressive/negative vocabulary such
+  as stopword entries. High risk: a stopword can suppress a real name and
+  cause a leak. At most ONE logic change per round, with at least one positive
+  synthetic test, one counterexample, and a clean gate run at every level with
+  an accepted baseline (currently Balanced).
+
+Never bundle a logic change and vocabulary additions so tightly that they
+cannot be kept or reverted separately.
+
+## Metrics Discipline
+
+- The dev-round headline target is the annotator-consensus spans from
+  `compare-dev-round.mjs`. Single-annotator spans are leads: triage them with
+  judgment, and drop the ones that look like one model's idiosyncrasy. Do not
+  chase union recall.
+- Overlapping label/severity disagreements also require judgment and are not
+  headline targets. Prediction support reports confirmed, uncertain, and
+  unsupported redactions; do not treat lead/disagreement support as a false
+  positive.
+- Prioritize critical/high-severity consensus misses over low-severity ones.
+
 ## Required Workflow
 
 1. Inspect the current engine/rules/tests before editing.
@@ -68,6 +103,17 @@ counterexamples it must avoid.
    - `npm test`
    - `npm run build`
    - `node scripts/check-engine-version.mjs`
+9. Score the sealed suite and run the hard gate before ending the round:
+   - `node benchmarking/harness/score-current-engine.mjs --suite <suite> --level balanced --out <round-dir>/score/candidate-balanced.json --no-history`
+   - `node benchmarking/harness/gate-dev-round.mjs --baseline <accepted-score-balanced.json> --candidate <round-dir>/score/candidate-balanced.json`
+   - Repeat scoring and gating for any additional level that has an accepted
+     baseline; Balanced is the only required level until those baselines exist.
+   - If the gate FAILS, revert the round (or reduce it until the gate passes)
+     before reporting. Do not start another loop on top of an ungated or
+     failing round. `PASS WITH WARNINGS` requires explicit integrator review
+     before continuing; only a clean `PASS` may advance unattended. Never
+     inspect NAIR documents to fix a gate result — the gate output is
+     aggregate-only and that is all you may use.
 
 ## Anti-Overfit Requirements
 
@@ -84,9 +130,13 @@ counterexamples it must avoid.
 
 Report:
 
-- Behavior changed.
+- Behavior changed, split by lane (vocabulary vs logic).
 - Tests added.
 - Version bump.
 - Verification results.
+- Gate result (`PASS`, `PASS WITH WARNINGS`, or `FAIL`) with the gate report
+  summary and any required integrator decision.
+- Leads and disagreements triaged: which uncertain spans you accepted,
+  rejected, or deferred, and why.
 - Residual risks.
 - Any files intentionally not touched.

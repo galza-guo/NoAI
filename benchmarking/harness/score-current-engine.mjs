@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
@@ -21,6 +22,7 @@ import {
   renderScoreHistoryMarkdown,
   upsertScoreHistory,
 } from "./score-history.mjs";
+import { createSuiteFingerprint } from "./suite-fingerprint.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "../..");
@@ -238,12 +240,14 @@ async function main() {
 
   const docs = index.documents.map((doc) => {
     const markdownPath = resolveSuitePath(suite, doc.markdownPath);
+    const text = readFileSync(markdownPath, "utf8");
     return {
       docId: doc.docId,
       title: doc.title,
       name: `${doc.docId}.md`,
-      text: readFileSync(markdownPath, "utf8"),
+      text,
       markdownPath,
+      sourceTextSha256: createHash("sha256").update(text).digest("hex"),
     };
   });
 
@@ -251,6 +255,7 @@ async function main() {
   const outputByDoc = new Map(engineOutput.outputs.map((doc) => [doc.docId, doc]));
   const manifestByDoc = new Map(manifest.documents.map((doc) => [doc.docId, doc]));
   const documentReports = [];
+  const fingerprintDocuments = [];
   const warnings = [];
 
   for (const doc of docs) {
@@ -258,6 +263,12 @@ async function main() {
       manifestByDoc.get(doc.docId)?.paths?.gold ??
       join(suite, "gold", `${doc.docId}.gold.json`);
     const gold = readJson(resolveSuitePath(suite, goldPath));
+    fingerprintDocuments.push({
+      docId: doc.docId,
+      sourceTextSha256: doc.sourceTextSha256,
+      category: manifestByDoc.get(doc.docId)?.category,
+      annotations: gold.annotations,
+    });
     const output = outputByDoc.get(doc.docId);
     if (!output) throw new Error(`Engine output missing ${doc.docId}`);
     const reviewDocument = output.reviewDocument;
@@ -292,6 +303,10 @@ async function main() {
     engineVersionLabel,
     engineVersionInfo: firstOutput?.engineVersionInfo,
     coverageThreshold: args.coverageThreshold,
+    suiteFingerprint: createSuiteFingerprint({
+      suiteId: index.suiteId,
+      documents: fingerprintDocuments,
+    }),
     generatedAt: new Date().toISOString(),
     summary,
     documents: documentReports,

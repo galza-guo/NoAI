@@ -69,15 +69,36 @@ function resolveFromRoot(path) {
   return resolve(root, path);
 }
 
-function annotationKey(docId, annotation) {
+// Two annotators rarely produce identical offsets for the same finding
+// (multi-line addresses, trailing punctuation, honorifics). Treat spans as
+// the same finding when they overlap substantially, so boundary preferences
+// do not inflate the target set with phantom misses.
+const CONSENSUS_OVERLAP_RATIO = 0.5;
+
+function overlapRatio(left, right) {
+  const intersection =
+    Math.min(left.end, right.end) - Math.max(left.start, right.start);
+  if (intersection <= 0) return 0;
+  const union = Math.max(left.end, right.end) - Math.min(left.start, right.start);
+  return union > 0 ? intersection / union : 0;
+}
+
+function annotationSortKey(annotation) {
   return [
-    docId,
+    annotation.docId,
     annotation.action,
-    annotation.label,
     annotation.start,
     annotation.end,
+    annotation.label,
+    annotation.severity,
     annotation.text,
   ].join("\u0000");
+}
+
+function canonicalPair(left, right) {
+  return annotationSortKey(left).localeCompare(annotationSortKey(right)) <= 0
+    ? [left, right]
+    : [right, left];
 }
 
 function loadSourceTexts(index) {
@@ -135,42 +156,103 @@ function flattenBatch(batch) {
   return items;
 }
 
+// Pair up annotations from the two independent annotators symmetrically. A
+// pair is a consensus finding when docId, action, label, and severity match and
+// the spans overlap by at least CONSENSUS_OVERLAP_RATIO. The shared
+// intersection is the headline target. Unmatched spans become leads, while
+// overlapping label/severity mismatches become explicit disagreements.
+// The union of two LLM annotators is NOT a trustworthy target: it maximizes
+// each model's idiosyncrasies, and chasing union recall is how document-
+// specific rules end up rejected at audit.
 function compareAnnotations(claudeBatch, agentBatch) {
-  const claude = new Map(
-    flattenBatch(claudeBatch).map((annotation) => [
-      annotationKey(annotation.docId, annotation),
-      annotation,
-    ]),
+  const claudeAll = flattenBatch(claudeBatch).sort(
+    (a, b) => a.docId.localeCompare(b.docId) || a.start - b.start,
   );
-  const agent = new Map(
-    flattenBatch(agentBatch).map((annotation) => [
-      annotationKey(annotation.docId, annotation),
-      annotation,
-    ]),
+  const agentAll = flattenBatch(agentBatch).sort(
+    (a, b) => a.docId.localeCompare(b.docId) || a.start - b.start,
   );
 
-  const agreed = [];
-  const claudeOnly = [];
-  const agentOnly = [];
-  const union = new Map();
-
-  for (const [key, annotation] of claude) {
-    union.set(key, { ...annotation, id: `merged-${String(union.size + 1).padStart(4, "0")}` });
-    if (agent.has(key)) agreed.push(annotation);
-    else claudeOnly.push(annotation);
-  }
-  for (const [key, annotation] of agent) {
-    if (!union.has(key)) {
-      union.set(key, { ...annotation, id: `merged-${String(union.size + 1).padStart(4, "0")}` });
+  const candidatePairs = [];
+  for (const claude of claudeAll) {
+    for (const agent of agentAll) {
+      if (claude.docId !== agent.docId || claude.action !== agent.action) continue;
+      const ratio = overlapRatio(claude, agent);
+      if (ratio < CONSENSUS_OVERLAP_RATIO) continue;
+      const [first, second] = canonicalPair(claude, agent);
+      candidatePairs.push({
+        claude,
+        agent,
+        ratio,
+        compatible:
+          claude.label === agent.label && claude.severity === agent.severity,
+        tieBreak: `${annotationSortKey(first)}\u0001${annotationSortKey(second)}`,
+      });
     }
-    if (!claude.has(key)) agentOnly.push(annotation);
   }
+  candidatePairs.sort(
+    (left, right) =>
+      Number(right.compatible) - Number(left.compatible) ||
+      right.ratio - left.ratio ||
+      left.tieBreak.localeCompare(right.tieBreak),
+  );
+
+  const matchedClaude = new Set();
+  const matchedAgent = new Set();
+  const consensus = [];
+  const disagreements = [];
+  for (const pair of candidatePairs) {
+    if (matchedClaude.has(pair.claude) || matchedAgent.has(pair.agent)) continue;
+    matchedClaude.add(pair.claude);
+    matchedAgent.add(pair.agent);
+    const [first, second] = canonicalPair(pair.claude, pair.agent);
+    if (pair.compatible) {
+      const start = Math.max(first.start, second.start);
+      const end = Math.min(first.end, second.end);
+      const textOffset = start - first.start;
+      consensus.push({
+        ...first,
+        id: `consensus-${String(consensus.length + 1).padStart(4, "0")}`,
+        start,
+        end,
+        text: first.text.slice(textOffset, textOffset + (end - start)),
+        annotatorSpans: [
+          { start: first.start, end: first.end },
+          { start: second.start, end: second.end },
+        ],
+        overlapRatio: Number(pair.ratio.toFixed(3)),
+      });
+    } else {
+      disagreements.push({
+        id: `disagreement-${String(disagreements.length + 1).padStart(4, "0")}`,
+        docId: first.docId,
+        action: first.action,
+        overlapRatio: Number(pair.ratio.toFixed(3)),
+        annotations: [first, second],
+      });
+    }
+  }
+
+  const claudeOnly = claudeAll.filter(
+    (annotation) => !matchedClaude.has(annotation),
+  );
+  const agentOnly = agentAll.filter(
+    (annotation) => !matchedAgent.has(annotation),
+  );
+
+  const leads = [
+    ...claudeOnly.map((annotation) => ({ ...annotation, annotator: "claude" })),
+    ...agentOnly.map((annotation) => ({ ...annotation, annotator: "agent" })),
+  ].map((annotation, index) => ({
+    ...annotation,
+    id: `lead-${String(index + 1).padStart(4, "0")}`,
+  }));
 
   return {
-    agreed,
+    consensus,
     claudeOnly,
     agentOnly,
-    mergedAnnotations: [...union.values()],
+    leads,
+    disagreements,
   };
 }
 
@@ -188,34 +270,120 @@ function percent(value) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function emptyPredictionSupport() {
+  return {
+    spans: { total: 0, confirmed: 0, uncertain: 0, unsupported: 0 },
+    chars: {
+      total: 0,
+      confirmed: 0,
+      uncertain: 0,
+      unsupported: 0,
+      confirmedPrecision: 1,
+      possiblePrecision: 1,
+    },
+  };
+}
+
+function addPredictionSupport(target, confirmedScore, possibleScore) {
+  const confirmedSpans = confirmedScore.predicted.spans.overlappingRedact;
+  const possibleSpans = possibleScore.predicted.spans.overlappingRedact;
+  const confirmedChars = confirmedScore.predicted.chars.overlappingRedact;
+  const possibleChars = possibleScore.predicted.chars.overlappingRedact;
+  const totalSpans = confirmedScore.predicted.spans.total;
+  const totalChars = confirmedScore.predicted.chars.total;
+
+  target.spans.total += totalSpans;
+  target.spans.confirmed += confirmedSpans;
+  target.spans.uncertain += possibleSpans - confirmedSpans;
+  target.spans.unsupported += totalSpans - possibleSpans;
+  target.chars.total += totalChars;
+  target.chars.confirmed += confirmedChars;
+  target.chars.uncertain += possibleChars - confirmedChars;
+  target.chars.unsupported += totalChars - possibleChars;
+  target.chars.confirmedPrecision = target.chars.total
+    ? target.chars.confirmed / target.chars.total
+    : 1;
+  target.chars.possiblePrecision = target.chars.total
+    ? (target.chars.confirmed + target.chars.uncertain) / target.chars.total
+    : 1;
+}
+
+function withoutAmbiguousPredictionMetrics(score) {
+  const { predicted: _predicted, ...recallAndKeepScore } = score;
+  return recallAndKeepScore;
+}
+
+function combinedSeverityBucket(bySeverity, severities) {
+  const combined = { total: 0, covered: 0 };
+  for (const severity of severities) {
+    const bucket = bySeverity?.[severity];
+    if (!bucket) continue;
+    combined.total += bucket.total ?? 0;
+    combined.covered += bucket.covered ?? 0;
+  }
+  combined.recall = combined.total ? combined.covered / combined.total : 1;
+  return combined;
+}
+
 function markdownSummary(report) {
+  const hardSeverity = combinedSeverityBucket(report.summary.bySeverity, [
+    "critical",
+    "high",
+  ]);
   const lines = [
     "# Dev Round Comparison Summary",
     "",
     `- Round: ${report.suiteId}`,
     `- Level: ${report.level}`,
     `- Engine version: ${report.engineVersionLabel ?? report.engineVersion}`,
-    `- Agreed annotations: ${report.annotationComparison.agreed.length}`,
-    `- Claude-only annotations: ${report.annotationComparison.claudeOnly.length}`,
-    `- Agent-only annotations: ${report.annotationComparison.agentOnly.length}`,
+    `- Consensus annotations (headline target): ${report.annotationComparison.consensus.length}`,
+    `- Leads (single-annotator, excluded from headline): claude-only ${report.annotationComparison.claudeOnly.length}, agent-only ${report.annotationComparison.agentOnly.length}`,
     "",
-    "## Engine Score Against Annotation Union",
+    "## Engine Score Against Annotator Consensus",
     "",
+    `- Critical/high-severity span recall: ${percent(hardSeverity.recall)} (${hardSeverity.covered}/${hardSeverity.total})`,
     `- Redaction span recall: ${percent(report.summary.redact.spans.recall)} (${report.summary.redact.spans.covered}/${report.summary.redact.spans.total})`,
     `- Redaction character recall: ${percent(report.summary.redact.chars.recall)}`,
     `- Keep-span clean rate: ${percent(report.summary.keep.spans.cleanRate)} (${report.summary.keep.spans.clean}/${report.summary.keep.spans.total})`,
-    `- Unsupported predicted spans: ${report.summary.predicted.spans.unsupported}/${report.summary.predicted.spans.total}`,
+    `- Prediction support: confirmed ${report.predictionSupport.spans.confirmed}, uncertain ${report.predictionSupport.spans.uncertain}, unsupported ${report.predictionSupport.spans.unsupported} of ${report.predictionSupport.spans.total}`,
+    `- Character precision range: ${percent(report.predictionSupport.chars.confirmedPrecision)} confirmed to ${percent(report.predictionSupport.chars.possiblePrecision)} including uncertain findings`,
+    "",
+    "## By Severity",
+    "",
+    "| Severity | Spans | Covered | Partial | Missed | Span recall |",
+    "| --- | ---: | ---: | ---: | ---: | ---: |",
+  ];
+  for (const [severity, bucket] of Object.entries(
+    report.summary.bySeverity ?? {},
+  ).sort()) {
+    lines.push(
+      `| ${severity} | ${bucket.total} | ${bucket.covered} | ${bucket.partial} | ${bucket.missed} | ${percent(bucket.recall)} |`,
+    );
+  }
+  lines.push(
     "",
     "## By Label",
     "",
     "| Label | Spans | Covered | Partial | Missed | Span recall |",
     "| --- | ---: | ---: | ---: | ---: | ---: |",
-  ];
+  );
   for (const [label, bucket] of Object.entries(report.summary.byLabel).sort()) {
     lines.push(
       `| ${label} | ${bucket.total} | ${bucket.covered} | ${bucket.partial} | ${bucket.missed} | ${percent(bucket.recall)} |`,
     );
   }
+  lines.push(
+    "",
+    "## Leads",
+    "",
+    "Single-annotator spans are not scoring targets. Triage each lead before",
+    "turning it into a finding: an unmatched span may be a real miss the other",
+    "annotator overlooked, or one model's idiosyncrasy that should be dropped.",
+    "",
+    `- Redact leads already covered by the engine: ${report.leads.summary.redact.spans.covered}/${report.leads.summary.redact.spans.total}`,
+    `- Uncovered redact leads: ${report.leads.summary.redact.spans.total - report.leads.summary.redact.spans.covered}`,
+    `- Annotation disagreements needing judgment: ${report.annotationComparison.disagreements.length}`,
+  );
   if (report.warnings.length > 0) {
     lines.push("", "## Warnings", "");
     for (const warning of report.warnings) lines.push(`- ${warning}`);
@@ -248,9 +416,19 @@ export function compareDevRound(options) {
   const annotationComparison = compareAnnotations(claudeBatch, agentBatch);
   const engineOutput = readJson(join(roundDir, "engine-output", `${level}.json`));
   const outputByDoc = new Map(engineOutput.outputs.map((doc) => [doc.docId, doc]));
-  const mergedByDoc = annotationsByDoc(annotationComparison.mergedAnnotations);
+  const consensusByDoc = annotationsByDoc(annotationComparison.consensus);
+  const leadsByDoc = annotationsByDoc(annotationComparison.leads);
+  const uncertainByDoc = annotationsByDoc([
+    ...annotationComparison.leads,
+    ...annotationComparison.disagreements.flatMap(
+      (disagreement) => disagreement.annotations,
+    ),
+  ]);
 
   const documentScores = [];
+  const headlineScores = [];
+  const leadScores = [];
+  const predictionSupport = emptyPredictionSupport();
   const warnings = [...(engineOutput.warnings ?? [])];
   for (const doc of index.documents) {
     const output = outputByDoc.get(doc.docId);
@@ -259,17 +437,34 @@ export function compareDevRound(options) {
       continue;
     }
     const predicted = extractPredictedSpans(output.reviewDocument.segments);
-    const score = scoreDocument(doc.docId, mergedByDoc.get(doc.docId) ?? [], predicted);
+    const score = scoreDocument(
+      doc.docId,
+      consensusByDoc.get(doc.docId) ?? [],
+      predicted,
+    );
+    const possibleSupportScore = scoreDocument(
+      doc.docId,
+      [
+        ...(consensusByDoc.get(doc.docId) ?? []),
+        ...(uncertainByDoc.get(doc.docId) ?? []),
+      ],
+      predicted,
+    );
+    addPredictionSupport(predictionSupport, score, possibleSupportScore);
+    headlineScores.push(score);
     documentScores.push({
       docId: doc.docId,
       title: doc.title,
       category: doc.category,
-      score,
+      score: withoutAmbiguousPredictionMetrics(score),
     });
+    leadScores.push(
+      scoreDocument(doc.docId, leadsByDoc.get(doc.docId) ?? [], predicted),
+    );
   }
 
   const report = {
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.2.0",
     suiteId: index.suiteId,
     level,
     engineVersion: engineOutput.engineVersion,
@@ -281,13 +476,26 @@ export function compareDevRound(options) {
       agent: agentPath,
     },
     annotationComparison: {
-      agreed: annotationComparison.agreed,
+      consensus: annotationComparison.consensus,
       claudeOnly: annotationComparison.claudeOnly,
       agentOnly: annotationComparison.agentOnly,
+      disagreements: annotationComparison.disagreements,
     },
     warnings,
     documents: documentScores,
-    summary: summarizeSuiteScores(documentScores.map((doc) => doc.score)),
+    // Headline metrics: engine vs annotator-consensus spans only.
+    summary: withoutAmbiguousPredictionMetrics(
+      summarizeSuiteScores(headlineScores),
+    ),
+    predictionSupport,
+    // Single-annotator spans, scored for triage only ("how many leads does
+    // the engine already cover"), never a target to optimize.
+    leads: {
+      spans: annotationComparison.leads,
+      summary: withoutAmbiguousPredictionMetrics(
+        summarizeSuiteScores(leadScores),
+      ),
+    },
   };
 
   const comparisonDir = join(roundDir, "comparison");

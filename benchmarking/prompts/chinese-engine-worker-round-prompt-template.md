@@ -98,6 +98,12 @@ For each synthetic test idea:
 - Do not propose a dictionary of real corpus-specific entities.
 - Do not add AI/LLM behavior to the product.
 - Do not optimize for a single source document at the cost of unseen documents.
+- Check `benchmarking/rejected-patterns.md` first: do not re-propose rule ideas
+  that match a rejected pattern (e.g. bare generic-word labels, schemeless
+  domain matching, suffix-only org rules without counterexamples).
+- A label proposal must be an unambiguous *label word*, not a generic everyday
+  word. Two-character function words (经办, 复核) are label-worthy only in
+  separator-bound forms (`经办：`), never bare.
 
 ## Useful Existing Files
 

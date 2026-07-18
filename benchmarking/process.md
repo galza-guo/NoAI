@@ -74,11 +74,48 @@ suite.
 3. Audit the worker's changes for scope, generality, and overfitting.
 4. Run unit tests, build, and engine-version checks.
 5. Run NAIR scoring against the frozen suite.
-6. Decide whether to adopt, partially keep, or discard the round.
+6. Run the hard gate (`benchmarking/harness/gate-dev-round.mjs`) against the
+   last accepted score report. A failing gate means revert or reduce the round
+   before anything else happens. `PASS WITH WARNINGS` requires an integrator's
+   explicit acceptance and cannot advance an unattended loop. No further loops
+   build on a failing or unreviewed round.
+7. Decide whether to adopt, partially keep, or discard the round.
 
 The worker must never see NAIR documents, NAIR gold annotations, model
 proposals, or span-level benchmark failures. NAIR results may guide release
 decisions and broad future-development priorities, but not direct rule writing.
+The gate report is aggregate-only output and is the only NAIR signal a worker
+may consume.
+
+#### Round Gate and Cadence Rules
+
+Lessons from the June 2026 loop collapse (English r32-r35 rejected wholesale
+after a hidden ORG regression compounded across rounds):
+
+- **Gate every round, stop the line on FAIL.** Overall span recall hides
+  per-label damage. The gate checks per-label, per-severity, and per-category
+  movement plus keep-span violations and precision, with zero-loss defaults.
+  It also refuses to compare changed benchmark targets. A worker may not start
+  the next loop while the gate fails or has unreviewed warnings; an integrator
+  may not merge a failing round.
+- **Keep an accepted baseline.** On acceptance, the integrator snapshots the
+  candidate score report as `reports/accepted-score-<level>.json` for the
+  suite. The gate always compares against the last accepted baseline, not
+  against whatever the previous (possibly rejected) round produced.
+- **Two change lanes.** Positive vocabulary additions (new label strings in
+  existing detector families) and logic changes (new detectors, guards,
+  validators, priorities, and suppressive/negative vocabulary such as
+  stopwords) are audited differently. Stopword additions can create leaks and
+  therefore count as the round's one logic change. Never entangle logic with
+  positive vocabulary so that partial keep stays cheap.
+- **Integrate in small batches.** Merge/review after every 3-5 accepted
+  loops. Rejection cost grows superlinearly with batch size.
+- **Record rejections.** Every rejected round or change gets an entry in
+  `benchmarking/rejected-patterns.md`, which is included in worker prompts.
+  The loop must be able to learn from its own audit outcomes.
+- **Watch for saturation.** If a category's marginal aggregate gain has been
+  flat for several rounds, stop mining it with vocabulary. File the residual
+  gap as structural (architecture work, not label work) and switch themes.
 
 ## Suite Selection
 
