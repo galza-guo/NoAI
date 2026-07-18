@@ -4814,6 +4814,21 @@ Net 30. The Company and The Bank confirmed the terms.
     expect(output).toContain("DATE_");
   });
 
+  it("redacts formal-numeral dates for every financial digit 壹-玖", () => {
+    // Regression for the 染/柒 character-class typo: the date classes silently
+    // dropped formal seven, so 贰零贰柒年 (2027) style dates leaked. Exercise
+    // every 大写 digit in year, month, and day positions so a missing class
+    // member fails loudly instead of leaking one digit's dates.
+    const digits = ["壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖"];
+    for (const digit of digits) {
+      const date = `贰零贰${digit}年${digit}月拾${digit}日`;
+      const output = redact(`本合同自${date}起生效。`, "balanced");
+      expect(output, `formal-numeral date with ${digit} must redact`).not.toContain(
+        date,
+      );
+    }
+  });
+
   it("redacts bare 万/亿 amounts while rejecting counters and 元 forms", () => {
     const output = redact(
       [

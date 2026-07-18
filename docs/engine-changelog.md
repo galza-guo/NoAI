@@ -6,6 +6,21 @@ ruleset-only changes bump only the relevant ruleset counter
 `ENGINE_VERSION` changes only for non-ruleset shared engine/API/review metadata
 changes.
 
+## NoAI redaction engine 1.6.0 (general r32, chinese r25) - 2026-07-07
+
+Chinese ruleset bug-fix round from a main-worktree audit. Synthetic tests only;
+deterministic rule changes only. No AI/LLM/backend/telemetry added.
+
+- Fixed a character-class typo in the Chinese-numeral date classes (`NUMERAL`
+  and `DAY_NUMERAL` in `src/redactor/chinese.ts`): both contained 染 (dye)
+  where 柒 (the formal financial seven) was intended, so formal-numeral dates
+  containing a seven (e.g. `贰零贰柒年柒月拾柒日`) silently failed to match
+  `CHINESE_NUMERAL_DATE_RE` and leaked. The amount class
+  (`CN_NUMERAL_AMT_CHARS`) already had 柒 and was unaffected.
+- Added a property-style regression test that builds a formal-numeral date from
+  every 大写 digit 壹-玖 in year, month, and day positions, so a missing
+  character-class member now fails loudly instead of leaking one digit's dates.
+
 ## NoAI redaction engine 1.6.0 (general r32, chinese r24) - 2026-06-22
 
 Mortgage / payroll follow-up round for deterministic redaction labels. Synthetic

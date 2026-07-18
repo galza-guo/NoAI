@@ -497,8 +497,8 @@ const CHINESE_DATE_RE =
 // Chinese-numeral dates (二〇二六年六月十八日 / 贰零贰陆年壹月拾伍日). Year and
 // month are read digit-by-digit; the day also allows the compound ten-marker
 // forms 十八/廿三/三十. Requires 年…月 so 年度报告 / 甲午战争 / 纯数字串 stay readable.
-const NUMERAL = "[零〇一二三四五六七八九两壹贰叁肆伍陆染捌玖]";
-const DAY_NUMERAL = "[零〇一二三四五六七八九两壹贰叁肆伍陆染捌玖十廿卅拾]";
+const NUMERAL = "[零〇一二三四五六七八九两壹贰叁肆伍陆柒捌玖]";
+const DAY_NUMERAL = "[零〇一二三四五六七八九两壹贰叁肆伍陆柒捌玖十廿卅拾]";
 const CHINESE_NUMERAL_DATE_RE = new RegExp(
   NUMERAL + "{4}年" + NUMERAL + "{1,2}月(?:" + DAY_NUMERAL + "{1,3}日)?",
   "g",
