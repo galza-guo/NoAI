@@ -984,8 +984,8 @@ app.innerHTML = `
           <p class="guarantee-item">
             <span class="guarantee-icon" aria-hidden="true">
               <i class="ph ph-brain"></i>
-              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
-                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-slash">
+                <polygon points="4,31 29,6 36,6 11,31" />
               </svg>
             </span>
             <span>No AI</span>
@@ -993,8 +993,8 @@ app.innerHTML = `
           <p class="guarantee-item">
             <span class="guarantee-icon" aria-hidden="true">
               <i class="ph ph-hard-drives"></i>
-              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
-                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-slash">
+                <polygon points="4,31 29,6 36,6 11,31" />
               </svg>
             </span>
             <span>No servers</span>
@@ -1002,8 +1002,8 @@ app.innerHTML = `
           <p class="guarantee-item">
             <span class="guarantee-icon" aria-hidden="true">
               <i class="ph ph-cloud-arrow-up"></i>
-              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-strike">
-                <polygon class="redaction-strike" points="5,18 38,18 35,23 2,23" />
+              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="guarantee-slash">
+                <polygon points="4,31 29,6 36,6 11,31" />
               </svg>
             </span>
             <span>No uploads</span>
@@ -1462,6 +1462,7 @@ function renderRoute(): void {
   const showingWorkspace = state.route === "workspace";
   workspaceView.hidden = !showingWorkspace;
   infoView.hidden = showingWorkspace;
+  workspaceModeSwitch.hidden = !showingWorkspace;
   appShell.classList.toggle("info-page-active", !showingWorkspace);
 
   if (firstVisitCover.parentElement) {

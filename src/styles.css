@@ -1396,12 +1396,17 @@ button.info-toggle:focus-visible {
   font-size: 26px;
 }
 
-.guarantee-strike {
+.guarantee-slash {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  color: var(--color-text-main);
   pointer-events: none;
+}
+
+.guarantee-slash polygon {
+  fill: currentColor;
 }
 
 .start-redacting-btn {

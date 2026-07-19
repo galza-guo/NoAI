@@ -14,6 +14,7 @@ describe("restore workspace markup", () => {
     expect(mainSource).not.toMatch(
       /<h2 id="preview-title">Preview<\/h2>[\s\S]{0,800}class="workspace-mode-switch"/,
     );
+    expect(mainSource).toContain("workspaceModeSwitch.hidden = !showingWorkspace;");
   });
 
   it("uses restore panel labels that mirror the redaction workspace", () => {
