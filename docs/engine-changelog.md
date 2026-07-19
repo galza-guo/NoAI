@@ -6,6 +6,28 @@ ruleset-only changes bump only the relevant ruleset counter
 `ENGINE_VERSION` changes only for non-ruleset shared engine/API/review metadata
 changes.
 
+## NoAI redaction engine 1.6.0 (general r33, chinese r25) - 2026-07-19
+
+English/general executed-agreement notice and signature-block round. Three
+bounded excerpts from public SEC-filed agreements were kept only in the ignored
+private round folder; committed tests use invented names. Deterministic rule
+changes only. No AI/LLM/backend/telemetry added to the product runtime.
+
+- Updated signature-name tokenization to consume Unicode letters, so Latin
+  names containing diacritics are redacted as complete values instead of
+  leaking the accented remainder after an ASCII-only prefix.
+- Kept the detector signature-marker-bound (`/s/`, `By:`, `Name:`, or
+  `Printed Name`) and added a prose counterexample to keep unlabelled accented
+  title text readable.
+- Development consensus redaction recall rose from 80.4% to 87.0%; PERSON span
+  recall rose from 83.3% to 100%; keep-span clean rate held at 100%.
+- Aggregate NAIR-v2 Balanced grading was unchanged (667/957 covered redact
+  spans, 7 keep-span violations, 55.0% character-precision proxy); the hard
+  gate returned a clean PASS against accepted general r32.
+- Deferred multi-line notice-address misses as structural boundary work, and
+  rejected `EXHIBIT 10.3` single-annotator leads as generic filing headings,
+  not document-specific sensitive references.
+
 ## NoAI redaction engine 1.6.0 (general r32, chinese r25) - 2026-07-07
 
 Chinese ruleset bug-fix round from a main-worktree audit. Synthetic tests only;

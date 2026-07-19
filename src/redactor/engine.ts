@@ -3507,15 +3507,19 @@ export class Detector {
     // they may be printed in ALL CAPS. Capture and validate them here.
     const markerRe =
       /(?:\/s\/|\/S\/|\bName\s*:|\bPrinted Name\b\s*:|\bBy\s*:|_{3,})/g;
-    // A name token is a capitalized word/initial(s) cluster, or a lowercase
-    // surname particle (de, van, von, ...). Tokens are separated by spaces/tabs
-    // only (never newlines) so unrelated capitalized words are not stitched.
+    // A name token is a Unicode-capitalized word/initial(s) cluster, or a
+    // lowercase surname particle (de, van, von, ...). Unicode letter classes
+    // keep Latin names with diacritics intact (José Álvarez, Élodie Noël)
+    // instead of masking only an ASCII prefix. Tokens are separated by
+    // spaces/tabs only (never newlines) so unrelated capitalized words are not
+    // stitched.
     const particle =
       "de|da|dos|das|du|del|della|di|van|von|der|den|ten|ter|le|la|el|bin|al";
-    const token = `[A-Z][A-Za-z.'’-]+|(?:${particle})`;
+    const capitalizedToken = String.raw`\p{Lu}[\p{L}.'’-]+`;
+    const token = `${capitalizedToken}|(?:${particle})`;
     const nameRe = new RegExp(
-      `([A-Z][A-Za-z.'’-]+(?:[^\\S\\r\\n]+(?:${token})){1,5})`,
-      "g",
+      `(${capitalizedToken}(?:[^\\S\\r\\n]+(?:${token})){1,5})`,
+      "gu",
     );
     const orgSuffix = new RegExp(
       String.raw`\b(?:${ORGANIZATION_SUFFIX_ALT})\b\.?$`,
@@ -3612,7 +3616,8 @@ export class Detector {
     // At least one substantial capitalized token (a real given/surname, not a
     // lone initial or particle).
     const substantial = tokens.filter(
-      (token) => /^[A-Z]/.test(token) && token.replace(/[.]/g, "").length >= 3,
+      (token) =>
+        /^\p{Lu}/u.test(token) && token.replace(/[.]/g, "").length >= 3,
     );
     if (substantial.length === 0) return false;
     // Reject role/defined-term phrases, but do not reject a real signatory

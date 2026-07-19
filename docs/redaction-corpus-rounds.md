@@ -88,3 +88,25 @@ For each document:
 5. Tune rules only after at least two examples show the same pattern, unless the miss is obvious and high-risk.
 
 The best release signal is not "all public documents fully anonymized." It is "the same classes of identifiers are caught repeatedly, and failures are represented by readable synthetic tests."
+
+## Completed Round: 2026-07-19 Notice And Signature Blocks
+
+- Sources: bounded notice/signature excerpts from three public SEC-filed
+  executed agreements; raw and normalized source material remained under the
+  ignored private round folder.
+- Annotators: independent Claude and Codex passes, compared only after both
+  batches passed hash and exact-offset validation.
+- Logic lane: signature-name parsing now consumes Unicode letters, preventing
+  partial leaks in Latin names containing diacritics. A positive synthetic
+  signature case and an unlabelled-prose counterexample were added.
+- Vocabulary lane: no changes.
+- Development result: consensus redaction recall improved from 80.4% to 87.0%,
+  PERSON recall improved from 83.3% to 100%, and keep-span clean rate held at
+  100%.
+- Aggregate grade: NAIR-v2 Balanced remained unchanged at 667/957 covered
+  redact spans, 7 keep-span violations, and a 55.0% character-precision proxy;
+  the hard gate passed cleanly against accepted general r32.
+- Triage: real multi-line address leads were deferred because safely joining
+  address blocks needs broader structural work; `EXHIBIT 10.3` leads were
+  rejected as generic filing headings; keep-label and URL-severity annotation
+  disagreements required no engine change.

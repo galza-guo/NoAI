@@ -683,6 +683,25 @@ Daniela Marsh approved the amendment.
     expect(output).toContain("PERSON_");
   });
 
+  it("redacts complete Unicode-letter names in signature fields", () => {
+    // Executed agreements often contain Latin-script names with diacritics.
+    // Signature parsing must consume the whole name rather than masking an
+    // ASCII prefix and leaking the accented remainder. Accented title text
+    // without a signature marker remains ordinary readable prose.
+    const output = redact(`
+By: /s/ José Álvarez
+Name: Élodie Noël
+
+The section title Résumé Général remains readable.
+`);
+
+    expect(output).not.toContain("José Álvarez");
+    expect(output).not.toContain("Élodie Noël");
+    expect(output).not.toMatch(/PERSON_\d+é Álvarez/);
+    expect(output).toContain("Résumé Général remains readable");
+    expect(output).toContain("PERSON_");
+  });
+
   it("redacts initials-led and particle signatory names with leading titles", () => {
     // International signatures combine initials, lowercase particles (de, van)
     // and leading titles. The body often repeats the name without the title.
