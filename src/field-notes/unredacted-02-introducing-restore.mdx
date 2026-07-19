@@ -1,0 +1,51 @@
+---
+slug: unredacted-02-introducing-restore
+title: Unredacted 02: Introducing Restore
+date: 6 July 2026
+datetime: 2026-07-06
+summary: Restore puts the original details back into AI-generated output locally in your browser, allowing you to use sanitized documents without having to reverse every redaction manually.
+---
+
+In our first field note, we explained why documents should be sanitized before being shared with an AI tool, and how NoAI supports this process.
+
+However, whether done manually or with NoAI, sanitization creates a practical challenge at the other end: your AI may generate useful output from the sanitized document, but its responses will contain anonymized labels such as `PERSON_001` and `COMPANY_002` instead of real names. Although this protects sensitive information, it makes the result harder to read and often requires checking each label against a reference table.
+
+## Introducing Restore
+
+The new Restore function automates this process. After receiving a response from an AI tool, you can paste the text into NoAI or import it as a file. NoAI then replaces the recognized anonymized labels with their original text.
+
+The restoration takes place locally in the browser, and no document is sent or uploaded anywhere.
+
+Once restored, the result can be reviewed, edited, copied, or downloaded as a readable document.
+
+## The Complete Workflow
+
+The complete workflow for protecting confidentiality and privacy while using AI tools looks like this:
+
+1. Add a document to NoAI in **Redact** mode.
+2. Review the automated redactions, then copy or download the sanitized version.
+3. Share the sanitized version with an AI tool. Ask questions, make revisions, or generate new material.
+4. Paste or import the AI’s response back into NoAI in **Restore** mode.
+5. Review the restored document, then copy, edit, or download it for use.
+
+Throughout this workflow, the AI works only with sanitized information. NoAI removes sensitive details before the document is shared with the AI and puts them back after the AI’s response returns.
+
+## Restore Now or Later
+
+If the AI’s response is ready while the NoAI tab remains open, you can simply switch to **Restore** mode and paste or import the response. NoAI already remembers which original details belong to each anonymized label.
+
+If you expect to receive the AI’s response later, save a **Restore file** before closing NoAI. Think of it as the key to the anonymized information.
+
+![The Redactions panel with the Save Restore file button in the upper-right corner](/field-notes/restore-file-save.png "Save a Restore file from the Redactions panel before closing NoAI.")
+
+When the response is ready, go to **Restore** mode in NoAI and open the saved Restore file. NoAI will then have all the information it needs to put the original details back. This works even if you have restarted your browser or device.
+
+![The Restorations panel with the Open Restore file button in the upper-right corner](/field-notes/restore-file-open.png "Open the saved Restore file from the Restorations panel.")
+
+## Keep the Restore File Private
+
+A Restore file contains the original details needed to reverse the anonymized labels. It should therefore be treated with the same care as the original document: store it somewhere private, and do not share it with an AI tool or anyone who should not have access to the original information.
+
+The Restore file is only for use with NoAI. The AI tool does not need it at any stage of the workflow.
+
+Once you have finished restoring all AI responses associated with the sanitized document, the Restore file is no longer needed and can be safely deleted.

@@ -36,8 +36,8 @@ describe("restore workspace markup", () => {
 
   it("uses header actions for Restore files", () => {
     expect(mainSource).toContain("restore-file-action");
-    expect(mainSource).toContain("ph-arrow-square-out");
-    expect(mainSource).toContain("ph-arrow-square-in");
+    expect(mainSource).toContain("ph-file-arrow-down");
+    expect(mainSource).toContain("ph-file-arrow-up");
     expect(mainSource).toContain("Save Restore file");
     expect(mainSource).toContain("Open Restore file");
     expect(mainSource).toContain("function restoreFileName");

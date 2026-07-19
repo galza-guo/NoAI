@@ -14,6 +14,9 @@ Opening paragraph for the field note.
 
 Plain text under the main section.
 
+1. Open **Redact** mode.
+2. Replace a label such as \`PERSON_001\`.
+
 ![Screenshot of the redaction review](/field-notes/template.png "Caption text for the image.")
 
 ### Smaller section
@@ -33,6 +36,14 @@ describe("field note mdx", () => {
       { type: "paragraph", text: "Opening paragraph for the field note." },
       { type: "heading", level: 2, text: "Main section" },
       { type: "paragraph", text: "Plain text under the main section." },
+      {
+        type: "list",
+        ordered: true,
+        items: [
+          "Open **Redact** mode.",
+          "Replace a label such as `PERSON_001`.",
+        ],
+      },
       {
         type: "image",
         alt: "Screenshot of the redaction review",
@@ -71,5 +82,13 @@ describe("field note mdx", () => {
     const html = renderFieldNoteArticle(note);
 
     expect(html).toContain("This is <em>important</em> and <em>&lt;safe&gt;</em>.");
+  });
+
+  it("renders lists, strong emphasis, and inline code", () => {
+    const html = renderFieldNoteArticle(parseFieldNoteMdx(TEMPLATE_MDX));
+
+    expect(html).toContain("<ol>");
+    expect(html).toContain("<strong>Redact</strong>");
+    expect(html).toContain("<code>PERSON_001</code>");
   });
 });

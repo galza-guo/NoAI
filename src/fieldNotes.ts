@@ -1,6 +1,7 @@
 export type FieldNoteBlock =
   | { type: "paragraph"; text: string }
   | { type: "heading"; level: 2 | 3; text: string }
+  | { type: "list"; ordered: boolean; items: string[] }
   | { type: "image"; alt: string; src: string; caption?: string };
 
 export interface FieldNote {
@@ -100,6 +101,25 @@ function parseBlock(chunk: string): FieldNoteBlock {
     };
   }
 
+  const lines = chunk.split("\n");
+  const orderedItems = lines.map((line) => line.match(/^\d+\.\s+(.+)$/));
+  if (orderedItems.every(Boolean)) {
+    return {
+      type: "list",
+      ordered: true,
+      items: orderedItems.map((item) => item![1].trim()),
+    };
+  }
+
+  const unorderedItems = lines.map((line) => line.match(/^[-*]\s+(.+)$/));
+  if (unorderedItems.every(Boolean)) {
+    return {
+      type: "list",
+      ordered: false,
+      items: unorderedItems.map((item) => item![1].trim()),
+    };
+  }
+
   return {
     type: "paragraph",
     text: chunk.replace(/\n+/g, " "),
@@ -123,35 +143,39 @@ function renderFieldNoteBlock(block: FieldNoteBlock): string {
     `;
   }
 
+  if (block.type === "list") {
+    const tag = block.ordered ? "ol" : "ul";
+    const items = block.items
+      .map((item) => `<li>${renderInlineMarkdown(item)}</li>`)
+      .join("");
+    return `<${tag}>${items}</${tag}>`;
+  }
+
   return `<p>${renderInlineMarkdown(block.text)}</p>`;
 }
 
 function renderInlineMarkdown(value: string): string {
+  const tokenPattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g;
   let html = "";
-  let index = 0;
+  let lastIndex = 0;
 
-  while (index < value.length) {
-    const open = value.indexOf("*", index);
-    if (open === -1) {
-      html += escapeHtml(value.slice(index));
-      break;
+  for (const match of value.matchAll(tokenPattern)) {
+    const token = match[0];
+    const index = match.index ?? 0;
+    html += escapeHtml(value.slice(lastIndex, index));
+
+    if (token.startsWith("`")) {
+      html += `<code>${escapeHtml(token.slice(1, -1))}</code>`;
+    } else if (token.startsWith("**")) {
+      html += `<strong>${escapeHtml(token.slice(2, -2))}</strong>`;
+    } else {
+      html += `<em>${escapeHtml(token.slice(1, -1))}</em>`;
     }
 
-    const close = value.indexOf("*", open + 1);
-    const content = close === -1 ? "" : value.slice(open + 1, close);
-
-    if (close === -1 || content.length === 0 || content.trim() !== content) {
-      html += escapeHtml(value.slice(index, open + 1));
-      index = open + 1;
-      continue;
-    }
-
-    html += escapeHtml(value.slice(index, open));
-    html += `<em>${escapeHtml(content)}</em>`;
-    index = close + 1;
+    lastIndex = index + token.length;
   }
 
-  return html;
+  return html + escapeHtml(value.slice(lastIndex));
 }
 
 function escapeHtml(value: string): string {

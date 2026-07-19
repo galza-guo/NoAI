@@ -10,6 +10,7 @@ import {
   renderFieldNoteArticle,
 } from "./fieldNotes";
 import unredacted01FieldNoteSource from "./field-notes/unredacted-01-why-we-built-noai.mdx?raw";
+import unredacted02FieldNoteSource from "./field-notes/unredacted-02-introducing-restore.mdx?raw";
 import { redactDocuments } from "./redactor/engine";
 import {
   CandidateKind,
@@ -101,6 +102,7 @@ interface AppState {
 const APP_VERSION = packageMeta.version;
 const FIRST_VISIT_COVER_KEY = "noai_visited";
 const FIRST_FIELD_NOTE_ROUTE = "field-notes/unredacted-01-why-we-built-noai";
+const SECOND_FIELD_NOTE_ROUTE = "field-notes/unredacted-02-introducing-restore";
 
 const state: AppState = {
   route: routeFromHash(),
@@ -169,8 +171,11 @@ interface PublicProject {
 const CURRENT_PROJECT_ID = "noai";
 const PUBLIC_PROJECTS = projectCatalog as PublicProject[];
 
-const FIELD_NOTES: FieldNote[] = [parseFieldNoteMdx(unredacted01FieldNoteSource)];
-const FIELD_NOTE_TEMPLATE = FIELD_NOTES[0];
+const FIELD_NOTES: FieldNote[] = [
+  parseFieldNoteMdx(unredacted02FieldNoteSource),
+  parseFieldNoteMdx(unredacted01FieldNoteSource),
+];
+const DEFAULT_FIELD_NOTE = FIELD_NOTES[0];
 
 const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
   "field-notes": {
@@ -192,8 +197,8 @@ const INFO_PAGE_SCAFFOLDS: Record<InfoRoute, InfoPageScaffold> = {
   },
   "field-note-template": {
     route: "field-note-template",
-    title: FIELD_NOTE_TEMPLATE.title,
-    summary: FIELD_NOTE_TEMPLATE.summary,
+    title: DEFAULT_FIELD_NOTE.title,
+    summary: DEFAULT_FIELD_NOTE.summary,
     sections: [],
   },
   faq: {
@@ -882,10 +887,10 @@ import "@phosphor-icons/web/fill";
 
 const icon = {
   alert: '<i class="ph ph-warning" aria-hidden="true"></i>',
-  arrowSquareIn:
-    '<i class="button-icon ph ph-arrow-square-in" aria-hidden="true"></i>',
-  arrowSquareOut:
-    '<i class="button-icon ph ph-arrow-square-out" aria-hidden="true"></i>',
+  fileArrowDown:
+    '<i class="button-icon ph ph-file-arrow-down" aria-hidden="true"></i>',
+  fileArrowUp:
+    '<i class="button-icon ph ph-file-arrow-up" aria-hidden="true"></i>',
   chevronLeft:
     '<i class="button-icon ph ph-caret-left" aria-hidden="true"></i>',
   chevronRight:
@@ -1159,7 +1164,7 @@ app.innerHTML = `
               <h2 id="replacements-title">Redactions</h2>
             </div>
             <div class="panel-actions replacements-panel-actions">
-              <button id="restore-file-action" type="button" class="icon-button restore-file-action" disabled aria-label="Save Restore file" title="Save Restore file">${icon.arrowSquareOut}</button>
+              <button id="restore-file-action" type="button" class="icon-button restore-file-action" disabled aria-label="Save Restore file" title="Save Restore file">${icon.fileArrowDown}</button>
               <span class="panel-count" id="replacements-count"></span>
             </div>
           </div>
@@ -1699,13 +1704,16 @@ function renderInfoSection(route: InfoRoute, section: InfoSection): string {
 
 function renderInfoPage(route: InfoRoute): void {
   const page = INFO_PAGE_SCAFFOLDS[route];
+  const fieldNote = route === "field-note-template" ? fieldNoteFromHash() : null;
+  const pageTitle = fieldNote?.title ?? page.title;
+  const pageSummary = fieldNote?.summary ?? page.summary;
   const plainPage = route === "about";
   const backHref = route === "field-note-template" ? "#/field-notes" : "#/";
   const backLabel =
     route === "field-note-template" ? "Back to Field Notes" : "Back to workspace";
   const sectionContent =
     route === "field-note-template"
-      ? renderFieldNoteArticle(FIELD_NOTE_TEMPLATE)
+      ? renderFieldNoteArticle(fieldNote ?? DEFAULT_FIELD_NOTE)
       : `
           <div class="info-section-list">
             ${page.sections
@@ -1750,8 +1758,8 @@ function renderInfoPage(route: InfoRoute): void {
               <i class="ph ph-arrow-left" aria-hidden="true"></i>
               <span>${backLabel}</span>
             </a>
-            <h1 id="info-title">${escapeHtml(page.title)}</h1>
-            ${renderInfoHeroSummary(route, page.summary)}
+            <h1 id="info-title">${escapeHtml(pageTitle)}</h1>
+            ${renderInfoHeroSummary(route, pageSummary, fieldNote)}
             ${versionMeta}
           </header>
           ${sectionContent}
@@ -1890,7 +1898,12 @@ function renderSiteMenuLink(link: (typeof SITE_LINKS)[number]): string {
 
 function routeFromHash(): AppRoute {
   const route = window.location.hash.replace(/^#\/?/, "").split("#")[0];
-  if (route === FIRST_FIELD_NOTE_ROUTE) return "field-note-template";
+  if (
+    route === FIRST_FIELD_NOTE_ROUTE ||
+    route === SECOND_FIELD_NOTE_ROUTE
+  ) {
+    return "field-note-template";
+  }
   if (route === "field-notes/template") return "field-note-template";
   if (route === "field-notes") return "field-notes";
   if (route === "faq") return "faq";
@@ -1904,6 +1917,14 @@ function routeFromHash(): AppRoute {
 function routeHref(route: AppRoute): string {
   if (route === "field-note-template") return `#/${FIRST_FIELD_NOTE_ROUTE}`;
   return route === "workspace" ? "#/" : `#/${route}`;
+}
+
+function fieldNoteFromHash(): FieldNote {
+  const route = window.location.hash.replace(/^#\/?/, "").split("#")[0];
+  const slug = route.startsWith("field-notes/")
+    ? decodeURIComponent(route.slice("field-notes/".length))
+    : "";
+  return FIELD_NOTES.find((note) => note.slug === slug) ?? DEFAULT_FIELD_NOTE;
 }
 
 /* ----------------------- Dropzone / file input --------------------- */
@@ -2532,14 +2553,12 @@ function renderWorkspaceState(): void {
     newRestoreOutputButton.hidden = false;
     restoreOutputsDropzone.hidden = false;
     replacementsControls.hidden = true;
-    restoreFileAction.innerHTML = icon.arrowSquareIn;
+    restoreFileAction.innerHTML = icon.fileArrowUp;
     restoreFileAction.disabled = false;
     restoreFileAction.setAttribute("aria-label", "Open Restore file");
     restoreFileAction.setAttribute("title", "Open Restore file");
     syncRestoreOutputsDropzone();
-    replacementsCount.textContent = state.restoreKey
-      ? `${state.restoreKey.entries.length} ${state.restoreKey.entries.length === 1 ? "redaction" : "redactions"}`
-      : "";
+    replacementsCount.textContent = "";
     return;
   }
 
@@ -2551,7 +2570,7 @@ function renderWorkspaceState(): void {
   newRestoreOutputButton.hidden = true;
   restoreOutputsDropzone.hidden = true;
   replacementsControls.hidden = false;
-  restoreFileAction.innerHTML = icon.arrowSquareOut;
+  restoreFileAction.innerHTML = icon.fileArrowDown;
   restoreFileAction.disabled = !state.restoreKey;
   restoreFileAction.setAttribute("aria-label", "Save Restore file");
   restoreFileAction.setAttribute("title", "Save Restore file");
@@ -3266,10 +3285,14 @@ function renderEntryRow(entry: ReplacementEntry, index: number = 0): string {
   `;
 }
 
-function renderInfoHeroSummary(route: InfoRoute, summary: string): string {
+function renderInfoHeroSummary(
+  route: InfoRoute,
+  summary: string,
+  fieldNote: FieldNote | null = null,
+): string {
   if (route === "field-note-template") {
     return `
-      <p class="field-note-detail-meta">${escapeHtml(FIELD_NOTE_TEMPLATE.dateLabel)}</p>
+      <p class="field-note-detail-meta">${escapeHtml((fieldNote ?? DEFAULT_FIELD_NOTE).dateLabel)}</p>
       <p>${escapeHtml(summary)}</p>
     `;
   }
