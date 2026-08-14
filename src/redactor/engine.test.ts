@@ -299,6 +299,20 @@ Attendees
     expect(output).toContain("PERSON_");
   });
 
+  it("redacts Markdown hard-break person lines without masking a heading", () => {
+    const output = redact(`
+**Elena Fairchild**\\
+**Maya Sanderson**\\
+**Evaluation Criteria**\\
+`);
+
+    for (const leaked of ["Elena Fairchild", "Maya Sanderson"]) {
+      expect(output).not.toContain(leaked);
+    }
+    expect(output).toContain("Evaluation Criteria");
+    expect(output).toContain("PERSON_");
+  });
+
   it("does not redact standalone legal list items as person names", () => {
     const output = redact(`
 Documents

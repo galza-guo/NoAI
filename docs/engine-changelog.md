@@ -6,6 +6,28 @@ ruleset-only changes bump only the relevant ruleset counter
 `ENGINE_VERSION` changes only for non-ruleset shared engine/API/review metadata
 changes.
 
+## NoAI redaction engine 1.6.0 (general r34, chinese r25) - 2026-08-15
+
+English/general Markdown-input bug fix. The triggering documents are synthetic
+demo contracts kept in the ignored private round folder; the committed test
+uses different invented names. Deterministic rule change only. No
+AI/LLM/backend/telemetry added to the product runtime.
+
+- Treated a terminal backslash as Markdown's invisible hard-line-break marker
+  when deriving visible line text. Previously the marker remained attached to
+  a surname, causing otherwise valid bold standalone person lines to miss the
+  PERSON detector at Balanced.
+- Kept the change limited to line-end Markdown syntax; ordinary backslashes
+  elsewhere remain untouched.
+- Added a positive regression test for two bold standalone names and a
+  counterexample ensuring a bold `Evaluation Criteria` heading remains
+  readable.
+- Re-ran the exact two-document demo pack: Evelyn Marlowe, Priya Sloane, Marcus
+  Ivers, and Daniel Voss are all redacted consistently at Balanced.
+- Aggregate NAIR-v2 Balanced grading was unchanged at 667/957 covered redact
+  spans, 7 keep-span violations, and 55.0% character-precision proxy; the hard
+  gate returned a clean PASS against the accepted general r32 baseline.
+
 ## NoAI redaction engine 1.6.0 (general r33, chinese r25) - 2026-07-19
 
 English/general executed-agreement notice and signature-block round. Three

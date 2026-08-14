@@ -4799,7 +4799,14 @@ function quarantineLegalContactSections(text: string, level: number): string {
 }
 
 function visibleLineText(line: string): string {
-  return cleanValue(line.replace(/<[^>]+>/g, "").replace(/[*_`]/g, ""));
+  return cleanValue(
+    line
+      .replace(/<[^>]+>/g, "")
+      .replace(/[*_`]/g, "")
+      // A terminal backslash is Markdown's hard-line-break marker. It is not
+      // visible text and must not become part of a name or labelled value.
+      .replace(/\\[ \t]*$/, ""),
+  );
 }
 
 function startsLegalContactSection(line: string): boolean {
