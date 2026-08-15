@@ -27,10 +27,15 @@ import {
 import {
   buildRestoreKey,
   parseRestoreKey,
-  restorePastedText,
+  restorePastedTextWithOccurrences,
   scanRestoreMatches,
 } from "./restore";
-import type { RestoreEntry, RestoreKey, RestoreOutput } from "./restore";
+import type {
+  RestoreEntry,
+  RestoreKey,
+  RestoreOccurrence,
+  RestoreOutput,
+} from "./restore";
 import projectCatalog from "./data/public-project-catalog.json";
 import packageMeta from "../package.json";
 
@@ -88,6 +93,8 @@ interface AppState {
   busy: boolean;
   /** Entry id currently shown in the preview popover. */
   selectedEntryId: string | null;
+  /** Restore occurrence id currently shown in the preview popover. */
+  selectedRestoreOccurrenceId: string | null;
   restoreKey: RestoreKey | null;
   restoreKeySource: "session" | "imported" | null;
   restoreOutputs: RestoreOutput[];
@@ -121,6 +128,7 @@ const state: AppState = {
   redactionsCollapsed: false,
   busy: false,
   selectedEntryId: null,
+  selectedRestoreOccurrenceId: null,
   restoreKey: null,
   restoreKeySource: null,
   restoreOutputs: [],
@@ -1185,7 +1193,7 @@ app.innerHTML = `
   </main>
 
   <!-- Floating popover for redacted span actions -->
-  <div class="popover" id="entry-popover" hidden role="dialog" aria-label="Redaction actions">
+  <div class="popover" id="entry-popover" hidden role="dialog" aria-label="Term actions">
     <div class="popover-arrow"></div>
     <div class="popover-field">
       <code class="popover-original" id="popover-original"></code>
@@ -2643,14 +2651,24 @@ function ensureSelectedRestoreOutput(): void {
 function createRestoreOutput(text = "", title?: string): RestoreOutput {
   const now = new Date().toISOString();
   const nextNumber = state.restoreOutputs.length + 1;
+  const restored = restorePastedTextWithOccurrences(text, state.restoreKey);
   return {
     id: `restore-${crypto.randomUUID()}`,
     title: title?.trim() || `AI Output ${String(nextNumber).padStart(3, "0")}`,
     redactedInput: text,
-    restoredDraft: state.restoreKey ? restorePastedText(text, state.restoreKey) : text,
+    restoredDraft: restored.text,
+    occurrences: restored.occurrences.map((occurrence) => ({
+      ...occurrence,
+      id: nextRestoreOccurrenceId(),
+      state: "restored",
+    })),
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function nextRestoreOccurrenceId(): string {
+  return `restoration-${crypto.randomUUID()}`;
 }
 
 function addRestoreOutput(text = ""): void {
@@ -2672,9 +2690,11 @@ function ensureActiveRestoreOutput(): RestoreOutput {
 function updateSelectedRestoreOutputDraft(
   restoredDraft: string,
   rawPaste?: string,
+  occurrences?: RestoreOccurrence[],
 ): void {
   const output = ensureActiveRestoreOutput();
   output.restoredDraft = restoredDraft;
+  if (occurrences) output.occurrences = occurrences;
   if (rawPaste !== undefined && !output.redactedInput) {
     output.redactedInput = rawPaste;
   }
@@ -2757,23 +2777,121 @@ function renderRestoredDraft(): void {
   copyDocButton.disabled = !output;
   downloadDocButton.disabled = !output;
   previewBody.innerHTML = `
-    <textarea
+    <div
       id="restore-draft-editor"
       class="restore-draft-editor"
+      contenteditable="true"
+      role="textbox"
+      aria-multiline="true"
+      data-placeholder="Paste redacted AI output here."
       placeholder="Paste redacted AI output here."
       spellcheck="true"
       aria-label="Restored draft"
-    ></textarea>
+    ></div>
   `;
   const editor =
-    previewBody.querySelector<HTMLTextAreaElement>("#restore-draft-editor")!;
+    previewBody.querySelector<HTMLElement>("#restore-draft-editor")!;
   if (output) {
-    editor.value = state.showRedactedRestoreInput
-      ? output.redactedInput
-      : output.restoredDraft;
+    trackUnrestoredTokens(output);
+    renderRestoreDraftContent(editor, output);
   }
+  syncRestoreDraftEmptyState(editor);
   editor.addEventListener("paste", handleRestoreDraftPaste);
   editor.addEventListener("input", handleRestoreDraftInput);
+  editor.addEventListener("keydown", handleRestoreDraftKeydown);
+}
+
+function trackUnrestoredTokens(output: RestoreOutput): void {
+  if (!state.restoreKey) return;
+  const entries = new Map(
+    state.restoreKey.entries.map((entry) => [entry.replacement, entry]),
+  );
+  const occupied = output.occurrences.map(({ start, end }) => ({ start, end }));
+  const tokenPattern = /\b[A-Z][A-Z0-9]*_\d{3,}\b/g;
+
+  for (const match of output.restoredDraft.matchAll(tokenPattern)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (occupied.some((range) => start < range.end && end > range.start)) {
+      continue;
+    }
+    const entry = entries.get(match[0]);
+    if (!entry || !entry.safe || entry.ambiguous) continue;
+    output.occurrences.push({
+      id: nextRestoreOccurrenceId(),
+      token: entry.replacement,
+      value: entry.value,
+      kind: entry.kind,
+      start,
+      end,
+      state: "redacted",
+    });
+    occupied.push({ start, end });
+  }
+}
+
+function renderRestoreDraftContent(
+  editor: HTMLElement,
+  output: RestoreOutput,
+): void {
+  const fragment = document.createDocumentFragment();
+  const occurrences = [...output.occurrences].sort(
+    (left, right) => left.start - right.start,
+  );
+  const validOccurrences: RestoreOccurrence[] = [];
+  let cursor = 0;
+
+  for (const occurrence of occurrences) {
+    const expected =
+      occurrence.state === "restored" ? occurrence.value : occurrence.token;
+    if (
+      occurrence.start < cursor ||
+      occurrence.end < occurrence.start ||
+      output.restoredDraft.slice(occurrence.start, occurrence.end) !== expected
+    ) {
+      continue;
+    }
+    fragment.append(output.restoredDraft.slice(cursor, occurrence.start));
+    fragment.append(createRestoreOccurrenceSpan(occurrence));
+    validOccurrences.push(occurrence);
+    cursor = occurrence.end;
+  }
+  fragment.append(output.restoredDraft.slice(cursor));
+  output.occurrences = validOccurrences;
+  editor.replaceChildren(fragment);
+}
+
+function createRestoreOccurrenceSpan(
+  occurrence: RestoreOccurrence,
+): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.className = `restore-occurrence ${occurrence.state}`;
+  span.dataset.restoreOccurrenceId = occurrence.id;
+  span.dataset.restoreToken = occurrence.token;
+  span.dataset.restoreValue = occurrence.value;
+  span.dataset.restoreKind = occurrence.kind;
+  span.dataset.restoreState = occurrence.state;
+  span.contentEditable = "false";
+  span.tabIndex = 0;
+  span.setAttribute("role", "button");
+  span.setAttribute("style", kindStyle(occurrence.kind).spanCss);
+  span.setAttribute(
+    "aria-label",
+    occurrence.state === "restored"
+      ? `Restored term. Source token: ${occurrence.token}. Activate to edit.`
+      : `Redacted token: ${occurrence.token}. Activate to restore.`,
+  );
+  span.title =
+    occurrence.state === "restored"
+      ? `Source token: ${occurrence.token}`
+      : `Original: ${occurrence.value}`;
+  span.textContent =
+    occurrence.state === "restored" ? occurrence.value : occurrence.token;
+  return span;
+}
+
+function syncRestoreDraftEmptyState(editor: HTMLElement): void {
+  editor.dataset.empty = String((editor.textContent ?? "").length === 0);
 }
 
 function renderRestoreMap(): void {
@@ -2948,7 +3066,7 @@ function renderRestoreKeyEntryRow(
         ? "Available for Restore"
         : "Custom labels are kept for reference but are not restored automatically";
   return `
-    <div class="entry-row restore-key-entry-row" style="--anim-index: ${index}">
+    <div class="entry-row restore-key-entry-row" data-restore-token="${escapeHtml(entry.replacement)}" style="--anim-index: ${index}">
       <span class="entry-hit-count restore-key-entry-status" aria-label="${escapeHtml(statusTitle)}">${escapeHtml(status)}</span>
       <div class="entry-source">
         <s class="entry-value" style="--strike-color: ${style.color}">${escapeHtml(entry.value)}</s>
@@ -2977,9 +3095,24 @@ function restoreStatusHelp(status: ReturnType<typeof scanRestoreMatches>[number]
 function restoreRemainingTokens(): void {
   const output = selectedRestoreOutput();
   if (!output || !state.restoreKey) return;
-  output.restoredDraft = restorePastedText(output.restoredDraft, state.restoreKey);
-  output.updatedAt = new Date().toISOString();
-  renderRestoredDraft();
+  const editor = previewBody.querySelector<HTMLElement>(
+    "#restore-draft-editor",
+  );
+  if (!editor) return;
+  editor
+    .querySelectorAll<HTMLElement>(".restore-occurrence.redacted")
+    .forEach((span) => {
+      span.dataset.restoreState = "restored";
+      span.classList.remove("redacted");
+      span.classList.add("restored");
+      span.textContent = span.dataset.restoreValue ?? span.textContent;
+      span.setAttribute(
+        "aria-label",
+        `Restored term. Source token: ${span.dataset.restoreToken ?? ""}. Activate to edit.`,
+      );
+      span.title = `Source token: ${span.dataset.restoreToken ?? ""}`;
+    });
+  syncRestoreDraftFromEditor(editor);
   renderRestoreOutputs();
   renderRestoreMap();
 }
@@ -2999,27 +3132,141 @@ function downloadRestoreFile(): void {
 
 function handleRestoreDraftPaste(event: ClipboardEvent): void {
   if (state.showRedactedRestoreInput) return;
-  const editor = event.currentTarget as HTMLTextAreaElement;
+  const editor = event.currentTarget as HTMLElement;
   const pasted = event.clipboardData?.getData("text/plain") ?? "";
   if (!pasted) return;
   event.preventDefault();
-  const restored = restorePastedText(pasted, state.restoreKey);
-  const start = editor.selectionStart;
-  const end = editor.selectionEnd;
-  const nextValue = `${editor.value.slice(0, start)}${restored}${editor.value.slice(end)}`;
-  editor.value = nextValue;
-  editor.selectionStart = editor.selectionEnd = start + restored.length;
-  updateSelectedRestoreOutputDraft(nextValue, pasted);
+  const restored = restorePastedTextWithOccurrences(pasted, state.restoreKey);
+  insertRestoredTextAtSelection(editor, restored);
+  syncRestoreDraftFromEditor(editor, pasted);
   renderRestoreOutputs();
   renderRestoreMap();
 }
 
 function handleRestoreDraftInput(event: Event): void {
   if (state.showRedactedRestoreInput) return;
-  const editor = event.currentTarget as HTMLTextAreaElement;
-  updateSelectedRestoreOutputDraft(editor.value);
+  const editor = event.currentTarget as HTMLElement;
+  syncRestoreDraftFromEditor(editor);
   renderRestoreOutputs();
   renderRestoreMap();
+}
+
+function handleRestoreDraftKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Enter") return;
+  if ((event.target as HTMLElement).closest(".restore-occurrence")) return;
+  event.preventDefault();
+  const editor = event.currentTarget as HTMLElement;
+  insertPlainTextAtSelection(editor, "\n");
+  syncRestoreDraftFromEditor(editor);
+  renderRestoreOutputs();
+  renderRestoreMap();
+}
+
+function insertRestoredTextAtSelection(
+  editor: HTMLElement,
+  restored: ReturnType<typeof restorePastedTextWithOccurrences>,
+): void {
+  const fragment = document.createDocumentFragment();
+  let cursor = 0;
+  for (const occurrence of restored.occurrences) {
+    fragment.append(restored.text.slice(cursor, occurrence.start));
+    fragment.append(
+      createRestoreOccurrenceSpan({
+        ...occurrence,
+        id: nextRestoreOccurrenceId(),
+        state: "restored",
+      }),
+    );
+    cursor = occurrence.end;
+  }
+  fragment.append(restored.text.slice(cursor));
+  insertFragmentAtSelection(editor, fragment);
+}
+
+function insertPlainTextAtSelection(editor: HTMLElement, text: string): void {
+  const fragment = document.createDocumentFragment();
+  fragment.append(text);
+  insertFragmentAtSelection(editor, fragment);
+}
+
+function insertFragmentAtSelection(
+  editor: HTMLElement,
+  fragment: DocumentFragment,
+): void {
+  const selection = window.getSelection();
+  const selectedRange =
+    selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  const range =
+    selectedRange && editor.contains(selectedRange.commonAncestorContainer)
+      ? selectedRange
+      : document.createRange();
+  if (!selectedRange || !editor.contains(selectedRange.commonAncestorContainer)) {
+    range.selectNodeContents(editor);
+    range.collapse(false);
+  }
+  range.deleteContents();
+  const caretMarker = document.createTextNode("");
+  fragment.append(caretMarker);
+  range.insertNode(fragment);
+  range.setStartAfter(caretMarker);
+  range.collapse(true);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function syncRestoreDraftFromEditor(
+  editor: HTMLElement,
+  rawPaste?: string,
+): void {
+  const output = ensureActiveRestoreOutput();
+  const previous = new Map(
+    output.occurrences.map((occurrence) => [occurrence.id, occurrence]),
+  );
+  const occurrences: RestoreOccurrence[] = [];
+  let text = "";
+
+  const readNode = (node: Node): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += node.textContent ?? "";
+      return;
+    }
+    if (!(node instanceof HTMLElement)) return;
+    if (node.matches(".restore-occurrence")) {
+      const id = node.dataset.restoreOccurrenceId;
+      const existing = id ? previous.get(id) : undefined;
+      const occurrenceState =
+        node.dataset.restoreState === "redacted" ? "redacted" : "restored";
+      const displayed = node.textContent ?? "";
+      const start = text.length;
+      text += displayed;
+      occurrences.push({
+        id: id ?? nextRestoreOccurrenceId(),
+        token: node.dataset.restoreToken ?? existing?.token ?? "",
+        value:
+          occurrenceState === "restored"
+            ? displayed
+            : node.dataset.restoreValue ?? existing?.value ?? "",
+        kind: (node.dataset.restoreKind ??
+          existing?.kind ??
+          "PROPER_NOUN") as CandidateKind,
+        start,
+        end: text.length,
+        state: occurrenceState,
+      });
+      return;
+    }
+    if (node.tagName === "BR") {
+      text += "\n";
+      return;
+    }
+    const isBlock = node.tagName === "DIV" || node.tagName === "P";
+    if (isBlock && text.length > 0 && !text.endsWith("\n")) text += "\n";
+    node.childNodes.forEach(readNode);
+  };
+
+  editor.childNodes.forEach(readNode);
+  updateSelectedRestoreOutputDraft(text, rawPaste, occurrences);
+  syncRestoreDraftEmptyState(editor);
 }
 
 function renderFiles(): void {
@@ -3851,7 +4098,7 @@ function focusSourceDocumentEditor(): void {
 function focusRestoreDraftEditor(): void {
   window.requestAnimationFrame(() => {
     const editor =
-      previewBody.querySelector<HTMLTextAreaElement>("#restore-draft-editor");
+      previewBody.querySelector<HTMLElement>("#restore-draft-editor");
     editor?.focus();
   });
 }
@@ -3868,6 +4115,13 @@ function renderLevelControl(): void {
 /* --------------------- Preview interactions ------------------------ */
 
 previewBody.addEventListener("click", (event) => {
+  const restoration = (event.target as HTMLElement).closest<HTMLElement>(
+    ".restore-occurrence",
+  );
+  if (restoration) {
+    openRestorePopover(restoration.dataset.restoreOccurrenceId!, restoration);
+    return;
+  }
   const target = (event.target as HTMLElement).closest<HTMLElement>(
     ".redacted",
   );
@@ -3876,6 +4130,14 @@ previewBody.addEventListener("click", (event) => {
 
 previewBody.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") return;
+  const restoration = (event.target as HTMLElement).closest<HTMLElement>(
+    ".restore-occurrence",
+  );
+  if (restoration) {
+    event.preventDefault();
+    openRestorePopover(restoration.dataset.restoreOccurrenceId!, restoration);
+    return;
+  }
   const target = (event.target as HTMLElement).closest<HTMLElement>(
     ".redacted",
   );
@@ -3892,14 +4154,50 @@ function openPopover(entryId: string, anchor: HTMLElement): void {
   const entry = state.entries.find((item) => item.id === entryId);
   if (!entry) return;
   state.selectedEntryId = entryId;
+  state.selectedRestoreOccurrenceId = null;
   const style = kindStyle(entry.kind);
+  popover.setAttribute("aria-label", "Redaction actions");
   popoverOriginal.textContent = entry.value;
   popoverOriginal.style.setProperty("--strike-color", style.color);
+  popoverReplacement.readOnly = false;
+  popoverReplacement.setAttribute("aria-label", "Replacement");
   popoverReplacement.value = entry.replacement;
+  popoverFind.textContent = "Find in list";
+  popoverDelete.textContent = "Un-Redact";
   popover.hidden = false;
   positionPopover(anchor);
   popoverReplacement.focus();
   popoverReplacement.select();
+}
+
+function openRestorePopover(
+  occurrenceId: string,
+  anchor: HTMLElement,
+): void {
+  const occurrence = selectedRestoreOutput()?.occurrences.find(
+    (item) => item.id === occurrenceId,
+  );
+  if (!occurrence) return;
+  state.selectedEntryId = null;
+  state.selectedRestoreOccurrenceId = occurrenceId;
+  const style = kindStyle(occurrence.kind);
+  popover.setAttribute("aria-label", "Restoration actions");
+  popoverOriginal.textContent = occurrence.token;
+  popoverOriginal.style.setProperty("--strike-color", style.color);
+  popoverReplacement.value = occurrence.value;
+  popoverReplacement.readOnly = occurrence.state === "redacted";
+  popoverReplacement.setAttribute("aria-label", "Restored text");
+  popoverFind.textContent = "Find in list";
+  popoverDelete.textContent =
+    occurrence.state === "restored" ? "Re-redact" : "Restore";
+  popover.hidden = false;
+  positionPopover(anchor);
+  if (popoverReplacement.readOnly) {
+    popoverDelete.focus();
+  } else {
+    popoverReplacement.focus();
+    popoverReplacement.select();
+  }
 }
 
 function positionPopover(anchor: HTMLElement): void {
@@ -3929,19 +4227,36 @@ function hidePopover(): void {
   if (popover.hidden) return;
   popover.hidden = true;
   state.selectedEntryId = null;
+  state.selectedRestoreOccurrenceId = null;
+  popoverReplacement.readOnly = false;
 }
 
 popoverReplacement.addEventListener("input", () => {
+  if (state.selectedRestoreOccurrenceId) {
+    editRestoreOccurrence(
+      state.selectedRestoreOccurrenceId,
+      popoverReplacement.value,
+    );
+    return;
+  }
   if (!state.selectedEntryId) return;
   setEntryReplacement(state.selectedEntryId, popoverReplacement.value);
 });
 
 popoverDelete.addEventListener("click", () => {
+  if (state.selectedRestoreOccurrenceId) {
+    toggleRestoreOccurrence(state.selectedRestoreOccurrenceId);
+    return;
+  }
   if (!state.selectedEntryId) return;
   deleteEntry(state.selectedEntryId);
 });
 
 popoverFind.addEventListener("click", () => {
+  if (state.selectedRestoreOccurrenceId) {
+    findRestoreOccurrenceInList(state.selectedRestoreOccurrenceId);
+    return;
+  }
   if (!state.selectedEntryId) return;
   const id = state.selectedEntryId;
   hidePopover();
@@ -3960,6 +4275,71 @@ popoverFind.addEventListener("click", () => {
   }
 });
 
+function editRestoreOccurrence(occurrenceId: string, value: string): void {
+  const editor = previewBody.querySelector<HTMLElement>(
+    "#restore-draft-editor",
+  );
+  const span = editor?.querySelector<HTMLElement>(
+    `[data-restore-occurrence-id="${cssEscape(occurrenceId)}"]`,
+  );
+  if (!editor || !span || span.dataset.restoreState === "redacted") return;
+  span.textContent = value;
+  span.dataset.restoreValue = value;
+  syncRestoreDraftFromEditor(editor);
+  renderRestoreOutputs();
+  renderRestoreMap();
+  positionPopover(span);
+}
+
+function toggleRestoreOccurrence(occurrenceId: string): void {
+  const editor = previewBody.querySelector<HTMLElement>(
+    "#restore-draft-editor",
+  );
+  const span = editor?.querySelector<HTMLElement>(
+    `[data-restore-occurrence-id="${cssEscape(occurrenceId)}"]`,
+  );
+  if (!editor || !span) return;
+  const shouldRestore = span.dataset.restoreState === "redacted";
+  span.dataset.restoreState = shouldRestore ? "restored" : "redacted";
+  span.classList.toggle("restored", shouldRestore);
+  span.classList.toggle("redacted", !shouldRestore);
+  span.textContent = shouldRestore
+    ? span.dataset.restoreValue ?? ""
+    : span.dataset.restoreToken ?? "";
+  span.setAttribute(
+    "aria-label",
+    shouldRestore
+      ? `Restored term. Source token: ${span.dataset.restoreToken ?? ""}. Activate to edit.`
+      : `Redacted token: ${span.dataset.restoreToken ?? ""}. Activate to restore.`,
+  );
+  span.title = shouldRestore
+    ? `Source token: ${span.dataset.restoreToken ?? ""}`
+    : `Original: ${span.dataset.restoreValue ?? ""}`;
+  syncRestoreDraftFromEditor(editor);
+  hidePopover();
+  renderRestoreOutputs();
+  renderRestoreMap();
+  span.focus();
+}
+
+function findRestoreOccurrenceInList(occurrenceId: string): void {
+  const occurrence = selectedRestoreOutput()?.occurrences.find(
+    (item) => item.id === occurrenceId,
+  );
+  if (!occurrence) return;
+  state.expandedKinds.add(occurrence.kind);
+  const token = occurrence.token;
+  hidePopover();
+  renderRestoreMap();
+  const row = replacementsBody.querySelector<HTMLElement>(
+    `[data-restore-token="${cssEscape(token)}"]`,
+  );
+  if (!row) return;
+  row.classList.add("flash");
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  window.setTimeout(() => row.classList.remove("flash"), 900);
+}
+
 function expandKindForEntry(id: string): void {
   const entry = state.entries.find((item) => item.id === id);
   if (!entry) return;
@@ -3971,8 +4351,10 @@ document.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
   if (popover.contains(target)) return;
   if (target.closest(".redacted")) return;
+  if (target.closest(".restore-occurrence")) return;
   hidePopover();
-  renderReplacements();
+  if (state.workspaceMode === "restore") renderRestoreMap();
+  else renderReplacements();
 });
 
 window.addEventListener("resize", () => {
@@ -3982,6 +4364,10 @@ window.addEventListener("resize", () => {
 /* ----------------------- Selection to redact ----------------------- */
 
 document.addEventListener("selectionchange", () => {
+  if (state.workspaceMode !== "redact") {
+    hideRedactButton();
+    return;
+  }
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
     hideRedactButton();

@@ -5,6 +5,7 @@ import {
   isSafeRestoreToken,
   parseRestoreKey,
   restorePastedText,
+  restorePastedTextWithOccurrences,
   scanRestoreMatches,
 } from "./restore";
 
@@ -108,6 +109,39 @@ describe("restore text replacement", () => {
     expect(restorePastedText("PERSON_001 signed.", key)).toBe(
       "Jane Smith signed.",
     );
+  });
+
+  it("records the exact restored ranges for interactive review", () => {
+    const key = buildRestoreKey({
+      appVersion: "0.0.0",
+      engineVersion: "test-engine",
+      level: "balanced",
+      entries: [entry({})],
+      now: () => new Date("2026-06-24T00:00:00.000Z"),
+    });
+
+    expect(
+      restorePastedTextWithOccurrences(
+        "Ask PERSON_001, then PERSON_001.",
+        key,
+      ),
+    ).toEqual({
+      text: "Ask Jane Smith, then Jane Smith.",
+      occurrences: [
+        expect.objectContaining({
+          token: "PERSON_001",
+          value: "Jane Smith",
+          start: 4,
+          end: 14,
+        }),
+        expect.objectContaining({
+          token: "PERSON_001",
+          value: "Jane Smith",
+          start: 21,
+          end: 31,
+        }),
+      ],
+    });
   });
 
   it("leaves unknown, unsafe, and ambiguous labels unchanged", () => {

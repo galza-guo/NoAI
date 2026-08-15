@@ -289,7 +289,8 @@ input[type="search"]:hover {
 
 select:focus,
 input:focus,
-textarea:focus {
+textarea:focus,
+.restore-draft-editor:focus {
   outline: none;
   border-color: var(--color-border-focus);
   box-shadow: 0 0 0 3px var(--color-accent-soft);
@@ -299,7 +300,8 @@ button:focus-visible,
 select:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
-.redacted:focus-visible {
+.redacted:focus-visible,
+.restore-occurrence:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
@@ -468,6 +470,18 @@ h2 {
 .source-document-editor::placeholder,
 .restore-draft-editor::placeholder {
   color: var(--color-text-soft);
+}
+
+.restore-draft-editor {
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+
+.restore-draft-editor[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--color-text-soft);
+  pointer-events: none;
 }
 
 .restore-output-status {
@@ -3032,7 +3046,8 @@ button.entry-delete:hover:not(:disabled) {
     linear-gradient(to right, transparent, transparent) border-box;
 }
 
-.redacted {
+.redacted,
+.restore-occurrence {
   display: inline;
   padding: 1px 4px;
   margin: 0 1px;
@@ -3044,11 +3059,21 @@ button.entry-delete:hover:not(:disabled) {
     filter var(--duration-fast) var(--ease-standard);
 }
 .redacted:hover,
-.redacted:focus-visible {
+.redacted:focus-visible,
+.restore-occurrence:hover,
+.restore-occurrence:focus-visible {
   filter: brightness(0.96);
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
   box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+.restore-occurrence {
+  cursor: pointer;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.restore-occurrence.redacted {
+  font-weight: 600;
 }
 .redacted.flash {
   animation: flashPulse 0.9s ease;

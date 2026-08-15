@@ -40,8 +40,32 @@ export interface RestoreOutput {
   title: string;
   redactedInput: string;
   restoredDraft: string;
+  occurrences: RestoreOccurrence[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RestoreOccurrence {
+  id: string;
+  token: string;
+  value: string;
+  kind: CandidateKind;
+  start: number;
+  end: number;
+  state: "restored" | "redacted";
+}
+
+export interface RestoredTextOccurrence {
+  token: string;
+  value: string;
+  kind: CandidateKind;
+  start: number;
+  end: number;
+}
+
+export interface RestoredTextResult {
+  text: string;
+  occurrences: RestoredTextOccurrence[];
 }
 
 export interface BuildRestoreKeyOptions {
@@ -104,13 +128,43 @@ function entryByReplacement(key: RestoreKey): Map<string, RestoreEntry> {
   return map;
 }
 
-export function restorePastedText(text: string, key: RestoreKey | null): string {
-  if (!key) return text;
+export function restorePastedTextWithOccurrences(
+  text: string,
+  key: RestoreKey | null,
+): RestoredTextResult {
+  if (!key) return { text, occurrences: [] };
   const entries = entryByReplacement(key);
-  return text.replace(TOKEN_RE, (token) => {
+  const occurrences: RestoredTextOccurrence[] = [];
+  let restored = "";
+  let sourceIndex = 0;
+
+  for (const match of text.matchAll(TOKEN_RE)) {
+    const token = match[0];
+    const matchIndex = match.index;
+    restored += text.slice(sourceIndex, matchIndex);
     const entry = entries.get(token);
-    return entry && entry.safe && !entry.ambiguous ? entry.value : token;
-  });
+    if (entry && entry.safe && !entry.ambiguous) {
+      const start = restored.length;
+      restored += entry.value;
+      occurrences.push({
+        token,
+        value: entry.value,
+        kind: entry.kind,
+        start,
+        end: restored.length,
+      });
+    } else {
+      restored += token;
+    }
+    sourceIndex = matchIndex + token.length;
+  }
+
+  restored += text.slice(sourceIndex);
+  return { text: restored, occurrences };
+}
+
+export function restorePastedText(text: string, key: RestoreKey | null): string {
+  return restorePastedTextWithOccurrences(text, key).text;
 }
 
 export function scanRestoreMatches(

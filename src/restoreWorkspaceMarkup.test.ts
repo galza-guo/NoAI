@@ -35,6 +35,14 @@ describe("restore workspace markup", () => {
     expect(mainSource).toContain("function renderRestoreMap");
   });
 
+  it("makes individual restorations inspectable and reversible", () => {
+    expect(mainSource).toContain('class="restore-draft-editor"');
+    expect(mainSource).toContain('contenteditable="true"');
+    expect(mainSource).toContain("function openRestorePopover");
+    expect(mainSource).toContain('popoverDelete.textContent =\n    occurrence.state === "restored" ? "Re-redact" : "Restore";');
+    expect(mainSource).toContain("function findRestoreOccurrenceInList");
+  });
+
   it("uses header actions for Restore files", () => {
     expect(mainSource).toContain("restore-file-action");
     expect(mainSource).toContain("ph-file-arrow-down");
