@@ -2,6 +2,7 @@ import * as mammoth from "mammoth/mammoth.browser";
 import * as pdfjs from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 import { RedactionInput } from "./redactor/types";
+import { PdfTextItemLike, reconstructPdfText } from "./pdfText";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -66,11 +67,7 @@ async function readPdf(file: File): Promise<ReadFileResult> {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
-    const text = (content.items as Array<{ str?: string }>)
-      .map((item) => item.str ?? "")
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
+    const text = reconstructPdfText(content.items as PdfTextItemLike[]);
     pages.push(`## Page ${pageNumber}\n\n${text}`);
   }
 
