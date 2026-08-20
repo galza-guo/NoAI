@@ -967,14 +967,14 @@ h2 {
 }
 
 .field-note-article mark {
-  padding: 0.04em 0.24em;
-  border: 1px solid #f0c9c5;
+  padding: 0.02em 0.18em;
+  border: 1px solid rgba(167, 52, 47, 0.18);
   border-radius: var(--radius-sm);
-  background: var(--color-redaction-soft);
+  background: rgba(167, 52, 47, 0.08);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-  color: var(--color-redaction);
-  font-weight: 700;
+  color: inherit;
+  font-weight: 600;
 }
 
 .field-note-figure {
