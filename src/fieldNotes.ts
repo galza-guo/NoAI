@@ -1,6 +1,7 @@
 export type FieldNoteBlock =
   | { type: "paragraph"; text: string }
   | { type: "heading"; level: 2 | 3; text: string }
+  | { type: "blockquote"; text: string }
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "image"; alt: string; src: string; caption?: string };
 
@@ -102,6 +103,14 @@ function parseBlock(chunk: string): FieldNoteBlock {
   }
 
   const lines = chunk.split("\n");
+  const quoteLines = lines.map((line) => line.match(/^>\s?(.+)$/));
+  if (quoteLines.every(Boolean)) {
+    return {
+      type: "blockquote",
+      text: quoteLines.map((line) => line![1].trim()).join("\n"),
+    };
+  }
+
   const orderedItems = lines.map((line) => line.match(/^\d+\.\s+(.+)$/));
   if (orderedItems.every(Boolean)) {
     return {
@@ -151,11 +160,19 @@ function renderFieldNoteBlock(block: FieldNoteBlock): string {
     return `<${tag}>${items}</${tag}>`;
   }
 
+  if (block.type === "blockquote") {
+    const lines = block.text
+      .split("\n")
+      .map(renderInlineMarkdown)
+      .join("<br>");
+    return `<blockquote>${lines}</blockquote>`;
+  }
+
   return `<p>${renderInlineMarkdown(block.text)}</p>`;
 }
 
 function renderInlineMarkdown(value: string): string {
-  const tokenPattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g;
+  const tokenPattern = /(`[^`\n]+`|==[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g;
   let html = "";
   let lastIndex = 0;
 
@@ -166,6 +183,8 @@ function renderInlineMarkdown(value: string): string {
 
     if (token.startsWith("`")) {
       html += `<code>${escapeHtml(token.slice(1, -1))}</code>`;
+    } else if (token.startsWith("==")) {
+      html += `<mark>${escapeHtml(token.slice(2, -2))}</mark>`;
     } else if (token.startsWith("**")) {
       html += `<strong>${escapeHtml(token.slice(2, -2))}</strong>`;
     } else {

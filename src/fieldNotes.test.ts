@@ -14,6 +14,9 @@ Opening paragraph for the field note.
 
 Plain text under the main section.
 
+> Quoted example with ==highlighted text==.
+> Second quoted line.
+
 1. Open **Redact** mode.
 2. Replace a label such as \`PERSON_001\`.
 
@@ -36,6 +39,10 @@ describe("field note mdx", () => {
       { type: "paragraph", text: "Opening paragraph for the field note." },
       { type: "heading", level: 2, text: "Main section" },
       { type: "paragraph", text: "Plain text under the main section." },
+      {
+        type: "blockquote",
+        text: "Quoted example with ==highlighted text==.\nSecond quoted line.",
+      },
       {
         type: "list",
         ordered: true,
@@ -90,5 +97,27 @@ describe("field note mdx", () => {
     expect(html).toContain("<ol>");
     expect(html).toContain("<strong>Redact</strong>");
     expect(html).toContain("<code>PERSON_001</code>");
+  });
+
+  it("renders blockquotes with inline formatting", () => {
+    const html = renderFieldNoteArticle(parseFieldNoteMdx(TEMPLATE_MDX));
+
+    expect(html).toContain("<blockquote>");
+    expect(html).toContain("Quoted example with <mark>highlighted text</mark>.");
+    expect(html).toContain("<br>Second quoted line.");
+  });
+
+  it("renders field note highlights while escaping highlighted text", () => {
+    const note = parseFieldNoteMdx(
+      TEMPLATE_MDX.replace(
+        "Closing paragraph.",
+        "This catches ==marcus@example.com== and ==<script>==.",
+      ),
+    );
+
+    const html = renderFieldNoteArticle(note);
+
+    expect(html).toContain("<mark>marcus@example.com</mark>");
+    expect(html).toContain("<mark>&lt;script&gt;</mark>");
   });
 });

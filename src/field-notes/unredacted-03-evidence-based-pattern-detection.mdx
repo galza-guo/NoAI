@@ -1,0 +1,75 @@
+---
+slug: unredacted-03-evidence-based-pattern-detection
+title: Unredacted 03: How NoAI Detects Sensitive Text Without an LLM
+date: 20 August 2026
+datetime: 2026-08-20
+summary: Evidence-Based Pattern Detection: mechanical rules, local evidence, and why NoAI does not need an LLM to redact.
+---
+
+NoAI exists to stop sensitive information from being sent out unnecessarily. If NoAI had to send a document to an LLM in order to decide what to redact, the sensitive information would already have left the user's device. That would defeat the whole point.
+
+But if there is no LLM behind the redaction, how does NoAI know what to redact?
+
+The answer is what we call **Evidence-Based Pattern Detection**.
+
+## The Basic Idea
+
+NoAI uses plain deterministic code, what programmers call rule-based pattern matching. It is made of several parts: regular expressions, validation logic, context rules, and carefully designed exceptions.
+
+NoAI does not understand your document, and it does not attempt to. It works more like a metal detector for text: it mechanically reacts when a piece of text has a recognized shape, label, position, or mathematical fingerprint.
+
+A pattern alone is not always enough. `Limited` may be part of a company name, or it may just be an ordinary word. A number may be a bank account, a page number, a clause number, or a quantity. NoAI tries to redact only when the surrounding evidence gives the pattern enough support.
+
+## How It Works
+
+Evidence-Based Pattern Detection takes many forms. NoAI's ruleset combines many small rule checks to detect sensitive information in different contexts. Here are a few illustrative examples.
+
+### 1. Distinctive Shape
+
+> Please email ==marcus.ivers@example.com== by Friday.
+
+NoAI does not need to know who Marcus is. The string has the shape of an email address: a local part, an `@` sign, a domain, and a suffix. That is enough for a direct rule to catch it.
+
+### 2. Label Plus Context
+
+> Buyer: ==Northwind Solar Holdings Limited==
+
+`Northwind Solar` by itself could be a project, a heading, a party, or nothing sensitive at all. But when it appears after `Buyer:` and ends with `Limited`, the evidence is stronger. The label and the company suffix trip the rule together.
+
+### 3. Mathematical Fingerprint
+
+> IBAN: ==GB82 WEST 1234 5698 7654 32==
+
+Some identifiers can be checked instead of merely guessed. An IBAN has a prescribed format and a checksum. NoAI can run that validation locally in the browser. If the checksum fails, the text should not be treated the same way as a real account identifier.
+
+### 4. Repeated Reference
+
+> Signed by ==Priya Sloane==. Later, ==Sloane== confirmed the payment schedule.
+
+NoAI may first catch the full name where the evidence is strong, such as a signature or party context. Once that identity is established, a later short reference can also be caught if the surrounding text supports it.
+
+## In Practice
+
+This is an example of the kind of mixed text that appears in ordinary transactional work.
+
+> From: ==completion@stonepier.example==
+> Subject: ==Project Keel completion==
+> Attention: ==Mr. Tyler Hale==
+> Seller: ==Blue Harbor Ventures Ltd== confirms that ==US$2,450,000== is due by ==14 October 2026== under ==Payment Reference: PAY-2026-5512-CUST2099==. Dear ==Mr. Hale==, please circulate the signed board minutes after receipt.
+
+Processed by NoAI's current Balanced ruleset, it becomes:
+
+> From: EMAIL_001
+> Subject: PROJECT_OR_ISSUE_001
+> Attention: PERSON_001
+> Seller: ORG_001 confirms that AMOUNT_001 is due by DATE_001 under BUSINESS_ID_001. Dear PERSON_001, please circulate the signed board minutes after receipt.
+
+The email is caught by shape. The subject line is treated as a matter or project reference because of its label. The attention line gives enough structure for a person redaction. The seller is caught by company suffix. The amount and date have recognizable formats. The payment reference is caught because it is introduced by a specific label.
+
+None of these signals requires NoAI to understand the email.
+
+## Fully Local
+
+NoAI conducts detection, redaction, and restoration locally in the browser running on your device. No document is uploaded for redaction. No LLM is asked to read it.
+
+NoAI is deliberately a machine of deterministic rules, not an AI tool. It's in the name. It's not as 'smart' as LLMs, but that's the whole point.

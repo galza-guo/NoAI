@@ -966,6 +966,17 @@ h2 {
   font-size: 0.9em;
 }
 
+.field-note-article mark {
+  padding: 0.04em 0.24em;
+  border: 1px solid #f0c9c5;
+  border-radius: var(--radius-sm);
+  background: var(--color-redaction-soft);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  color: var(--color-redaction);
+  font-weight: 700;
+}
+
 .field-note-figure {
   display: grid;
   gap: 9px;

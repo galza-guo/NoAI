@@ -11,6 +11,7 @@ import {
 } from "./fieldNotes";
 import unredacted01FieldNoteSource from "./field-notes/unredacted-01-why-we-built-noai.mdx?raw";
 import unredacted02FieldNoteSource from "./field-notes/unredacted-02-introducing-restore.mdx?raw";
+import unredacted03FieldNoteSource from "./field-notes/unredacted-03-evidence-based-pattern-detection.mdx?raw";
 import { redactDocuments } from "./redactor/engine";
 import {
   CandidateKind,
@@ -110,6 +111,8 @@ const APP_VERSION = packageMeta.version;
 const FIRST_VISIT_COVER_KEY = "noai_visited";
 const FIRST_FIELD_NOTE_ROUTE = "field-notes/unredacted-01-why-we-built-noai";
 const SECOND_FIELD_NOTE_ROUTE = "field-notes/unredacted-02-introducing-restore";
+const THIRD_FIELD_NOTE_ROUTE =
+  "field-notes/unredacted-03-evidence-based-pattern-detection";
 
 const state: AppState = {
   route: routeFromHash(),
@@ -180,6 +183,7 @@ const CURRENT_PROJECT_ID = "noai";
 const PUBLIC_PROJECTS = projectCatalog as PublicProject[];
 
 const FIELD_NOTES: FieldNote[] = [
+  parseFieldNoteMdx(unredacted03FieldNoteSource),
   parseFieldNoteMdx(unredacted02FieldNoteSource),
   parseFieldNoteMdx(unredacted01FieldNoteSource),
 ];
@@ -1501,7 +1505,7 @@ function syncDocumentMetadata(route: AppRoute): void {
 function routeMetadata(route: AppRoute): { title: string; description: string } {
   if (route === "workspace") {
     return {
-      title: "NoAI - Browser-Only Document Redaction for AI Tools",
+      title: "NoAI - Local, Safe Redaction for AI Tools",
       description:
         "NoAI prepares documents for ChatGPT, Claude, Gemini, and other AI tools with deterministic redaction that runs locally in your browser. No uploads. No AI in the redaction path.",
     };
@@ -1909,7 +1913,8 @@ function routeFromHash(): AppRoute {
   const route = window.location.hash.replace(/^#\/?/, "").split("#")[0];
   if (
     route === FIRST_FIELD_NOTE_ROUTE ||
-    route === SECOND_FIELD_NOTE_ROUTE
+    route === SECOND_FIELD_NOTE_ROUTE ||
+    route === THIRD_FIELD_NOTE_ROUTE
   ) {
     return "field-note-template";
   }
