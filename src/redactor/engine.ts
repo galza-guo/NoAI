@@ -263,6 +263,62 @@ const REGULATOR_NUMBER_SPLIT_RE = /^\d{1,4}[\s-]\d{1,4}$/;
 const REGULATOR_NUMBER_LABEL_RE =
   /\b(?:File|Docket|Matter|Case|Charge|Claim|Reference)\s+Nos?\b\.?\s*[:#]?\s*$/i;
 
+const GENERIC_EMAIL_LOCAL_PARTS = new Set([
+  "accounts",
+  "accountspayable",
+  "admin",
+  "billing",
+  "completion",
+  "compliance",
+  "contact",
+  "finance",
+  "hello",
+  "help",
+  "hr",
+  "info",
+  "invoice",
+  "invoices",
+  "legal",
+  "mail",
+  "noreply",
+  "office",
+  "operations",
+  "payables",
+  "privacy",
+  "procurement",
+  "reception",
+  "sales",
+  "service",
+  "support",
+  "team",
+]);
+
+const ORG_LEADING_ROLE_LABELS = new Set([
+  "Seller",
+  "Buyer",
+  "Purchaser",
+  "Vendor",
+  "Supplier",
+  "Lender",
+  "Borrower",
+  "Guarantor",
+  "Contractor",
+  "Subcontractor",
+  "Tenant",
+  "Landlord",
+  "Lessor",
+  "Lessee",
+  "Licensor",
+  "Licensee",
+  "Assignor",
+  "Assignee",
+  "Issuer",
+  "Holder",
+  "Shareholder",
+  "Debtor",
+  "Creditor",
+]);
+
 // Chinese document-reference labels that bind a following digit run as a
 // CASE_REF, not a PHONE. When a phone-shaped run directly follows one of these
 // labels (发票代码：031001800111 / 校验码：25605123), the label-bound CASE_REF
@@ -368,7 +424,7 @@ function splitEmailRecipients(joined: string): string[] {
   for (const ch of joined) {
     if (ch === "<" || ch === "(") depth += 1;
     if (ch === ">" || ch === ")") depth = Math.max(0, depth - 1);
-    if (ch === "," && depth === 0) {
+    if ((ch === "," || ch === ";") && depth === 0) {
       segments.push(current);
       current = "";
     } else {
@@ -377,6 +433,29 @@ function splitEmailRecipients(joined: string): string[] {
   }
   if (current.trim()) segments.push(current);
   return segments.map((s) => s.trim()).filter(Boolean);
+}
+
+function emailAddressesOfRecipient(recipient: string): string[] {
+  return (
+    recipient.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? []
+  );
+}
+
+function isGenericEmailLocalPart(email: string): boolean {
+  const local = email.split("@")[0]?.split("+")[0]?.toLocaleLowerCase() ?? "";
+  if (!local) return false;
+  const compact = local.replace(/[^a-z0-9]+/g, "");
+  if (GENERIC_EMAIL_LOCAL_PARTS.has(compact)) return true;
+  const tokens = local.split(/[^a-z0-9]+/).filter(Boolean);
+  return (
+    tokens.length > 0 &&
+    tokens.every((token) => GENERIC_EMAIL_LOCAL_PARTS.has(token))
+  );
+}
+
+function hasOnlyGenericRoleInboxes(recipient: string): boolean {
+  const emails = emailAddressesOfRecipient(recipient);
+  return emails.length > 0 && emails.every(isGenericEmailLocalPart);
 }
 
 /**
@@ -392,6 +471,7 @@ function displayNameOfRecipient(recipient: string): string {
   const withoutEmail = recipient
     .replace(/<[^>]*>\s*$/, "")
     .replace(/\s*<[^>]*>\s*/g, " ")
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, " ")
     .trim();
   // A bare email (no display name) is handled by the EMAIL rule; nothing to add.
   if (/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(withoutEmail))
@@ -1668,7 +1748,7 @@ export class Detector {
         // digits and won the overlap because PHONE outranks CASE_REF. Re-claiming
         // the value here as BANK_ACCOUNT (which outranks PHONE) keeps the correct
         // kind. Alphanumeric / short values fall through to the CASE_REF label.
-        /\bAccount\s+Nos?\.?\s*[:#]\*{0,2}\s*(?=\D*\d)\d{8,}\b/gi,
+        /\b(?:Bank\s+Account|Client\s+Account|Account)\s+Nos?\.?\s*[:#]?\*{0,2}\s*((?=(?:[ -]*\d){8,})\d[\d -]*\d)\b/gi,
         1,
         "account number (long digit run) label",
       ],
@@ -2493,18 +2573,18 @@ export class Detector {
             this.isExchangeEntityFragment(part)
           )
             continue;
-          // From/To/Cc/Bcc values that contain an angle-bracket recipient
-          // ("Display Name <email>") are handled by the dedicated email-recipient
-          // detector, which joins wrapped lines, splits per recipient, and skips
-          // role/department boilerplate. Defer to it so the whole-line value
-          // does not win the overlap and swallow a department name. The closing
-          // ">" may be missing because cleanValue strips trailing punctuation,
-          // so match an open-bracket email fragment too.
+          // Contact-header values that contain an email are handled by the
+          // dedicated email-recipient detector plus the direct EMAIL rule. Defer
+          // here so a whole-line From/To/Cc/Email value does not win the overlap
+          // and hide the email kind or swallow role/department boilerplate.
           if (
-            (reason === "from label" ||
-              reason === "to label" ||
-              reason === "cc label") &&
-            /<[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(part)
+            [
+              "from label",
+              "to label",
+              "cc label",
+              "contact label",
+            ].includes(reason) &&
+            /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(part)
           )
             continue;
           this.add(part, kind, level, reason, doc.name, pos);
@@ -2552,10 +2632,11 @@ export class Detector {
       searchPos = pos + line.length + 1;
     }
 
-    const labelRe = /^\s*(?:To|Cc|CC|Bcc|BCC)\s*[:：]\s*(.*)$/i;
+    const labelRe =
+      /^\s*(?:From|To|Cc|CC|Bcc|BCC|Email|E-mail|Reply-To)\s*[:：]\s*(.*)$/i;
     // Continuation stops at the next correspondence header, a blank line, or a
     // salutation/sign-off so we never swallow body prose.
-    const stopRe = /^\s*(?:From|To|Cc|CC|Bcc|BCC|Subject|Re|Date|Via|Sent|Reply-To|Attachments?)\s*[:：]/i;
+    const stopRe = /^\s*(?:From|To|Cc|CC|Bcc|BCC|Email|E-mail|Subject|Re|Date|Via|Sent|Reply-To|Attachments?)\s*[:：]/i;
     const salutationRe = /^\s*(?:Dear|Hi|Hello|Yours|Thank|Thanks|Regards|Best|Sincerely|Cordially)\b/i;
 
     for (let index = 0; index < lines.length; index += 1) {
@@ -2588,9 +2669,21 @@ export class Detector {
         // Require a name-like shape anchored by the email address so arbitrary
         // prose fragments are not pulled in.
         if (!looksLikeRecipientDisplayName(name)) continue;
+        const isRoleInbox = hasOnlyGenericRoleInboxes(recipient);
+        const isPerson = this.looksLikePersonName(name);
+        if (isRoleInbox && isPerson) continue;
+        const kind: CandidateKind = isPerson ? "PERSON" : "PERSON_OR_ORG";
+        if (
+          kind === "PERSON_OR_ORG" &&
+          isRoleInbox &&
+          !new RegExp(String.raw`\b(?:${ORGANIZATION_SUFFIX_ALT})\.?$`, "i").test(
+            name,
+          )
+        )
+          continue;
         this.add(
           name,
-          "PERSON_OR_ORG",
+          kind,
           1,
           "email recipient display name",
           doc.name,
@@ -3781,6 +3874,18 @@ export class Detector {
     let surface = raw;
     const first = surface.split(/\s+/)[0];
     if (LEADING.has(first)) surface = surface.slice(first.length).trim();
+    const roleFirst = surface.split(/\s+/)[0]?.replace(/[:：]$/, "") ?? "";
+    if (ORG_LEADING_ROLE_LABELS.has(roleFirst)) {
+      const rest = surface.slice(roleFirst.length).trim();
+      if (
+        /\s/.test(rest) &&
+        new RegExp(String.raw`\b(?:${ORGANIZATION_SUFFIX_ALT})\.?$`, "i").test(
+          rest,
+        )
+      ) {
+        surface = rest;
+      }
+    }
     return surface || null;
   }
 
@@ -3800,12 +3905,19 @@ export class Detector {
       "Services",
       "Legal",
       "Human",
+      "Accounts",
+      "Account",
       "Investor",
       "Corporate",
       "Secretary",
+      "Team",
+      "Support",
+      "Completion",
       "Treasury",
       "Finance",
       "Accounting",
+      "Payable",
+      "Payables",
       "Compliance",
       "Tax",
       "Risk",
@@ -4176,6 +4288,19 @@ export class Detector {
             "bare surname in witness sentence",
             doc.name,
             match.index ?? 0,
+          );
+        const salutationRe = new RegExp(
+          `\\b(?:Dear|Hi|Hello)\\s+${escapeRegExp(surname)}\\b`,
+          "g",
+        );
+        for (const match of doc.text.matchAll(salutationRe))
+          this.add(
+            surname,
+            "PERSON",
+            source.minLevel,
+            "surname in salutation",
+            doc.name,
+            (match.index ?? 0) + match[0].lastIndexOf(surname),
           );
       }
 

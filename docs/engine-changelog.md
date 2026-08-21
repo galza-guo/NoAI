@@ -6,6 +6,28 @@ ruleset-only changes bump only the relevant ruleset counter
 `ENGINE_VERSION` changes only for non-ruleset shared engine/API/review metadata
 changes.
 
+## NoAI redaction engine 1.6.0 (general r35, chinese r25) - 2026-08-21
+
+English/general field-note follow-up for deterministic pattern detection edge
+cases. Synthetic tests only; no real documents committed. Deterministic rule
+changes only. No AI/LLM/backend/telemetry added to the product runtime.
+
+- Redacted person display names adjacent to contact-header emails in `From`,
+  `To`, `Cc`, `Bcc`, `Email`, and `Reply-To` style fields, including plain
+  `Display Name email@example` forms as well as angle-bracket recipients.
+- Kept generic role inbox display names such as `Legal Department legal@...`
+  and `Accounts Team accounts@...` readable while still redacting the email
+  address; generic local parts such as `legal`, `accounts`, `support`, `info`,
+  `admin`, and `completion` do not create person aliases.
+- Classified account-shaped digit runs after account labels such as
+  `Account No.`, `Bank Account No.`, and `Client Account No.` as
+  `BANK_ACCOUNT` instead of letting the generic phone detector win.
+- Trimmed leading contract-party role words such as `Seller`, `Purchaser`,
+  `Vendor`, `Lender`, and `Borrower` from suffix-based organization matches so
+  the role label remains readable while the organization name redacts.
+- Added focused regression tests for the display-name alias, generic inbox,
+  account/phone priority, and organization-boundary cases.
+
 ## NoAI redaction engine 1.6.0 (general r34, chinese r25) - 2026-08-15
 
 English/general Markdown-input bug fix. The triggering documents are synthetic

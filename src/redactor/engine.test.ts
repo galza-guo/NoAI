@@ -2580,11 +2580,11 @@ Tax: 32.00
     expect(output).toContain("BUSINESS_ID_");
   });
 
-  it("redacts Bank Account No. as BANK_ACCOUNT and keeps Account No. as a case reference", () => {
+  it("redacts account-shaped bank/account labels as BANK_ACCOUNT", () => {
     // A digit-only bank account number was previously mislabeled as PHONE.
-    // The label-bound rule classifies it as BANK_ACCOUNT. The abbreviated
-    // "Account No." (CASE_REF) behavior is unchanged, and the full-word
-    // "Account Number" also becomes BANK_ACCOUNT.
+    // The label-bound rule classifies account-shaped values as BANK_ACCOUNT,
+    // including abbreviated "Account No." forms when the value is a long
+    // numeric identifier. Full-word "Account Number" is also BANK_ACCOUNT.
     const output = redact(
       `
 Bank Account No.: 00123468
@@ -2602,8 +2602,10 @@ Bank Account Number: to be confirmed
     expect(output).not.toContain("99-2026-04827");
     expect(output).toContain("Bank Account Number: to be confirmed");
     expect(output).toContain("BANK_ACCOUNT_");
-    // The bank account number must not be mislabeled as a phone number.
+    // The bank/account numbers must not be mislabeled as phone numbers.
     expect(output).not.toMatch(/Bank Account No\.: PHONE_/);
+    expect(output).not.toMatch(/Account No\.: PHONE_/);
+    expect(output).toMatch(/Account No\.: BANK_ACCOUNT_\d+/);
   });
 
   it("redacts OCR-spaced bank account and company registration labels", () => {
@@ -3621,6 +3623,18 @@ Call PHONE_1 at 555 for help on line 7.
     expect(output).not.toMatch(/Routing\/ABA: PHONE/);
     // Counterexample: a bare phone-shaped fragment in prose still redacts as phone.
     expect(output).toContain("555");
+  });
+
+  it("classifies inline Account No. digit sequences as bank accounts, not phones", () => {
+    const output = redact(
+      "Please remit the balance to Account No. 024-391-778204 by Friday.",
+      "balanced",
+    );
+
+    expect(output).not.toContain("024-391-778204");
+    expect(output).toContain("BANK_ACCOUNT_");
+    expect(output).not.toContain("PHONE_");
+    expect(output).toMatch(/Account No\. BANK_ACCOUNT_\d+/);
   });
 
   it("redacts the preparer name under the 'Prepared by:' label", () => {
@@ -5134,6 +5148,24 @@ Acme.io, Inc. filed the form.`,
     expect(output).not.toContain("www.sample.org");
   });
 
+  it("does not swallow role labels before suffix-based organization names", () => {
+    const output = redact(
+      [
+        "Seller Blue Harbor Ventures Ltd signed the schedule.",
+        "Purchaser Green Valley Capital LLC countersigned.",
+        "Seller: Blue Harbor Ventures Ltd remains the named party.",
+      ].join("\n"),
+      "balanced",
+    );
+
+    expect(output).not.toContain("Blue Harbor Ventures Ltd");
+    expect(output).not.toContain("Green Valley Capital LLC");
+    expect(output).toContain("ORG_");
+    expect(output).toMatch(/Seller ORG_\d+ signed/);
+    expect(output).toMatch(/Purchaser ORG_\d+ countersigned/);
+    expect(output).toMatch(/Seller: ORG_\d+ remains/);
+  });
+
   it("redacts contract preamble parties named before a parenthetical defined-term role", () => {
     // Commercial contracts introduce the parties in the preamble as
     // "by and between <ORG>, a <State> corporation (the 'Company')" or
@@ -6454,6 +6486,59 @@ The parcel sits in Cedar Park, TX (US).`,
     expect(output).toContain("To:");
     expect(output).toContain("Cc:");
     expect(output).toContain("Subject:");
+  });
+
+  it("redacts display names beside contact-header emails and derives strong surname aliases", () => {
+    const result = redactDocuments(
+      [
+        {
+          name: "sample.md",
+          text: [
+            "From: Elena Ramos elena.ramos@stonepier.example",
+            "Subject: Project Lantern completion",
+            "",
+            "Dear Ramos, please confirm receipt.",
+          ].join("\n"),
+        },
+      ],
+      { level: "balanced" },
+    );
+    const output = result.combinedMarkdown;
+
+    expect(output).not.toContain("Elena Ramos");
+    expect(output).not.toContain("elena.ramos@stonepier.example");
+    expect(output).not.toContain("Project Lantern");
+    expect(output).not.toContain("Dear Ramos");
+    expect(output).toContain("PERSON_");
+    expect(output).toContain("EMAIL_");
+    expect(output).toContain("PROJECT_");
+    expect(result.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          value: "Elena Ramos",
+          kind: "PERSON",
+          reason: "email recipient display name",
+        }),
+      ]),
+    );
+  });
+
+  it("does not infer people from generic role inbox contact headers", () => {
+    const output = redact(
+      [
+        "From: Legal Department legal@stonepier.example",
+        "To: Accounts Team accounts@stonepier.example",
+      ].join("\n"),
+      "balanced",
+    );
+
+    expect(output).toContain("Legal Department");
+    expect(output).toContain("Accounts Team");
+    expect(output).not.toContain("legal@stonepier.example");
+    expect(output).not.toContain("accounts@stonepier.example");
+    expect(output).toContain("EMAIL_");
+    expect(output).not.toContain("PERSON_");
+    expect(output).not.toContain("PERSON_OR_ORG_");
   });
 
   it("does not redact a department-shaped To label value as a person", () => {
